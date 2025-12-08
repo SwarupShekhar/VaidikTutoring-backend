@@ -1,0 +1,288 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["app"]
+}
+
+model assessment_attempts {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assessment_id String?      @db.Uuid
+  student_id    String?      @db.Uuid
+  score         Decimal?     @db.Decimal
+  answers       Json?
+  created_at    DateTime?    @default(now()) @db.Timestamptz(6)
+  assessments   assessments? @relation(fields: [assessment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  students      students?    @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+model assessments {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title               String?
+  subject_id          String?               @db.Uuid
+  curriculum_id       String?               @db.Uuid
+  metadata            Json?
+  created_by          String?               @db.Uuid
+  created_at          DateTime?             @default(now()) @db.Timestamptz(6)
+  assessment_attempts assessment_attempts[]
+  users               users?                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  curricula           curricula?            @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subjects            subjects?             @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+model audit_logs {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor_user_id String?   @db.Uuid
+  action        String?
+  object_type   String?
+  object_id     String?
+  details       Json?
+  created_at    DateTime? @default(now()) @db.Timestamptz(6)
+  users         users?    @relation(fields: [actor_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model bookings {
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  student_id        String?    @db.Uuid
+  package_id        String?    @db.Uuid
+  subject_id        String?    @db.Uuid
+  curriculum_id     String?    @db.Uuid
+  requested_start   DateTime?  @db.Timestamptz(6)
+  requested_end     DateTime?  @db.Timestamptz(6)
+  status            String?
+  assigned_tutor_id String?    @db.Uuid
+  created_at        DateTime?  @default(now()) @db.Timestamptz(6)
+  tutors            tutors?    @relation(fields: [assigned_tutor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  curricula         curricula? @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  packages          packages?  @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  students          students?  @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subjects          subjects?  @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sessions          sessions[]
+
+  @@schema("app")
+}
+
+model curricula {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                   String
+  country                String?
+  description            String?
+  created_at             DateTime?                @default(now()) @db.Timestamptz(6)
+  assessments            assessments[]
+  bookings               bookings[]
+  curriculum_subject_map curriculum_subject_map[]
+  progress_points        progress_points[]
+  students               students[]
+
+  @@schema("app")
+}
+
+model curriculum_subject_map {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  curriculum_id String?    @db.Uuid
+  subject_id    String?    @db.Uuid
+  external_code String?
+  curricula     curricula? @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subjects      subjects?  @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+model notifications {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String?   @db.Uuid
+  type       String?
+  payload    Json?
+  is_read    Boolean?  @default(false)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  users      users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+model package_items {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  package_id String?   @db.Uuid
+  subject_id String?   @db.Uuid
+  hours      Int?
+  note       String?
+  packages   packages? @relation(fields: [package_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subjects   subjects? @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model packages {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  description   String?
+  price_cents   Int?
+  currency      String?         @default("USD")
+  billing_type  String?
+  active        Boolean?        @default(true)
+  created_at    DateTime?       @default(now()) @db.Timestamptz(6)
+  bookings      bookings[]
+  package_items package_items[]
+  purchases     purchases[]
+
+  @@schema("app")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model progress_points {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  student_id     String?    @db.Uuid
+  curriculum_id  String?    @db.Uuid
+  objective_code String?
+  mastery_level  String?
+  last_updated   DateTime?  @default(now()) @db.Timestamptz(6)
+  curricula      curricula? @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  students       students?  @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model purchases {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id             String?   @db.Uuid
+  package_id          String?   @db.Uuid
+  amount_cents        Int?
+  currency            String?
+  status              String?
+  payment_provider    String?
+  payment_provider_id String?
+  created_at          DateTime? @default(now()) @db.Timestamptz(6)
+  packages            packages? @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users               users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+model session_recordings {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  session_id       String?   @db.Uuid
+  storage_path     String?
+  duration_seconds Int?
+  transcript       String?
+  created_at       DateTime? @default(now()) @db.Timestamptz(6)
+  sessions         sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sessions {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_id         String?              @db.Uuid
+  start_time         DateTime?            @db.Timestamptz(6)
+  end_time           DateTime?            @db.Timestamptz(6)
+  meet_link          String?
+  whiteboard_link    String?
+  status             String?
+  created_at         DateTime?            @default(now()) @db.Timestamptz(6)
+  session_recordings session_recordings[]
+  bookings           bookings?            @relation(fields: [booking_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+model students {
+  id                                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                              String                @db.Uuid
+  parent_user_id                       String?               @db.Uuid
+  grade                                String?
+  school                               String?
+  birth_date                           DateTime?             @db.Date
+  curriculum_preference                String?               @db.Uuid
+  created_at                           DateTime?             @default(now()) @db.Timestamptz(6)
+  assessment_attempts                  assessment_attempts[]
+  bookings                             bookings[]
+  progress_points                      progress_points[]
+  curricula                            curricula?            @relation(fields: [curriculum_preference], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_students_parent_user_idTousers users?                @relation("students_parent_user_idTousers", fields: [parent_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_students_user_idTousers        users                 @relation("students_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+model subjects {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                   String
+  canonical_code         String?                  @unique
+  description            String?
+  created_at             DateTime?                @default(now()) @db.Timestamptz(6)
+  assessments            assessments[]
+  bookings               bookings[]
+  curriculum_subject_map curriculum_subject_map[]
+  package_items          package_items[]
+
+  @@schema("app")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model tutor_shifts {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tutor_id    String?   @db.Uuid
+  day_of_week Int?      @db.SmallInt
+  start_time  DateTime? @db.Time(6)
+  end_time    DateTime? @db.Time(6)
+  timezone    String?
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  tutors      tutors?   @relation(fields: [tutor_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model tutors {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String         @db.Uuid
+  bio               String?
+  qualifications    Json?
+  skills            Json?
+  hourly_rate_cents Int?
+  employment_type   String?
+  is_active         Boolean?       @default(true)
+  created_at        DateTime?      @default(now()) @db.Timestamptz(6)
+  bookings          bookings[]
+  tutor_shifts      tutor_shifts[]
+  users             users          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model users {
+  id                                      String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                                   String          @unique
+  password_hash                           String?
+  role                                    String
+  first_name                              String?
+  last_name                               String?
+  phone                                   String?
+  timezone                                String?         @default("UTC")
+  is_active                               Boolean?        @default(true)
+  created_at                              DateTime?       @default(now()) @db.Timestamptz(6)
+  assessments                             assessments[]
+  audit_logs                              audit_logs[]
+  notifications                           notifications[]
+  purchases                               purchases[]
+  students_students_parent_user_idTousers students[]      @relation("students_parent_user_idTousers")
+  students_students_user_idTousers        students[]      @relation("students_user_idTousers")
+  tutors                                  tutors[]
+
+  @@schema("app")
+}

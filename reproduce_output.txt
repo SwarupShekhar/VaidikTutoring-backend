@@ -1,0 +1,35 @@
+Checking if user exists...
+Error during reproduction: PrismaClientKnownRequestError: 
+Invalid `prisma.users.findUnique()` invocation in
+/Users/swarupshekhar/k12-backend/app/reproduce_signup.ts:27:43
+
+  24 const role = "parent";
+  25 
+  26 console.log("Checking if user exists...");
+→ 27 const exists = await prisma.users.findUnique(
+The table `public.users` does not exist in the current database.
+    at qr.handleRequestError (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at qr.handleAndLogRequestError (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at qr.request (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async a (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:805:24)
+    at async main (/Users/swarupshekhar/k12-backend/app/reproduce_signup.ts:27:24) {
+  code: 'P2021',
+  meta: {
+    modelName: 'users',
+    driverAdapterError: DriverAdapterError: TableDoesNotExist
+        at PrismaPgAdapter.onError (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/adapter-pg/dist/index.js:693:11)
+        at PrismaPgAdapter.performIO (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/adapter-pg/dist/index.js:688:12)
+        at processTicksAndRejections (node:internal/process/task_queues:105:5)
+        at async PrismaPgAdapter.queryRaw (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/adapter-pg/dist/index.js:608:30)
+        at async /Users/swarupshekhar/k12-backend/app/node_modules/@prisma/client-engine-runtime/src/tracing.ts:68:22
+        at async fr (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/client-engine-runtime/src/tracing.ts:56:10)
+        at async e.interpretNode (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:190:26)
+        at async e.interpretNode (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:217:41)
+        at async e.interpretNode (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:276:41)
+        at async e.run (/Users/swarupshekhar/k12-backend/app/node_modules/@prisma/client-engine-runtime/src/interpreter/query-interpreter.ts:96:23) {
+      cause: [Object]
+    }
+  },
+  clientVersion: '7.1.0'
+}
