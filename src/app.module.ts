@@ -11,6 +11,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { InviteModule } from './invite/invite.module.js';
 import { TestEmailModule } from './test-email/test-email.module.js';
 import { EmailModule } from './email/email.module.js';
+import { CatalogModule } from './catalog/catalog.module.js';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { EmailModule } from './email/email.module.js';
     InviteModule,
     TestEmailModule,
     EmailModule,
+    CatalogModule,
 
   ],
   controllers: [AppController],

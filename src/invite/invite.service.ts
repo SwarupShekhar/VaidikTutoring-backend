@@ -48,7 +48,7 @@ export class InviteService {
 
         // fetch student user
         const student = booking.student_id ? await this.prisma.students.findUnique({ where: { id: booking.student_id } }) : null;
-        const studentUser = student ? await this.prisma.users.findUnique({ where: { id: student.user_id } }) : null;
+        const studentUser = (student && student.user_id) ? await this.prisma.users.findUnique({ where: { id: student.user_id } }) : null;
 
         // fetch tutor user
         let tutorUser: any = null;

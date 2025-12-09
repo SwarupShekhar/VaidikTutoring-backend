@@ -39,8 +39,10 @@ export class SessionsService {
                     const parent = await this.prisma.users.findUnique({ where: { id: student.parent_user_id } });
                     if (parent?.email) recipients.add(parent.email);
                 }
-                const studentUser = await this.prisma.users.findUnique({ where: { id: student.user_id } });
-                if (studentUser?.email) recipients.add(studentUser.email);
+                if (student.user_id) {
+                    const studentUser = await this.prisma.users.findUnique({ where: { id: student.user_id } });
+                    if (studentUser?.email) recipients.add(studentUser.email);
+                }
             }
         }
 
@@ -99,7 +101,11 @@ export class SessionsService {
         let studentUser: any = null;
         if (booking?.student_id) {
             const student = await this.prisma.students.findUnique({ where: { id: booking.student_id } });
-            if (student) studentUser = await this.prisma.users.findUnique({ where: { id: student.user_id } });
+            if (student) {
+                if (student.user_id) { // Existing check for student.user_id
+                    studentUser = await this.prisma.users.findUnique({ where: { id: student.user_id } });
+                }
+            }
         }
 
         let tutorUser: any = null;

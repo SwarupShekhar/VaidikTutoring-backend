@@ -8,11 +8,11 @@ import { RolesGuard } from '../common/guards/roles.guard.js';
 
 @Controller('bookings')
 export class BookingsController {
-  constructor(private readonly svc: BookingsService) {}
+  constructor(private readonly svc: BookingsService) { }
 
   // Student/Parent creates a booking
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('parent','student')
+  @Roles('parent', 'student')
   @Post('create')
   async create(@Body() dto: CreateBookingDto, @Req() req) {
     // ensure the caller is the parent of the student or the student themself
@@ -23,16 +23,21 @@ export class BookingsController {
 
   // Student fetch own bookings
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('student','parent')
+  @Roles('student', 'parent')
   @Get('mine')
   async myBookings(@Req() req) {
     if (req.user.role === 'student') {
       return this.svc.forStudent(req.user.sub);
     }
     // parent: return bookings for their children
-    const students = await this.svc['prisma'].students.findMany({ where: { parent_user_id: req.user.sub }});
-    const ids = students.map(s => s.id);
-    return this.svc['prisma'].bookings.findMany({ where: { student_id: { in: ids } }, orderBy: { requested_start: 'desc' } });
+    return this.svc.forParent(req.user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('parent')
+  @Get('parent')
+  async parentBookings(@Req() req) {
+    return this.svc.forParent(req.user.sub);
   }
 
   // Tutor fetch assigned bookings

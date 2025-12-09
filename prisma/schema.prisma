@@ -25,8 +25,8 @@ model assessment_attempts {
 model assessments {
   id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   title               String?
-  subject_id          String?               @db.Uuid
-  curriculum_id       String?               @db.Uuid
+  subject_id          String?
+  curriculum_id       String?
   metadata            Json?
   created_by          String?               @db.Uuid
   created_at          DateTime?             @default(now()) @db.Timestamptz(6)
@@ -55,13 +55,14 @@ model audit_logs {
 model bookings {
   id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   student_id        String?    @db.Uuid
-  package_id        String?    @db.Uuid
-  subject_id        String?    @db.Uuid
-  curriculum_id     String?    @db.Uuid
+  package_id        String?
+  subject_id        String?
+  curriculum_id     String?
   requested_start   DateTime?  @db.Timestamptz(6)
   requested_end     DateTime?  @db.Timestamptz(6)
   status            String?
   assigned_tutor_id String?    @db.Uuid
+  note              String?
   created_at        DateTime?  @default(now()) @db.Timestamptz(6)
   tutors            tutors?    @relation(fields: [assigned_tutor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   curricula         curricula? @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -74,7 +75,7 @@ model bookings {
 }
 
 model curricula {
-  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                     String                   @id
   name                   String
   country                String?
   description            String?
@@ -90,8 +91,8 @@ model curricula {
 
 model curriculum_subject_map {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  curriculum_id String?    @db.Uuid
-  subject_id    String?    @db.Uuid
+  curriculum_id String?
+  subject_id    String?
   external_code String?
   curricula     curricula? @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   subjects      subjects?  @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -113,8 +114,8 @@ model notifications {
 
 model package_items {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  package_id String?   @db.Uuid
-  subject_id String?   @db.Uuid
+  package_id String?
+  subject_id String?
   hours      Int?
   note       String?
   packages   packages? @relation(fields: [package_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -125,7 +126,7 @@ model package_items {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model packages {
-  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id            String          @id
   name          String
   description   String?
   price_cents   Int?
@@ -144,7 +145,7 @@ model packages {
 model progress_points {
   id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   student_id     String?    @db.Uuid
-  curriculum_id  String?    @db.Uuid
+  curriculum_id  String?
   objective_code String?
   mastery_level  String?
   last_updated   DateTime?  @default(now()) @db.Timestamptz(6)
@@ -158,7 +159,7 @@ model progress_points {
 model purchases {
   id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id             String?   @db.Uuid
-  package_id          String?   @db.Uuid
+  package_id          String?
   amount_cents        Int?
   currency            String?
   status              String?
@@ -201,25 +202,27 @@ model sessions {
 
 model students {
   id                                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id                              String                @db.Uuid
+  user_id                              String?               @db.Uuid
+  first_name                           String?
+  last_name                            String?
   parent_user_id                       String?               @db.Uuid
   grade                                String?
   school                               String?
   birth_date                           DateTime?             @db.Date
-  curriculum_preference                String?               @db.Uuid
+  curriculum_preference                String?
   created_at                           DateTime?             @default(now()) @db.Timestamptz(6)
   assessment_attempts                  assessment_attempts[]
   bookings                             bookings[]
   progress_points                      progress_points[]
   curricula                            curricula?            @relation(fields: [curriculum_preference], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users_students_parent_user_idTousers users?                @relation("students_parent_user_idTousers", fields: [parent_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  users_students_user_idTousers        users                 @relation("students_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_students_user_idTousers        users?                @relation("students_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("app")
 }
 
 model subjects {
-  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                     String                   @id
   name                   String
   canonical_code         String?                  @unique
   description            String?

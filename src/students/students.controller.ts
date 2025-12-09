@@ -37,7 +37,10 @@ export class StudentsController {
             id: s.id,
             grade: s.grade,
             school: s.school,
-            name: s.users_students_user_idTousers?.first_name || 'Unnamed Student'
+            name: `${s.first_name} ${s.last_name || ''}`.trim() || 'Unnamed Student',
+            // Return raw fields too if frontend expects them
+            first_name: s.first_name,
+            last_name: s.last_name
         }));
     }
 
