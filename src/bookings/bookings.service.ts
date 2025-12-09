@@ -10,49 +10,58 @@ export class BookingsService {
 
   // Create booking and attempt auto-assign tutor
   async create(createDto: CreateBookingDto) {
-    // Validate referenced entities exist (student/package/subject/curriculum)
+    // Validate referenced entities exist
     const student = await this.prisma.students.findUnique({ where: { id: createDto.student_id } });
     if (!student) throw new NotFoundException('Student not found');
 
     const pkg = await this.prisma.packages.findUnique({ where: { id: createDto.package_id } });
     if (!pkg) throw new NotFoundException('Package not found');
 
-    const subject = await this.prisma.subjects.findUnique({ where: { id: createDto.subject_id } });
-    if (!subject) throw new NotFoundException('Subject not found');
-
     const curriculum = await this.prisma.curricula.findUnique({ where: { id: createDto.curriculum_id } });
     if (!curriculum) throw new NotFoundException('Curriculum not found');
 
-    const booking = await this.prisma.bookings.create({
-      data: {
-        student_id: createDto.student_id,
-        package_id: createDto.package_id,
-        subject_id: createDto.subject_id,
-        curriculum_id: createDto.curriculum_id,
-        requested_start: new Date(createDto.requested_start),
-        requested_end: new Date(createDto.requested_end),
-        note: createDto.note,
-        status: 'requested',
-      }
-    });
+    const createdBookings: any[] = [];
 
-    // Try auto-assign a tutor
-    const assigned = await this.autoAssignTutor(booking);
-    // If assigned, create session record too
-    if (assigned) {
-      await this.prisma.sessions.create({
+    // Loop through each subject and create a separate booking
+    for (const subjectId of createDto.subject_ids) {
+      const subject = await this.prisma.subjects.findUnique({ where: { id: subjectId } });
+      if (!subject) throw new NotFoundException(`Subject with ID ${subjectId} not found`);
+
+      const booking = await this.prisma.bookings.create({
         data: {
-          booking_id: booking.id,
-          start_time: booking.requested_start,
-          end_time: booking.requested_end,
-          meet_link: null,
-          whiteboard_link: null,
-          status: 'scheduled',
+          student_id: createDto.student_id,
+          package_id: createDto.package_id,
+          subject_id: subjectId,
+          curriculum_id: createDto.curriculum_id,
+          requested_start: new Date(createDto.requested_start),
+          requested_end: new Date(createDto.requested_end),
+          note: createDto.note,
+          status: 'requested',
         }
       });
+
+      // Try auto-assign a tutor
+      const assigned = await this.autoAssignTutor(booking);
+      // If assigned, create session record too
+      if (assigned) {
+        await this.prisma.sessions.create({
+          data: {
+            booking_id: booking.id,
+            start_time: booking.requested_start,
+            end_time: booking.requested_end,
+            meet_link: null,
+            whiteboard_link: null,
+            status: 'scheduled',
+          }
+        });
+      }
+
+      createdBookings.push(
+        await this.prisma.bookings.findUnique({ where: { id: booking.id } })
+      );
     }
 
-    return await this.prisma.bookings.findUnique({ where: { id: booking.id } });
+    return createdBookings;
   }
 
   // Simple auto-assignment algorithm:

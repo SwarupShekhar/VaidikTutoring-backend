@@ -1,5 +1,5 @@
 // src/bookings/dto/create-booking.dto.ts
-import { IsUUID, IsString, IsOptional, IsISO8601 } from 'class-validator';
+import { IsUUID, IsString, IsOptional, IsISO8601, IsArray } from 'class-validator';
 
 export class CreateBookingDto {
   @IsUUID()
@@ -8,8 +8,9 @@ export class CreateBookingDto {
   @IsUUID()
   package_id: string;
 
-  @IsUUID()
-  subject_id: string;
+  @IsArray()
+  @IsString({ each: true })
+  subject_ids: string[];
 
   @IsUUID()
   curriculum_id: string;
