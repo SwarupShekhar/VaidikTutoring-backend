@@ -16,10 +16,7 @@ export class BookingsController {
   @Post('create')
   async create(@Body() dto: CreateBookingDto, @Req() req) {
     // ensure the caller is the parent of the student or the student themself
-    if (req.user.role === 'student') {
-      dto.student_id = req.user.sub;
-    }
-    return this.svc.create(dto);
+    return this.svc.create(dto, req.user);
   }
 
   // Explicit endpoint for student bookings

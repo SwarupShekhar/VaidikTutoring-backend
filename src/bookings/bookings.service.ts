@@ -9,32 +9,37 @@ export class BookingsService {
   constructor(private prisma: PrismaService) { }
 
   // Create booking and attempt auto-assign tutor
-  async create(createDto: CreateBookingDto) {
-    // Validate referenced entities exist
-    // 1. Resolve Student ID (Handle case where frontend sends User ID instead of Student ID)
+  // Create booking and attempt auto-assign tutor
+  async create(createDto: CreateBookingDto, user: any) {
     let finalStudentId = createDto.student_id;
-    const studentExists = await this.prisma.students.findUnique({ where: { id: finalStudentId } });
 
-    if (!studentExists) {
-      // Not a direct Student ID. Check if it's a User ID with role 'student'
-      const user = await this.prisma.users.findUnique({ where: { id: finalStudentId } });
-      if (user && user.role === 'student') {
-        // It is a Student User. Check if they already have a Student Profile
-        let linkedStudent = await this.prisma.students.findFirst({ where: { user_id: user.id } });
-        if (!linkedStudent) {
-          // No profile? Auto-create one!
-          linkedStudent = await this.prisma.students.create({
-            data: {
-              user_id: user.id,
-              first_name: user.first_name,
-              last_name: user.last_name,
-              grade: 'TBD', // Default
-            }
-          });
-        }
-        finalStudentId = linkedStudent.id;
+    // FIX: If the logged-in user is a student, ensure they have a Student Record
+    if (user.role === 'student') {
+      // Check if a Student profile exists for this User ID
+      // In our schema, students are linked via user_id
+      const existingStudent = await this.prisma.students.findFirst({
+        where: { user_id: user.sub } // user.sub is the ID from JWT
+      });
+
+      if (!existingStudent) {
+        // Auto-create a Student record for this user if missing
+        const newStudent = await this.prisma.students.create({
+          data: {
+            user_id: user.sub,
+            first_name: user.first_name || 'Student',
+            last_name: user.last_name || '',
+            grade: 'TBD',
+            // We do not set parent_user_id here as they are self-registered
+          }
+        });
+        finalStudentId = newStudent.id;
       } else {
-        // Not a valid Student ID and not a valid Student User ID
+        finalStudentId = existingStudent.id;
+      }
+    } else {
+      // For parents, validate the passed student_id exists
+      const studentExists = await this.prisma.students.findUnique({ where: { id: finalStudentId } });
+      if (!studentExists) {
         throw new NotFoundException('Student profile not found for the provided ID');
       }
     }
