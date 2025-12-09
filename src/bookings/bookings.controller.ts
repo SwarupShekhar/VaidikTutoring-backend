@@ -21,6 +21,14 @@ export class BookingsController {
     return this.svc.create(dto);
   }
 
+  // Explicit endpoint for student bookings
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('student')
+  @Get('student')
+  async studentBookings(@Req() req) {
+    return this.svc.forStudent(req.user.sub);
+  }
+
   // Student fetch own bookings
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('student', 'parent')
