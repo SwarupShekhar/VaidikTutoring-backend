@@ -11,7 +11,7 @@ export class AppController {
       // lightweight connection check
       await this.prisma.$queryRaw`SELECT 1`;
       // explicit schema-qualified check for users table count
-      const rows: any = await this.prisma.$queryRaw`SELECT count(*)::int as count FROM users`;
+      const rows: any = await this.prisma.$queryRaw`SELECT count(*)::int as count FROM "app"."users";`;
       const userCount = Array.isArray(rows) && rows[0] ? Number(rows[0].count || 0) : 0;
       return {
         status: 'connected',
