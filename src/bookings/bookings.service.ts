@@ -11,8 +11,33 @@ export class BookingsService {
   // Create booking and attempt auto-assign tutor
   async create(createDto: CreateBookingDto) {
     // Validate referenced entities exist
-    const student = await this.prisma.students.findUnique({ where: { id: createDto.student_id } });
-    if (!student) throw new NotFoundException('Student not found');
+    // 1. Resolve Student ID (Handle case where frontend sends User ID instead of Student ID)
+    let finalStudentId = createDto.student_id;
+    const studentExists = await this.prisma.students.findUnique({ where: { id: finalStudentId } });
+
+    if (!studentExists) {
+      // Not a direct Student ID. Check if it's a User ID with role 'student'
+      const user = await this.prisma.users.findUnique({ where: { id: finalStudentId } });
+      if (user && user.role === 'student') {
+        // It is a Student User. Check if they already have a Student Profile
+        let linkedStudent = await this.prisma.students.findFirst({ where: { user_id: user.id } });
+        if (!linkedStudent) {
+          // No profile? Auto-create one!
+          linkedStudent = await this.prisma.students.create({
+            data: {
+              user_id: user.id,
+              first_name: user.first_name,
+              last_name: user.last_name,
+              grade: 'TBD', // Default
+            }
+          });
+        }
+        finalStudentId = linkedStudent.id;
+      } else {
+        // Not a valid Student ID and not a valid Student User ID
+        throw new NotFoundException('Student profile not found for the provided ID');
+      }
+    }
 
     const pkg = await this.prisma.packages.findUnique({ where: { id: createDto.package_id } });
     if (!pkg) throw new NotFoundException('Package not found');
@@ -29,7 +54,7 @@ export class BookingsService {
 
       const booking = await this.prisma.bookings.create({
         data: {
-          student_id: createDto.student_id,
+          student_id: finalStudentId,
           package_id: createDto.package_id,
           subject_id: subjectId,
           curriculum_id: createDto.curriculum_id,
