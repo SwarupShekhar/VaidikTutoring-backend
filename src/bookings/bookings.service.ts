@@ -170,7 +170,14 @@ export class BookingsService {
     // find student id(s) linked to this user
     const stud = await this.prisma.students.findFirst({ where: { user_id: studentUserId } });
     if (!stud) throw new NotFoundException('Student profile not found');
-    return this.prisma.bookings.findMany({ where: { student_id: stud.id }, orderBy: { requested_start: 'desc' } });
+    return this.prisma.bookings.findMany({
+      where: { student_id: stud.id },
+      include: {
+        subjects: true,
+        tutors: { include: { users: true } }
+      },
+      orderBy: { requested_start: 'asc' }
+    });
   }
 
   // get bookings for tutor
