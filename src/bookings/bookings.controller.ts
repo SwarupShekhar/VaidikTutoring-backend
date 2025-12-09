@@ -16,8 +16,9 @@ export class BookingsController {
   @Post('create')
   async create(@Body() dto: CreateBookingDto, @Req() req) {
     // ensure the caller is the parent of the student or the student themself
-    // Basic check: if caller is student same id, or if parent owns the student
-    // The service itself verifies existence; for extra security you can add checks here.
+    if (req.user.role === 'student') {
+      dto.student_id = req.user.sub;
+    }
     return this.svc.create(dto);
   }
 
