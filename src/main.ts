@@ -10,6 +10,7 @@ async function bootstrap() {
     origin: [
       'http://localhost:3000',
       'https://k-12-backend-vnp4.vercel.app',  // <-- ADD YOUR VERCEL DOMAIN HERE
+      'https://k-12-vaidik.vercel.app',       // <--- ADD THIS ONE!
       'https://k-12-backend.onrender.com'
     ],
     credentials: true,
