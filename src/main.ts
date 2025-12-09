@@ -7,9 +7,13 @@ async function bootstrap() {
 
   // ✅ Enable CORS so frontend (Next.js) can call backend
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'],
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    origin: [
+      'http://localhost:3000',
+      'https://k-12-backend-vnp4.vercel.app',  // <-- ADD YOUR VERCEL DOMAIN HERE
+      'https://k-12-backend.onrender.com'
+    ],
     credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
   });
 
   const port = process.env.PORT ?? 3000;
