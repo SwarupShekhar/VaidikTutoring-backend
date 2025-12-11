@@ -49,6 +49,7 @@ export class StudentsController {
     async delete(@Param('id') id: string, @Req() req: any) {
         const parentUserId = req.user?.userId;
         if (!parentUserId) throw new Error('User not authenticated');
+        // Returns the updated parent object (with students)
         return this.studentsService.delete(id, parentUserId);
     }
 }

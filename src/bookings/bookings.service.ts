@@ -1,5 +1,5 @@
 // src/bookings/bookings.service.ts
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateBookingDto } from './create-booking.dto.js';
 import { subMinutes } from 'date-fns';
@@ -50,6 +50,18 @@ export class BookingsService {
     const curriculum = await this.prisma.curricula.findUnique({ where: { id: createDto.curriculum_id } });
     if (!curriculum) throw new NotFoundException('Curriculum not found');
 
+    // VALIDATION: Check dates
+    const start = new Date(createDto.requested_start);
+    const end = new Date(createDto.requested_end);
+    const now = new Date();
+
+    if (start < now) {
+      throw new ForbiddenException('Requested start time must be in the future.'); // Using Forbidden or BadRequest
+    }
+    if (end <= start) {
+      throw new ForbiddenException('Requested end time must be after the start time.');
+    }
+
     const createdBookings: any[] = [];
 
     // Loop through each subject and create a separate booking
@@ -63,8 +75,8 @@ export class BookingsService {
           package_id: createDto.package_id,
           subject_id: subjectId,
           curriculum_id: createDto.curriculum_id,
-          requested_start: new Date(createDto.requested_start),
-          requested_end: new Date(createDto.requested_end),
+          requested_start: start,
+          requested_end: end,
           note: createDto.note,
           status: 'requested',
         }
@@ -86,8 +98,18 @@ export class BookingsService {
         });
       }
 
+      // Return fully enriched booking object
       createdBookings.push(
-        await this.prisma.bookings.findUnique({ where: { id: booking.id } })
+        await this.prisma.bookings.findUnique({
+          where: { id: booking.id },
+          include: {
+            subjects: true,
+            students: true,
+            packages: true,
+            curricula: true,
+            tutors: { include: { users: true } }
+          }
+        })
       );
     }
 

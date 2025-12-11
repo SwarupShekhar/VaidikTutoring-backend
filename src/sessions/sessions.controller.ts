@@ -5,7 +5,8 @@ import {
     UseGuards,
     Param,
     Get,
-    Res
+    Res,
+    Req
 } from '@nestjs/common';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { SessionsService } from './sessions.service';
@@ -20,6 +21,13 @@ export class SessionsController {
     @Post('create')
     create(@Body() dto: any) {
         return this.sessionsService.create(dto);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get()
+    async findAll(@Req() req: any) {
+        const userId = req.user.userId;
+        return this.sessionsService.findAllForUser(userId);
     }
 
     // Generate downloadable ICS invite

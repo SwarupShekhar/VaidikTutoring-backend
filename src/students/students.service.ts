@@ -64,14 +64,43 @@ export class StudentsService {
         const student = await this.prisma.students.findUnique({
             where: { id: studentId },
         });
-        if (!student || student.parent_user_id !== parentUserId) {
+
+        if (!student) {
+            throw new NotFoundException('Student not found');
+        }
+
+        // Parent check: ensure the student belongs to the requesting parent
+        if (student.parent_user_id !== parentUserId) {
+            // Also allow if the user *is* the student (though this endpoint might be parent-only usually)
+            // But requirement says "returns the updated parent object", implying parent context.
+            // Strict check:
             throw new NotFoundException('Student not found or access denied');
         }
-        // Delete (cascade might handle user, but safe to delete student first)
-        // If you want to delete the linked User account too, you might need a transaction
-        // For now, let's just delete the Student record.
-        return this.prisma.students.delete({
-            where: { id: studentId },
+
+        try {
+            // Hard Delete
+            await this.prisma.students.delete({
+                where: { id: studentId },
+            });
+        } catch (error) {
+            // Check for foreign key constraint violation (Prisma error code P2003)
+            if (error.code === 'P2003') {
+                throw new BadRequestException('Cannot delete student with active bookings or history.');
+            }
+            throw error;
+        }
+
+        // Return updated parent object (or at least the list of remaining students, 
+        // but prompt asks for "updated parent object". The Parent is a User. 
+        // Maybe they mean "updated list of students for the parent"? 
+        // Or the User object itself? Usually refreshing the students list is what's needed.
+        // I will return the User object enriched with students to be safe and very helpful.
+
+        return this.prisma.users.findUnique({
+            where: { id: parentUserId },
+            include: {
+                students_students_parent_user_idTousers: true
+            }
         });
     }
 }

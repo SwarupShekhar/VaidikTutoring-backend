@@ -77,6 +77,51 @@ export class SessionsService {
         return created;
     }
 
+    async findAllForUser(userId: string) {
+        // We need to determine if this user is a parent, student, or tutor to find their sessions.
+        // A user might be multiple things, but let's check roles or associated profiles.
+
+        const user = await this.prisma.users.findUnique({ where: { id: userId } });
+        if (!user) return [];
+
+        let bookingIds: string[] = [];
+
+        if (user.role === 'parent') {
+            // Find all students for this parent
+            const students = await this.prisma.students.findMany({ where: { parent_user_id: userId } });
+            const studentIds = students.map(s => s.id);
+            const bookings = await this.prisma.bookings.findMany({ where: { student_id: { in: studentIds } } });
+            bookingIds = bookings.map(b => b.id);
+        } else if (user.role === 'student') {
+            const student = await this.prisma.students.findFirst({ where: { user_id: userId } });
+            if (student) {
+                const bookings = await this.prisma.bookings.findMany({ where: { student_id: student.id } });
+                bookingIds = bookings.map(b => b.id);
+            }
+        } else if (user.role === 'tutor') {
+            const tutor = await this.prisma.tutors.findFirst({ where: { user_id: userId } });
+            if (tutor) {
+                const bookings = await this.prisma.bookings.findMany({ where: { assigned_tutor_id: tutor.id } });
+                bookingIds = bookings.map(b => b.id);
+            }
+        }
+
+        // Fetch sessions for these bookings
+        return this.prisma.sessions.findMany({
+            where: { booking_id: { in: bookingIds } },
+            orderBy: { start_time: 'asc' },
+            include: {
+                bookings: {
+                    include: {
+                        subjects: true,
+                        students: true,
+                        tutors: { include: { users: true } }
+                    }
+                }
+            }
+        });
+    }
+
     private toIcsDate(d: Date) {
         const yyyy = d.getUTCFullYear().toString().padStart(4, '0');
         const mm = (d.getUTCMonth() + 1).toString().padStart(2, '0');
