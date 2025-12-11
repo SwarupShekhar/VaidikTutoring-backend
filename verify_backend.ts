@@ -148,6 +148,10 @@ async function runVerification() {
         if (!subjectId || !curriculumId || !packageId) {
             console.error('❌ Could not fetch catalog data. Skipping booking tests. Subjects/Curricula/Packages missing.');
         } else {
+            console.log(`✅ Catalog Data Fetched:`);
+            console.log(`   - Subjects: ${subRes.data.length} found. First: ${subRes.data[0].name}`);
+            console.log(`   - Curricula: ${curRes.data.length} found. First: ${curRes.data[0].name}`);
+            console.log(`   - Packages: ${pkgRes.data.length} found. First: ${pkgRes.data[0].name}`);
             console.log(`Using IDs: Sub=${subjectId}, Cur=${curriculumId}, Pkg=${packageId}`);
 
             console.log('Testing Validation (Past Date)...');

@@ -4,148 +4,80 @@ import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 
 const connectionString = process.env.DATABASE_URL;
-const pool = new Pool({ connectionString, options: '-c search_path=app' });
+// Fixed: Removed incompatible '-c search_path=app' option for Neon pooling
+const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
     console.log('Seeding data...');
 
-    // 0. Clean up (Order matters due to FKs)
-    // We wrap these in try/catch in case tables are already empty or don't exist yet
-    try {
-        await prisma.bookings.deleteMany({});
-    } catch (e) { }
-
-    // We delete others if needed, but be careful with foreign keys. 
-    // Usually standard upsert is safer than deleteMany if you have live data.
-    // Uncomment these if you want a hard reset:
-    /*
-    await prisma.sessions.deleteMany({});
-    await prisma.package_items.deleteMany({});
-    await prisma.curriculum_subject_map.deleteMany({});
-    await prisma.subjects.deleteMany({});
-    await prisma.curricula.deleteMany({});
-    await prisma.packages.deleteMany({});
-    */
-
-    // 1. Subjects
-    // We map your simple list to include the required 'canonical_code' and 'description'
-    const simpleSubjects = [
-        // Core academics
-        { id: 'math', name: 'Mathematics' },
-        { id: 'english', name: 'English Language Arts' },
-        { id: 'science', name: 'General Science' },
-        { id: 'social_studies', name: 'Social Studies' },
-
-        // Sciences
-        { id: 'physics', name: 'Physics' },
-        { id: 'chemistry', name: 'Chemistry' },
-        { id: 'biology', name: 'Biology' },
-        { id: 'environmental_science', name: 'Environmental Science' },
-        { id: 'earth_science', name: 'Earth & Space Science' },
-
-        // Mathematics – advanced
-        { id: 'algebra', name: 'Algebra' },
-        { id: 'geometry', name: 'Geometry' },
-        { id: 'trigonometry', name: 'Trigonometry' },
-        { id: 'precalculus', name: 'Pre-Calculus' },
-        { id: 'calculus', name: 'Calculus' },
-        { id: 'statistics', name: 'Statistics & Probability' },
-
-        // Humanities
-        { id: 'history', name: 'History' },
-        { id: 'world_history', name: 'World History' },
-        { id: 'geography', name: 'Geography' },
-        { id: 'civics', name: 'Civics & Government' },
-        { id: 'economics', name: 'Economics' },
-        { id: 'philosophy', name: 'Philosophy' },
-
-        // Languages
-        { id: 'spanish', name: 'Spanish' },
-        { id: 'french', name: 'French' },
-        { id: 'german', name: 'German' },
-        { id: 'mandarin', name: 'Mandarin Chinese' },
-        { id: 'hindi', name: 'Hindi' },
-        { id: 'arabic', name: 'Arabic' },
-
-        // Computer & technology
-        { id: 'coding', name: 'Computer Science & Coding' },
-        { id: 'python', name: 'Python' },
-        { id: 'javascript', name: 'JavaScript' },
-        { id: 'web_dev', name: 'Web Development' },
-        { id: 'data_science', name: 'Data Science' },
-        { id: 'ai_basics', name: 'AI Basics' },
-
-        // Creative subjects
-        { id: 'art', name: 'Art & Design' },
-        { id: 'music', name: 'Music' },
-        { id: 'drama', name: 'Drama & Theatre' },
-        { id: 'creative_writing', name: 'Creative Writing' },
-
-        // Skills & enrichment
-        { id: 'public_speaking', name: 'Public Speaking' },
-        { id: 'critical_thinking', name: 'Critical Thinking' },
-        { id: 'study_skills', name: 'Study Skills' }
+    // 1. Subjects (Expanded & SEO Optimized)
+    const subjectsList = [
+        { name: 'Mathematics (Core)', description: 'Elementary, Middle School, Pre-Algebra, Algebra I & II.' },
+        { name: 'Advanced Mathematics', description: 'Geometry, Trigonometry, Pre-Calculus, AP Calculus (AB & BC).' },
+        { name: 'Science (Biology)', description: 'General Biology, Anatomy, Physiology, AP/IB Biology.' },
+        { name: 'Science (Chemistry)', description: 'General Chemistry, Organic Chemistry, AP/IB Chemistry.' },
+        { name: 'Science (Physics)', description: 'Mechanics, Electricity & Magnetism, AP/IB Physics.' },
+        { name: 'English Language Arts', description: 'Reading Comprehension, Grammar, Literature Analysis.' },
+        { name: 'Academic & Essay Writing', description: 'Research papers, critical thinking, college application essays.' },
+        { name: 'World History', description: 'Global studies, European/Asian/African History.' },
+        { name: 'U.S. History & Government', description: 'American Civics, Constitutional Studies, AP U.S. History.' },
+        { name: 'Standardized Test Prep', description: 'SAT, ACT, PSAT, ISEE/SSAT preparation.' },
+        { name: 'Computer Science & Coding', description: 'Python, Java, Scratch, Digital Literacy, AP CS.' },
+        { name: 'Foreign Language (Spanish)', description: 'Beginner, Intermediate, and Advanced Spanish.' },
+        { name: 'Foreign Language (French)', description: 'Beginner, Intermediate, and Advanced French.' },
+        { name: 'Study Skills & Executive Function', description: 'Time management, organizational skills, test anxiety reduction.' },
     ];
 
-    for (const s of simpleSubjects) {
+    console.log(`Upserting ${subjectsList.length} subjects...`);
+    for (const s of subjectsList) {
+        // Generate a stable ID (slug) from the name
+        const id = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        // Generate a canonical code (first 10 chars of slug, uppercase)
+        const canonical_code = id.toUpperCase().substring(0, 50); // Increased length safety
+
         await prisma.subjects.upsert({
-            where: { id: s.id },
+            where: { id },
             update: {
                 name: s.name,
-                // Ensure these fields exist if they are missing
-                canonical_code: s.id.toUpperCase().substring(0, 10),
-                description: s.name
+                description: s.description,
+                canonical_code
             },
             create: {
-                id: s.id,
+                id,
                 name: s.name,
-                canonical_code: s.id.toUpperCase().substring(0, 10),
-                description: s.name
+                description: s.description,
+                canonical_code
             },
         });
     }
 
-    // 2. Curricula
-    const simpleCurricula = [
-        { id: 'ccss', name: 'Common Core (USA)', country: 'USA' },
-        { id: 'ngss', name: 'NGSS (USA)', country: 'USA' },
-        { id: 'ap', name: 'Advanced Placement (AP)', country: 'USA' },
-
-        { id: 'ib_pyp', name: 'IB Primary Years (PYP)', country: 'International' },
-        { id: 'ib_myp', name: 'IB Middle Years (MYP)', country: 'International' },
-        { id: 'ib_dp', name: 'IB Diploma (DP)', country: 'International' },
-
-        { id: 'igcse', name: 'Cambridge IGCSE', country: 'UK' },
-        { id: 'gcse', name: 'GCSE', country: 'UK' },
-        { id: 'a_levels', name: 'A-Levels', country: 'UK' },
-
-        { id: 'cbse', name: 'CBSE', country: 'India' },
-        { id: 'icse', name: 'ICSE', country: 'India' },
-        { id: 'state_boards_india', name: 'Indian State Boards', country: 'India' },
-
-        { id: 'australian', name: 'Australian Curriculum', country: 'Australia' },
-        { id: 'ontario', name: 'Ontario Curriculum', country: 'Canada' },
-
-        { id: 'uae_moe', name: 'UAE Ministry of Education', country: 'UAE' },
-        { id: 'american', name: 'American Curriculum', country: 'International' },
-        { id: 'british', name: 'British Curriculum', country: 'International' },
-
-        { id: 'homeschool', name: 'Homeschooling', country: 'Global' },
-        { id: 'custom', name: 'Custom / Other', country: 'Global' }
+    // 2. Curricula (Expanded & Globally Relevant)
+    const curriculaList = [
+        { id: 'IB', name: 'International Baccalaureate (PYP, MYP, DP)', country: 'International' },
+        { id: 'IGCSE', name: 'International General Certificate of Secondary Education', country: 'International' },
+        { id: 'CBSE', name: 'Central Board of Secondary Education (India)', country: 'India' },
+        { id: 'CCSS', name: 'Common Core State Standards (U.S. K-12)', country: 'USA' },
+        { id: 'NGSS', name: 'Next Generation Science Standards (U.S. Science)', country: 'USA' },
+        { id: 'A-Levels', name: 'Advanced Level Qualifications (UK/Global)', country: 'UK' },
+        { id: 'AP', name: 'Advanced Placement (College Board)', country: 'USA' },
+        { id: 'TEKS', name: 'Texas Essential Knowledge and Skills (Texas, U.S.)', country: 'USA' },
+        { id: 'Ontario', name: 'Ontario Provincial Curriculum (Canada)', country: 'Canada' },
     ];
 
-    for (const c of simpleCurricula) {
+    console.log(`Upserting ${curriculaList.length} curricula...`);
+    for (const c of curriculaList) {
+        const id = c.id.toLowerCase().replace(/[^a-z0-9]+/g, '_'); // safe slug id
         await prisma.curricula.upsert({
-            where: { id: c.id },
+            where: { id },
             update: {
                 name: c.name,
                 country: c.country,
-                description: c.name
+                description: c.name // Use name as description if not provided separately
             },
             create: {
-                id: c.id,
+                id,
                 name: c.name,
                 country: c.country,
                 description: c.name
@@ -153,30 +85,40 @@ async function main() {
         });
     }
 
-    // 3. Packages (Preserving your existing ones)
-    const packages = [
-        { id: 'pkg_trial', name: 'Trial Session (30 min)', price_cents: 0, active: true, currency: 'USD' },
-        { id: 'pkg_1hr', name: 'Single Session (1 Hr)', price_cents: 4500, active: true, currency: 'USD' },
-        { id: 'pkg_5hr', name: '5 Hours Bundle', price_cents: 20000, active: true, currency: 'USD' },
-        { id: 'pkg_10hr', name: '10 Hours Bundle', price_cents: 38000, active: true, currency: 'USD' },
+    // 3. Packages (Tiered Pricing)
+    const packagesList = [
+        { name: 'Starter', hours: 5, price: 150, description: 'Ideal for specific homework help or short-term skill boosts.' },
+        { name: 'Pro', hours: 10, price: 280, description: 'Our most popular option for consistent weekly support. (Saves $20)' },
+        { name: 'Master', hours: 20, price: 500, description: 'Best value for long-term academic development and comprehensive subject mastery. (Saves $100)' },
     ];
 
-    for (const p of packages) {
+    console.log(`Upserting ${packagesList.length} packages...`);
+    for (const p of packagesList) {
+        const id = p.name.toLowerCase();
+        const price_cents = p.price * 100; // Convert dollars to cents
+
         await prisma.packages.upsert({
-            where: { id: p.id },
+            where: { id },
             update: {
                 name: p.name,
-                price_cents: p.price_cents,
-                active: p.active
+                price_cents: price_cents,
+                description: p.description,
+                active: true
             },
             create: {
-                id: p.id,
+                id,
                 name: p.name,
-                price_cents: p.price_cents,
-                active: p.active,
-                currency: p.currency || 'USD'
+                price_cents: price_cents,
+                description: p.description,
+                currency: 'USD',
+                active: true,
+                billing_type: 'prepaid'
             },
         });
+
+        // Also create related package items if needed (optional logic, keeping simple for now)
+        // Note: The original requirement didn't specify package items (relationships to subjects), 
+        // so we treat packages as generic credit bundles.
     }
 
     console.log('Seeding completed.');
