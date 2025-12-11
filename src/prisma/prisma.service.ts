@@ -24,8 +24,6 @@ export class PrismaService
     // Create PostgreSQL connection pool (must be done before super()) and set search_path to "app"
     const pool = new Pool({
       connectionString: databaseUrl,
-      // Force the search_path so Prisma queries use the "app" schema instead of public
-      options: '-c search_path=app',
     });
 
     // Create Prisma adapter for PostgreSQL
