@@ -10,5 +10,7 @@ export default defineConfig({
   },
   datasource: {
     url: env("DATABASE_URL"),
+    // @ts-expect-error directUrl is not yet typed in defineConfig
+    directUrl: env("DIRECT_URL"),
   },
 });
