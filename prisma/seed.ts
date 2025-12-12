@@ -186,30 +186,44 @@ async function main() {
     });
 
     // Fake Booking & Session (Future)
-    // Need a subject and package
     const mathSubject = subjectsList[0];
     const starterPackage = packagesList[0];
 
-    const booking = await prisma.bookings.create({
-        data: {
+    // Check if booking exists for this student/subject/package combo
+    const mathSlug = mathSubject.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const bookingExists = await prisma.bookings.findFirst({
+        where: {
             student_id: studentProfile.id,
-            subject_id: mathSubject.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
-            package_id: starterPackage.name.toLowerCase(),
-            status: 'confirmed',
-            requested_start: new Date(Date.now() + 86400000), // +1 day
-            requested_end: new Date(Date.now() + 86400000 + 3600000)
+            subject_id: mathSlug,
+            package_id: starterPackage.name.toLowerCase()
         }
     });
 
-    await prisma.sessions.create({
-        data: {
-            booking_id: booking.id,
-            start_time: new Date(Date.now() + 86400000),
-            end_time: new Date(Date.now() + 86400000 + 3600000),
-            status: 'scheduled',
-            meet_link: `https://meet.jit.si/k12-${booking.id}`
-        }
-    });
+    if (!bookingExists) {
+        const booking = await prisma.bookings.create({
+            data: {
+                student_id: studentProfile.id,
+                subject_id: mathSlug,
+                package_id: starterPackage.name.toLowerCase(),
+                status: 'confirmed',
+                requested_start: new Date(Date.now() + 86400000), // +1 day
+                requested_end: new Date(Date.now() + 86400000 + 3600000)
+            }
+        });
+
+        await prisma.sessions.create({
+            data: {
+                booking_id: booking.id,
+                start_time: new Date(Date.now() + 86400000),
+                end_time: new Date(Date.now() + 86400000 + 3600000),
+                status: 'scheduled',
+                meet_link: `https://meet.jit.si/k12-${booking.id}`
+            }
+        });
+        console.log('Test booking and session created.');
+    } else {
+        console.log('Test booking already exists (skipping duplicates).');
+    }
 
     console.log('Test data seeded (1 Parent, 1 Student, 1 Future Session).');
 
