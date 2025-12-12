@@ -13,13 +13,13 @@ export class AdminTutorsService {
         private readonly email: EmailService,
     ) { }
 
-    async createTutor(actor: any, dto: { email: string; first_name?: string; last_name?: string }) {
+    async createTutor(actor: any, dto: { email: string; first_name?: string; last_name?: string; password?: string; subjects?: string[] }) {
         // Only admin allowed
         if (!actor || actor.role !== 'admin') {
             throw new ForbiddenException('Only admin can create tutor accounts');
         }
 
-        const { email, first_name, last_name } = dto;
+        const { email, first_name, last_name, password, subjects } = dto;
 
         if (!email) throw new BadRequestException('Email is required');
 
@@ -29,25 +29,38 @@ export class AdminTutorsService {
             throw new BadRequestException('User with this email already exists');
         }
 
-        // create a temporary random password and hash it (we will prefer invite token flow)
-        const tempPassword = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
-        const password_hash = await hash(tempPassword, 10);
+        // Use provided password or generate a random one
+        const finalPassword = password || Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+        const password_hash = await hash(finalPassword, 10);
 
-        const created = await this.prisma.users.create({
-            data: {
-                email,
-                password_hash,
-                role: 'tutor',
-                first_name: first_name ?? null,
-                last_name: last_name ?? null,
-                timezone: 'UTC',
-                is_active: true,
-            },
+        const result = await this.prisma.$transaction(async (tx) => {
+            const createdUser = await tx.users.create({
+                data: {
+                    email,
+                    password_hash,
+                    role: 'tutor',
+                    first_name: first_name ?? null,
+                    last_name: last_name ?? null,
+                    timezone: 'UTC',
+                    is_active: true,
+                },
+            });
+
+            // Create tutor profile
+            await tx.tutors.create({
+                data: {
+                    user_id: createdUser.id,
+                    skills: subjects ? { subjects } : {},
+                    is_active: true
+                }
+            });
+
+            return createdUser;
         });
 
-        // generate invite token (short lived) - include user id and purpose
+        // generate invite token (short lived)
         const inviteToken = this.jwt.sign(
-            { sub: created.id, email: created.email, purpose: 'tutor-invite' },
+            { sub: result.id, email: result.email, purpose: 'tutor-invite' },
             { expiresIn: '48h' },
         );
 
@@ -55,24 +68,23 @@ export class AdminTutorsService {
         const frontend = process.env.FRONTEND_URL || 'http://localhost:3000';
         const inviteUrl = `${frontend.replace(/\/$/, '')}/tutor/accept-invite?token=${inviteToken}`;
 
-        // send email (EmailService abstracts nodemailer)
+        // send email
         const html = `
       <p>Hi ${first_name ?? ''},</p>
-      <p>You have been added as a tutor on K12 Tutoring. Click below to set your password and complete your account:</p>
-      <p><a href="${inviteUrl}">Set your password and activate account</a></p>
-      <p>The link expires in 48 hours. If you did not expect this email, contact admin.</p>
+      <p>You have been added as a tutor on K12 Tutoring.</p>
+      ${password ? `<p>Your password is: <strong>${finalPassword}</strong></p>` : `<p>Click below to set your password and activate account:</p><p><a href="${inviteUrl}">Set Password</a></p>`}
+      <p>Subjects: ${subjects?.join(', ') ?? 'General'}</p>
     `;
 
         await this.email.sendMail({
             to: email,
-            subject: 'K12 Tutoring — Complete your tutor account',
-            text: `Open the link to set your password: ${inviteUrl}`,
+            subject: 'K12 Tutoring — Tutor Account Created',
+            text: `Your tutor account has been created.`,
             html,
-            from: process.env.EMAIL_FROM || 'K12 Tutoring <no-reply@example.com>',
+            from: process.env.EMAIL_FROM || 'K12 Tutoring <no-reply@k12.com>',
         });
 
-        // Return created user (without password hash) and invite token for testing
-        const { password_hash: _ph, ...userSafe } = (created as any);
-        return { user: userSafe, inviteToken };
+        const { password_hash: _ph, ...userSafe } = (result as any);
+        return { user: userSafe, inviteToken: password ? null : inviteToken };
     }
 }

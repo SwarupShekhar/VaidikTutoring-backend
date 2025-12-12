@@ -8,7 +8,9 @@ class CreateTutorDto {
     email!: string;
     first_name?: string;
     last_name?: string;
-    // optional fields like specialties, bio can be added
+    password?: string;
+    subjects?: string[];
+
 }
 
 @Controller('auth/admin')
