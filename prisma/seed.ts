@@ -141,6 +141,78 @@ async function main() {
     });
     console.log('Admin seeded.');
 
+    // 5. Test Data (Fake Users & Sessions for Dashboard)
+    console.log('Seeding test data for stats...');
+
+    // Fake Parent
+    const parentEmail = 'parent@demo.com';
+    const parent = await prisma.users.upsert({
+        where: { email: parentEmail },
+        update: {},
+        create: {
+            email: parentEmail,
+            password_hash: passwordHash,
+            role: 'parent',
+            first_name: 'John',
+            last_name: 'Doe',
+            is_active: true
+        }
+    });
+
+    // Fake Student
+    const studentEmail = 'student@demo.com';
+    const studentUser = await prisma.users.upsert({
+        where: { email: studentEmail },
+        update: {},
+        create: {
+            email: studentEmail,
+            password_hash: passwordHash,
+            role: 'student',
+            first_name: 'Jane',
+            last_name: 'Doe',
+            is_active: true
+        }
+    });
+
+    // Link Student Profile
+    const studentProfile = await prisma.students.create({
+        data: {
+            user_id: studentUser.id,
+            parent_user_id: parent.id,
+            first_name: 'Jane',
+            last_name: 'Doe',
+            grade: '10'
+        }
+    });
+
+    // Fake Booking & Session (Future)
+    // Need a subject and package
+    const mathSubject = subjectsList[0];
+    const starterPackage = packagesList[0];
+
+    const booking = await prisma.bookings.create({
+        data: {
+            student_id: studentProfile.id,
+            subject_id: mathSubject.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
+            package_id: starterPackage.name.toLowerCase(),
+            status: 'confirmed',
+            requested_start: new Date(Date.now() + 86400000), // +1 day
+            requested_end: new Date(Date.now() + 86400000 + 3600000)
+        }
+    });
+
+    await prisma.sessions.create({
+        data: {
+            booking_id: booking.id,
+            start_time: new Date(Date.now() + 86400000),
+            end_time: new Date(Date.now() + 86400000 + 3600000),
+            status: 'scheduled',
+            meet_link: `https://meet.jit.si/k12-${booking.id}`
+        }
+    });
+
+    console.log('Test data seeded (1 Parent, 1 Student, 1 Future Session).');
+
     console.log('Seeding completed.');
 }
 
