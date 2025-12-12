@@ -14,6 +14,7 @@ import { TestEmailModule } from './test-email/test-email.module.js';
 import { EmailModule } from './email/email.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { AdminModule } from './admin/admin.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,8 @@ import { NotificationsModule } from './notifications/notifications.module.js';
     CatalogModule,
     ScheduleModule.forRoot(),
     NotificationsModule,
+    AdminModule,
+
 
   ],
   controllers: [AppController],
