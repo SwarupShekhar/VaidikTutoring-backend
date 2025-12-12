@@ -54,6 +54,14 @@ export class BookingsController {
     return this.svc.forTutor(req.user.userId);
   }
 
+  // Tutor: get available (unclaimed) bookings
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  @Get('available')
+  async availableBookings(@Req() req) {
+    return this.svc.getAvailableForTutor(req.user.userId);
+  }
+
   // Admin: reassign a booking to a tutor
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')

@@ -304,4 +304,27 @@ export class BookingsService {
     const ids = students.map(s => s.id);
     return this.prisma.bookings.findMany({ where: { student_id: { in: ids } }, orderBy: { requested_start: 'desc' } });
   }
+
+  // Get available (unclaimed) bookings for a tutor
+  // Optionally filter by tutor's skills/subjects
+  async getAvailableForTutor(tutorUserId: string) {
+    // Get tutor profile to potentially filter by skills
+    const tutor = await this.prisma.tutors.findFirst({ where: { user_id: tutorUserId } });
+    if (!tutor) throw new NotFoundException('Tutor profile not found');
+
+    // MVP: Return all unclaimed bookings (status = 'requested' and no assigned tutor)
+    // Future: Filter by tutor.skills matching booking.subject_id
+    return this.prisma.bookings.findMany({
+      where: {
+        assigned_tutor_id: null,
+        status: { in: ['requested', 'open'] },
+      },
+      include: {
+        subjects: true,
+        students: { select: { first_name: true, last_name: true } },
+        packages: true,
+      },
+      orderBy: { requested_start: 'asc' },
+    });
+  }
 }
