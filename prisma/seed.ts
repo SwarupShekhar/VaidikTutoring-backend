@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaClient } from '../generated/prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
+import * as bcrypt from 'bcrypt';
 
 const connectionString = process.env.DATABASE_URL;
 // Fixed: Removed incompatible '-c search_path=app' option for Neon pooling
@@ -120,6 +121,25 @@ async function main() {
         // Note: The original requirement didn't specify package items (relationships to subjects), 
         // so we treat packages as generic credit bundles.
     }
+
+    // 4. Admin Seeding (Super Admin)
+    const passwordHash = await bcrypt.hash('Vaidik@1234', 10);
+    const adminEmail = 'swarupshekhar.vaidikedu@gmail.com';
+
+    console.log(`Upserting Admin: ${adminEmail}...`);
+    await prisma.users.upsert({
+        where: { email: adminEmail },
+        update: { role: 'admin', password_hash: passwordHash },
+        create: {
+            email: adminEmail,
+            first_name: 'Swarup',
+            last_name: 'Shekhar',
+            password_hash: passwordHash,
+            role: 'admin',
+            is_active: true
+        },
+    });
+    console.log('Admin seeded.');
 
     console.log('Seeding completed.');
 }
