@@ -1,12 +1,18 @@
 // src/bookings/bookings.service.ts
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateBookingDto } from './create-booking.dto.js';
+import { EmailService } from '../email/email.service';
 import { subMinutes } from 'date-fns';
 
 @Injectable()
 export class BookingsService {
-  constructor(private prisma: PrismaService) { }
+  private readonly logger = new Logger(BookingsService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private readonly emailService: EmailService
+  ) { }
 
   // Create booking and attempt auto-assign tutor
   // Create booking and attempt auto-assign tutor
@@ -150,8 +156,92 @@ export class BookingsService {
       }
     }
 
-    // no tutor found
+    // no tutor found - BROADCAST TO ALL
+    await this.broadcastToTutors(booking, tutors);
     return false;
+  }
+
+  async broadcastToTutors(booking, tutors) {
+    // Filter tutors who technically COULD take it (ignoring overlaps for now, or maybe check them)
+    // For MVP, just blast everyone or filter by subject match if possible.
+
+    // We assume tutors list is passed or we fetch it.
+
+    const candidates = tutors.filter(t => t.users && t.users.email); // Ensure email exists
+
+    for (const t of candidates) {
+      // In real app: check t.skills for booking.subject_id match
+      // and check overlaps again? Or just let them race.
+
+      try {
+        await this.emailService.sendMail({
+          to: t.users.email,
+          subject: `New Tutoring Opportunity!`,
+          text: `A new session is available for claim.\n\nTime: ${booking.requested_start}\nLink: ${process.env.FRONTEND_URL}/tutor/claim-session/${booking.id}\n\nClick fast to claim!`
+        });
+      } catch (e) {
+        this.logger.error(`Failed to email tutor ${t.users.email}: ${e.message}`);
+      }
+    }
+    this.logger.log(`Broadcasted booking ${booking.id} to ${candidates.length} tutors.`);
+  }
+
+  // Claim a booking (Tutor Race)
+  async claimBooking(bookingId: string, tutorUserId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const booking = await tx.bookings.findUnique({ where: { id: bookingId } });
+      if (!booking) throw new NotFoundException('Booking not found');
+
+      if (booking.assigned_tutor_id || booking.status === 'confirmed') {
+        throw new ConflictException('Session already claimed by another tutor.');
+      }
+
+      const tutor = await tx.tutors.findFirst({ where: { user_id: tutorUserId } });
+      if (!tutor) throw new ForbiddenException('User is not a registered tutor');
+
+      // Check overlaps again for this specific tutor
+      // (Simplified: assuming if we are here, we can claim. OR verify overlaps)
+      // For now, let's allow overlapping claims but warn? No, block.
+      // We must handle Date | null logic carefully.
+      if (booking.requested_start && booking.requested_end) {
+        const overlapping = await tx.bookings.findFirst({
+          where: {
+            assigned_tutor_id: tutor.id,
+            status: { in: ['confirmed', 'requested'] },
+            AND: [
+              { requested_start: { lte: booking.requested_end } },
+              { requested_end: { gte: booking.requested_start } },
+            ]
+          }
+        });
+        if (overlapping) throw new ConflictException('You have an overlapping session.');
+      }
+
+
+      // Assign
+      const updated = await tx.bookings.update({
+        where: { id: bookingId },
+        data: {
+          assigned_tutor_id: tutor.id,
+          status: 'confirmed'
+        }
+      });
+
+      // Create/Update Session
+      // (Usually broadcast leaves it 'requested' without session, or 'open'?)
+      // If session doesn't exist, create it.
+      await tx.sessions.create({
+        data: {
+          booking_id: booking.id,
+          start_time: booking.requested_start ?? new Date(),
+          end_time: booking.requested_end ?? new Date(Date.now() + 3600000),
+          status: 'scheduled',
+          meet_link: `https://meet.jit.si/k12-${booking.id}` // auto-gen link
+        }
+      });
+
+      return updated;
+    });
   }
 
   // Admin endpoint to reassign tutor

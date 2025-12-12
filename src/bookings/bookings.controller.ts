@@ -61,4 +61,12 @@ export class BookingsController {
   async reassign(@Param('id') id: string, @Param('tutorId') tutorId: string) {
     return this.svc.reassign(id, tutorId);
   }
+
+  // Feature 6: Broadcast & Claim
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  @Post(':id/claim')
+  async claimBooking(@Param('id') id: string, @Req() req) {
+    return this.svc.claimBooking(id, req.user.userId);
+  }
 }
