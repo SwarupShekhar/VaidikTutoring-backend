@@ -6,8 +6,11 @@ import {
     Param,
     Get,
     Res,
-    Req
+    Req,
+    UseInterceptors,
+    UploadedFile
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { SessionsService } from './sessions.service';
 import { Response } from 'express';
@@ -39,5 +42,29 @@ export class SessionsController {
         res.setHeader('Content-Type', 'text/calendar');
         res.setHeader('Content-Disposition', `attachment; filename=session_${id}.ics`);
         res.send(ics);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Post(':id/recordings')
+    @UseInterceptors(FileInterceptor('file'))
+    async uploadRecording(@Param('id') id: string, @UploadedFile() file: Express.Multer.File) {
+        // store to local disk or S3 and save metadata
+        // In a real app we would upload to S3 here.
+        // For now, we assume multer is configured to save to disk or memory.
+        const path = file ? `/uploads/${file.filename}` : '';
+        // TODO: move to storage (S3/Cloud)
+        return { ok: true, path };
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get(':id/messages')
+    getMessages(@Param('id') id: string) {
+        return this.sessionsService.getMessages(id);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Post(':id/messages')
+    postMessage(@Param('id') id: string, @Body() dto: { text: string }, @Req() req: any) {
+        return this.sessionsService.postMessage(id, req.user.userId, dto.text);
     }
 }

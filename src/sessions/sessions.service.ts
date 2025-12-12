@@ -20,7 +20,7 @@ export class SessionsService {
                 booking_id: dto.booking_id,
                 start_time: dto.start_time ? new Date(dto.start_time) : booking.requested_start ?? new Date(),
                 end_time: dto.end_time ? new Date(dto.end_time) : booking.requested_end ?? new Date(Date.now() + 60 * 60 * 1000),
-                meet_link: dto.meet_link ?? null,
+                meet_link: dto.meet_link ?? `https://meet.jit.si/k12-${booking.id}`,
                 whiteboard_link: dto.whiteboard_link ?? null,
                 status: dto.status ?? 'scheduled',
             },
@@ -204,5 +204,35 @@ export class SessionsService {
         ].filter(Boolean);
 
         return icsLines.join('\r\n');
+    }
+
+
+    async getMessages(sessionId: string) {
+        return this.prisma.session_messages.findMany({
+            where: { session_id: sessionId },
+            orderBy: { created_at: 'asc' },
+            include: {
+                users: {
+                    select: {
+                        first_name: true,
+                        last_name: true,
+                        role: true
+                    }
+                }
+            }
+        });
+    }
+
+    async postMessage(sessionId: string, userId: string, text: string) {
+        const session = await this.prisma.sessions.findUnique({ where: { id: sessionId } });
+        if (!session) throw new NotFoundException('Session not found');
+
+        return this.prisma.session_messages.create({
+            data: {
+                session_id: sessionId,
+                user_id: userId,
+                text
+            }
+        });
     }
 }
