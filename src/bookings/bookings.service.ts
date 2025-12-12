@@ -296,28 +296,46 @@ export class BookingsService {
   async forTutor(tutorUserId: string) {
     const tutor = await this.prisma.tutors.findFirst({ where: { user_id: tutorUserId } });
     if (!tutor) throw new NotFoundException('Tutor profile not found');
-    return this.prisma.bookings.findMany({ where: { assigned_tutor_id: tutor.id }, orderBy: { requested_start: 'desc' } });
+    return this.prisma.bookings.findMany({
+      where: { assigned_tutor_id: tutor.id },
+      include: {
+        subjects: true,
+        students: { select: { first_name: true, last_name: true } },
+        tutors: { include: { users: { select: { first_name: true, last_name: true } } } }
+      },
+      orderBy: { requested_start: 'desc' }
+    });
   }
 
   async forParent(parentUserId: string) {
     const students = await this.prisma.students.findMany({ where: { parent_user_id: parentUserId } });
     const ids = students.map(s => s.id);
-    return this.prisma.bookings.findMany({ where: { student_id: { in: ids } }, orderBy: { requested_start: 'desc' } });
+    return this.prisma.bookings.findMany({
+      where: { student_id: { in: ids } },
+      include: {
+        subjects: true,
+        students: { select: { first_name: true, last_name: true } },
+        tutors: { include: { users: { select: { first_name: true, last_name: true } } } }
+      },
+      orderBy: { requested_start: 'desc' }
+    });
   }
 
   // Get available (unclaimed) bookings for a tutor
-  // Optionally filter by tutor's skills/subjects
+  // Filter by: unclaimed, future start time
   async getAvailableForTutor(tutorUserId: string) {
     // Get tutor profile to potentially filter by skills
     const tutor = await this.prisma.tutors.findFirst({ where: { user_id: tutorUserId } });
     if (!tutor) throw new NotFoundException('Tutor profile not found');
 
-    // MVP: Return all unclaimed bookings (status = 'requested' and no assigned tutor)
-    // Future: Filter by tutor.skills matching booking.subject_id
+    const now = new Date();
+
+    // Return all unclaimed, future bookings
     return this.prisma.bookings.findMany({
       where: {
         assigned_tutor_id: null,
         status: { in: ['requested', 'open'] },
+        requested_start: { gt: now }, // Only future sessions
       },
       include: {
         subjects: true,
