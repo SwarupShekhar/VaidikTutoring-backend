@@ -1,17 +1,15 @@
-import { Controller, Post, Body, UseGuards, Req, ForbiddenException } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
-import { TutorsService } from './tutors.service';
+import { Controller, Get, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
+import { BookingsService } from '../bookings/bookings.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
-@Controller('tutors')
+@Controller('tutor')
+@UseGuards(JwtAuthGuard)
 export class TutorsController {
-    constructor(private tutorsService: TutorsService) { }
+    constructor(private readonly bookingsService: BookingsService) { }
 
-    @Post('create')
-    @UseGuards(AuthGuard('jwt'))
-    async create(@Req() req: any, @Body() body: any) {
-        if (req.user.role !== 'admin') {
-            throw new ForbiddenException('Only admins can create tutors');
-        }
-        return this.tutorsService.createTutor(body);
+    @Get('bookings')
+    async getBookings(@Req() req: any) {
+        if (req.user.role !== 'tutor') throw new UnauthorizedException('Only tutors can access this.');
+        return this.bookingsService.forTutor(req.user.userId);
     }
 }

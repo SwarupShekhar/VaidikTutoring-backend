@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 
@@ -12,6 +13,7 @@ import { InviteModule } from './invite/invite.module.js';
 import { TestEmailModule } from './test-email/test-email.module.js';
 import { EmailModule } from './email/email.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -24,7 +26,10 @@ import { CatalogModule } from './catalog/catalog.module.js';
     InviteModule,
     TestEmailModule,
     EmailModule,
+    EmailModule,
     CatalogModule,
+    ScheduleModule.forRoot(),
+    NotificationsModule,
 
   ],
   controllers: [AppController],

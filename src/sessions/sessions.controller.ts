@@ -67,4 +67,14 @@ export class SessionsController {
     postMessage(@Param('id') id: string, @Body() dto: { text: string }, @Req() req: any) {
         return this.sessionsService.postMessage(id, req.user.userId, dto.text);
     }
+
+    @Post('validate-token')
+    async validateToken(@Body() body: { sessionId: string; token: string }) {
+        // Validate the specific session join token.
+        // This token is separate from the main Auth JWT, or it could be a specialized JWT?
+        // The user helper says: "Token should be a signed JWT containing { userId, role, sessionId }"
+        // We need to decode/verify it.
+        // For now, let's delegate to Service.
+        return this.sessionsService.validateJoinToken(body.sessionId, body.token);
+    }
 }
