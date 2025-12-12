@@ -24,7 +24,7 @@ export class BookingsController {
   @Roles('student')
   @Get('student')
   async studentBookings(@Req() req) {
-    return this.svc.forStudent(req.user.sub);
+    return this.svc.forStudent(req.user.userId);
   }
 
   // Student fetch own bookings
@@ -33,17 +33,17 @@ export class BookingsController {
   @Get('mine')
   async myBookings(@Req() req) {
     if (req.user.role === 'student') {
-      return this.svc.forStudent(req.user.sub);
+      return this.svc.forStudent(req.user.userId);
     }
     // parent: return bookings for their children
-    return this.svc.forParent(req.user.sub);
+    return this.svc.forParent(req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('parent')
   @Get('parent')
   async parentBookings(@Req() req) {
-    return this.svc.forParent(req.user.sub);
+    return this.svc.forParent(req.user.userId);
   }
 
   // Tutor fetch assigned bookings
@@ -51,7 +51,7 @@ export class BookingsController {
   @Roles('tutor')
   @Get('tutor')
   async tutorBookings(@Req() req) {
-    return this.svc.forTutor(req.user.sub);
+    return this.svc.forTutor(req.user.userId);
   }
 
   // Admin: reassign a booking to a tutor
