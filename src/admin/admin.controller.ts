@@ -18,19 +18,32 @@ export class AdminController {
 
     @Get('stats')
     async getStats(@Req() req: any) {
-        if (req.user.role !== 'admin') {
-            throw new UnauthorizedException('Only admins can access stats.');
+        try {
+            // Log user to debug 500
+            console.log('GET /admin/stats - User:', req.user);
+
+            if (!req.user || req.user.role !== 'admin') {
+                throw new UnauthorizedException('Only admins can access stats.');
+            }
+            return await this.adminService.getStats();
+        } catch (e) {
+            console.error('GET /admin/stats failed:', e);
+            throw e;
         }
-        return this.adminService.getStats();
     }
 
     @Post('tutors')
     @HttpCode(HttpStatus.CREATED)
     async createTutor(@Req() req: Request, @Body() dto: CreateTutorDto) {
-        const actor = (req as any).user;
-        if (actor.role !== 'admin') {
-            throw new UnauthorizedException('Only admins can create tutor accounts.');
+        try {
+            const actor = (req as any).user;
+            if (!actor || actor.role !== 'admin') {
+                throw new UnauthorizedException('Only admins can create tutor accounts.');
+            }
+            return await this.adminService.createTutor(actor, dto);
+        } catch (e) {
+            console.error('POST /admin/tutors failed:', e);
+            throw e;
         }
-        return this.adminService.createTutor(actor, dto);
     }
 }

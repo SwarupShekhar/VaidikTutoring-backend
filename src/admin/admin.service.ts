@@ -100,13 +100,18 @@ export class AdminService {
       <p>Subjects: ${subjects?.join(', ') ?? 'General'}</p>
     `;
 
-        await this.email.sendMail({
-            to: email,
-            subject: 'K12 Tutoring — Tutor Account Created',
-            text: `Your tutor account has been created.`,
-            html,
-            from: process.env.EMAIL_FROM || 'K12 Tutoring <no-reply@k12.com>',
-        });
+        try {
+            await this.email.sendMail({
+                to: email,
+                subject: 'K12 Tutoring — Tutor Account Created',
+                text: `Your tutor account has been created.`,
+                html,
+                from: process.env.EMAIL_FROM || 'K12 Tutoring <no-reply@k12.com>',
+            });
+        } catch (e) {
+            console.error('Failed to send tutor invite email. User was created successfully.', e);
+            // Do not throw, return success for user creation
+        }
 
         const { password_hash: _ph, ...userSafe } = (result as any);
         return { user: userSafe, inviteToken: password ? null : inviteToken };
