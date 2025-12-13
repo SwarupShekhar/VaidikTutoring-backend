@@ -24,14 +24,14 @@ export class BookingsService {
       // Check if a Student profile exists for this User ID
       // In our schema, students are linked via user_id
       const existingStudent = await this.prisma.students.findFirst({
-        where: { user_id: user.sub } // user.sub is the ID from JWT
+        where: { user_id: user.userId } // user.userId is the ID from JWT (via JwtStrategy)
       });
 
       if (!existingStudent) {
         // Auto-create a Student record for this user if missing
         const newStudent = await this.prisma.students.create({
           data: {
-            user_id: user.sub,
+            user_id: user.userId,
             first_name: user.first_name || 'Student',
             last_name: user.last_name || '',
             grade: 'TBD',
