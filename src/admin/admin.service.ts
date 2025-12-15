@@ -290,7 +290,7 @@ export class AdminService {
 
         // If not found by ID, try by name (case-insensitive)
         if (!subject) {
-            console.log('[allocateTutor] Not found by ID, trying by name...');
+            console.log('[allocateTutor] Not found by ID, trying by exact name...');
             subject = await this.prisma.subjects.findFirst({
                 where: {
                     name: {
@@ -299,7 +299,21 @@ export class AdminService {
                     }
                 }
             });
-            console.log('[allocateTutor] Subject found by name:', subject ? subject.id : 'NOT FOUND');
+            console.log('[allocateTutor] Subject found by exact name:', subject ? subject.id : 'NOT FOUND');
+        }
+
+        // If still not found, try partial match (e.g., "chemistry" matches "Science (Chemistry)")
+        if (!subject) {
+            console.log('[allocateTutor] Not found by exact name, trying partial match...');
+            subject = await this.prisma.subjects.findFirst({
+                where: {
+                    name: {
+                        contains: subjectId,
+                        mode: 'insensitive'
+                    }
+                }
+            });
+            console.log('[allocateTutor] Subject found by partial match:', subject ? subject.id : 'NOT FOUND');
         }
 
         if (!subject) {
