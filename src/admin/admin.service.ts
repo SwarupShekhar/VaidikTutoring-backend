@@ -320,16 +320,55 @@ export class AdminService {
             throw new BadRequestException('Subject not found');
         }
 
-        // Create a booking/allocation
-        const allocation = await this.prisma.bookings.create({
-            data: {
+        // Find an existing unassigned booking for this student and subject
+        const existingBooking = await this.prisma.bookings.findFirst({
+            where: {
                 student_id: studentId,
-                assigned_tutor_id: tutorId,
-                subject_id: subject.id, // Use the actual subject ID from the lookup
-                status: 'pending',
-                note: 'Allocated by admin',
+                subject_id: subject.id,
+                assigned_tutor_id: null,
+                status: { in: ['requested', 'pending', 'open'] }
             },
+            orderBy: { created_at: 'desc' }
         });
+
+        let allocation;
+        if (existingBooking) {
+            // Update the existing booking
+            allocation = await this.prisma.bookings.update({
+                where: { id: existingBooking.id },
+                data: {
+                    assigned_tutor_id: tutorId,
+                    status: 'confirmed',
+                    note: existingBooking.note
+                        ? `${existingBooking.note}\n\nAllocated by admin to ${tutor.users.first_name} ${tutor.users.last_name || ''}`
+                        : 'Allocated by admin',
+                },
+            });
+
+            // Create or update session record
+            const existingSession = await this.prisma.sessions.findFirst({
+                where: { booking_id: allocation.id }
+            });
+
+            if (!existingSession && allocation.requested_start && allocation.requested_end) {
+                await this.prisma.sessions.create({
+                    data: {
+                        booking_id: allocation.id,
+                        start_time: allocation.requested_start,
+                        end_time: allocation.requested_end,
+                        status: 'scheduled',
+                        meet_link: `https://meet.jit.si/k12-${allocation.id}`
+                    }
+                });
+            }
+        } else {
+            // No existing booking found - this shouldn't happen in normal flow
+            // but we'll handle it gracefully
+            throw new BadRequestException(
+                'No pending booking found for this student and subject. ' +
+                'Please ensure the student has created a booking request first.'
+            );
+        }
 
         // Send notification email to tutor
         try {
