@@ -294,9 +294,14 @@ export class BookingsService {
 
   // get bookings for tutor
   async forTutor(tutorUserId: string) {
+    console.log('[forTutor] Looking up tutor with user_id:', tutorUserId);
     const tutor = await this.prisma.tutors.findFirst({ where: { user_id: tutorUserId } });
-    if (!tutor) throw new NotFoundException('Tutor profile not found');
-    return this.prisma.bookings.findMany({
+    if (!tutor) {
+      console.log('[forTutor] Tutor profile not found for user_id:', tutorUserId);
+      throw new NotFoundException('Tutor profile not found');
+    }
+    console.log('[forTutor] Found tutor:', tutor.id);
+    const bookings = await this.prisma.bookings.findMany({
       where: { assigned_tutor_id: tutor.id },
       include: {
         subjects: true,
@@ -305,6 +310,8 @@ export class BookingsService {
       },
       orderBy: { requested_start: 'desc' }
     });
+    console.log('[forTutor] Found', bookings.length, 'bookings for tutor', tutor.id);
+    return bookings;
   }
 
   async forParent(parentUserId: string) {

@@ -10,6 +10,9 @@ export class TutorsController {
     @Get('bookings')
     async getBookings(@Req() req: any) {
         if (req.user.role !== 'tutor') throw new UnauthorizedException('Only tutors can access this.');
-        return this.bookingsService.forTutor(req.user.userId);
+        console.log('[GET /tutor/bookings] User:', req.user);
+        const bookings = await this.bookingsService.forTutor(req.user.userId);
+        console.log('[GET /tutor/bookings] Found bookings:', bookings.length);
+        return bookings;
     }
 }
