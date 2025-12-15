@@ -362,12 +362,40 @@ export class AdminService {
                 });
             }
         } else {
-            // No existing booking found - this shouldn't happen in normal flow
-            // but we'll handle it gracefully
-            throw new BadRequestException(
-                'No pending booking found for this student and subject. ' +
-                'Please ensure the student has created a booking request first.'
-            );
+            // No existing booking found - create one for the admin
+            console.log('[allocateTutor] No existing booking found, creating new booking...');
+
+            // Set default times: tomorrow at 10 AM for 1 hour
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(10, 0, 0, 0);
+            const endTime = new Date(tomorrow);
+            endTime.setHours(11, 0, 0, 0);
+
+            allocation = await this.prisma.bookings.create({
+                data: {
+                    student_id: studentId,
+                    assigned_tutor_id: tutorId,
+                    subject_id: subject.id,
+                    status: 'confirmed',
+                    requested_start: tomorrow,
+                    requested_end: endTime,
+                    note: 'Created and allocated by admin',
+                },
+            });
+
+            // Create session record
+            await this.prisma.sessions.create({
+                data: {
+                    booking_id: allocation.id,
+                    start_time: allocation.requested_start,
+                    end_time: allocation.requested_end,
+                    status: 'scheduled',
+                    meet_link: `https://meet.jit.si/k12-${allocation.id}`
+                }
+            });
+
+            console.log('[allocateTutor] Created new booking:', allocation.id);
         }
 
         // Send notification email to tutor
