@@ -5,14 +5,14 @@ export class CreateBookingDto {
   @IsUUID()
   student_id: string;
 
-  @IsUUID()
+  @IsString()
   package_id: string;
 
   @IsArray()
   @IsString({ each: true })
   subject_ids: string[];
 
-  @IsUUID()
+  @IsString()
   curriculum_id: string;
 
   @IsISO8601()
