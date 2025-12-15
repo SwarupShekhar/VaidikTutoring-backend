@@ -180,7 +180,7 @@ export class AdminService {
         return { user: userSafe, inviteToken: password ? null : inviteToken };
     }
 
-    async getStudents(page: number = 1, limit: number = 50) {
+    async getStudents(page: number = 1, limit: number = 1000) {
         const skip = (page - 1) * limit;
 
         const [students, total] = await Promise.all([
