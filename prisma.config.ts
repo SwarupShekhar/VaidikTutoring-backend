@@ -3,12 +3,44 @@
 import "dotenv/config";
 import { defineConfig, env } from "prisma/config";
 
+/**
+ * Get the direct database URL for migrations.
+ * If DIRECT_URL is not set, automatically derive it from DATABASE_URL
+ * by removing the '-pooler' suffix (for Neon pooled connections).
+ */
+function getDirectUrl(): string {
+  const directUrl = process.env.DIRECT_URL;
+  if (directUrl) {
+    console.log('✅ Using DIRECT_URL for migrations');
+    return directUrl;
+  }
+
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error('Either DIRECT_URL or DATABASE_URL must be set');
+  }
+
+  // Convert pooled URL to direct URL by removing '-pooler' from the hostname
+  // Example: ep-super-feather-ahnp7ryx-pooler.c-3.us-east-1.aws.neon.tech
+  //       -> ep-super-feather-ahnp7ryx.c-3.us-east-1.aws.neon.tech
+  const directDerivedUrl = databaseUrl.replace(/-pooler\./, '.');
+  
+  if (directDerivedUrl === databaseUrl) {
+    console.log('⚠️  WARNING: DATABASE_URL does not contain "-pooler", using as-is for migrations');
+  } else {
+    console.log('⚠️  DIRECT_URL not set, derived from DATABASE_URL by removing "-pooler"');
+  }
+  console.log('📍 Migration URL:', directDerivedUrl.replace(/:[^:@]+@/, ':****@'));
+  
+  return directDerivedUrl;
+}
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
   datasource: {
-    url: env("DIRECT_URL"), // Use direct connection for migrations
+    url: getDirectUrl(), // Use direct connection for migrations
   },
 });
