@@ -9,8 +9,6 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: env("DATABASE_URL"),
-    // @ts-expect-error directUrl is not yet typed in defineConfig
-    directUrl: env("DIRECT_URL"),
+    url: env("DIRECT_URL"), // Use direct connection for migrations
   },
 });
