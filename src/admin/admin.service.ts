@@ -281,10 +281,22 @@ export class AdminService {
             throw new BadRequestException('Tutor not found or inactive');
         }
 
-        // Verify subject exists
-        const subject = await this.prisma.subjects.findUnique({
+        // Verify subject exists (by ID or name)
+        let subject = await this.prisma.subjects.findUnique({
             where: { id: subjectId },
         });
+
+        // If not found by ID, try by name (case-insensitive)
+        if (!subject) {
+            subject = await this.prisma.subjects.findFirst({
+                where: {
+                    name: {
+                        equals: subjectId,
+                        mode: 'insensitive'
+                    }
+                }
+            });
+        }
 
         if (!subject) {
             throw new BadRequestException('Subject not found');
@@ -295,7 +307,7 @@ export class AdminService {
             data: {
                 student_id: studentId,
                 assigned_tutor_id: tutorId,
-                subject_id: subjectId,
+                subject_id: subject.id, // Use the actual subject ID from the lookup
                 status: 'pending',
                 note: 'Allocated by admin',
             },
