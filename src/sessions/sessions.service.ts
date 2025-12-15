@@ -1,5 +1,5 @@
 // src/sessions/sessions.service.ts
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { EmailService } from 'src/email/email.service';
 import { JwtService } from '@nestjs/jwt';
@@ -212,8 +212,11 @@ export class SessionsService {
     }
 
 
-    async getMessages(sessionId: string) {
-        return this.prisma.session_messages.findMany({
+    async getMessages(sessionId: string, userId: string) {
+        // Verify user has access to this session
+        await this.verifySessionAccess(sessionId, userId);
+
+        const messages = await this.prisma.session_messages.findMany({
             where: { session_id: sessionId },
             orderBy: { created_at: 'asc' },
             include: {
@@ -226,19 +229,44 @@ export class SessionsService {
                 }
             }
         });
+
+        return messages.map((m) => ({
+            id: m.id,
+            from: `${m.users?.first_name || ''} ${m.users?.last_name || ''}`.trim(),
+            role: m.users?.role,
+            text: m.text,
+            created_at: m.created_at,
+        }));
     }
 
     async postMessage(sessionId: string, userId: string, text: string) {
-        const session = await this.prisma.sessions.findUnique({ where: { id: sessionId } });
-        if (!session) throw new NotFoundException('Session not found');
+        // Verify user has access to this session
+        await this.verifySessionAccess(sessionId, userId);
 
-        return this.prisma.session_messages.create({
+        const message = await this.prisma.session_messages.create({
             data: {
                 session_id: sessionId,
                 user_id: userId,
                 text
+            },
+            include: {
+                users: {
+                    select: {
+                        first_name: true,
+                        last_name: true,
+                        role: true
+                    }
+                }
             }
         });
+
+        return {
+            id: message.id,
+            from: `${message.users?.first_name || ''} ${message.users?.last_name || ''}`.trim(),
+            role: message.users?.role,
+            text: message.text,
+            created_at: message.created_at,
+        };
     }
 
     async validateJoinToken(sessionId: string, token: string) {
@@ -256,5 +284,118 @@ export class SessionsService {
             this.logger.error(`Invalid join token for session ${sessionId}: ${e.message}`);
             return { valid: false, error: 'Invalid or expired token' };
         }
+    }
+
+    // ==================== RECORDINGS ====================
+
+    async getRecordings(sessionId: string, userId: string) {
+        // Verify user has access to this session
+        await this.verifySessionAccess(sessionId, userId);
+
+        return this.prisma.session_recordings.findMany({
+            where: { session_id: sessionId },
+            orderBy: { created_at: 'desc' },
+            include: {
+                users: {
+                    select: {
+                        first_name: true,
+                        last_name: true
+                    }
+                }
+            }
+        });
+    }
+
+    async uploadRecording(
+        sessionId: string,
+        userId: string,
+        fileUrl: string,
+        fileSize?: number,
+        duration?: number,
+    ) {
+        const session = await this.prisma.sessions.findUnique({
+            where: { id: sessionId },
+            include: { bookings: true }
+        });
+
+        if (!session) {
+            throw new NotFoundException('Session not found');
+        }
+
+        // Only tutor can upload recordings
+        const booking = session.bookings;
+        if (!booking) {
+            throw new NotFoundException('Booking not found for this session');
+        }
+
+        // Check if user is the tutor
+        const tutor = await this.prisma.tutors.findFirst({
+            where: { id: booking.assigned_tutor_id || undefined }
+        });
+
+        if (!tutor || tutor.user_id !== userId) {
+            throw new ForbiddenException('Only the assigned tutor can upload recordings');
+        }
+
+        return this.prisma.session_recordings.create({
+            data: {
+                session_id: sessionId,
+                uploaded_by: userId,
+                file_url: fileUrl,
+                storage_path: fileUrl, // Keep for backward compatibility
+                file_size_bytes: fileSize,
+                duration_seconds: duration,
+            },
+        });
+    }
+
+    // ==================== HELPER METHODS ====================
+
+    /**
+     * Verify that a user has access to a session
+     * Access is granted if user is:
+     * - The parent of the student
+     * - The student themselves
+     * - The assigned tutor
+     */
+    private async verifySessionAccess(sessionId: string, userId: string) {
+        const session = await this.prisma.sessions.findUnique({
+            where: { id: sessionId },
+            include: {
+                bookings: {
+                    include: {
+                        students: true,
+                        tutors: true
+                    }
+                }
+            }
+        });
+
+        if (!session) {
+            throw new NotFoundException('Session not found');
+        }
+
+        const booking = session.bookings;
+        if (!booking) {
+            throw new NotFoundException('Booking not found for this session');
+        }
+
+        const student = booking.students;
+        const tutor = booking.tutors;
+
+        // Check if user is the parent
+        const isParent = student?.parent_user_id === userId;
+
+        // Check if user is the student
+        const isStudent = student?.user_id === userId;
+
+        // Check if user is the tutor
+        const isTutor = tutor?.user_id === userId;
+
+        if (!isParent && !isStudent && !isTutor) {
+            throw new ForbiddenException('Access denied to this session');
+        }
+
+        return true;
     }
 }

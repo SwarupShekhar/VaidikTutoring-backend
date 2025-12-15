@@ -175,11 +175,15 @@ model purchases {
 model session_recordings {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   session_id       String?   @db.Uuid
+  uploaded_by      String?   @db.Uuid
+  file_url         String?
   storage_path     String?
+  file_size_bytes  Int?
   duration_seconds Int?
   transcript       String?
   created_at       DateTime? @default(now()) @db.Timestamptz(6)
   sessions         sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users            users?    @relation(fields: [uploaded_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("app")
 }
@@ -284,10 +288,11 @@ model users {
   audit_logs                              audit_logs[]
   notifications                           notifications[]
   purchases                               purchases[]
-  students_students_parent_user_idTousers students[]      @relation("students_parent_user_idTousers")
-  students_students_user_idTousers        students[]      @relation("students_user_idTousers")
+  students_students_parent_user_idTousers students[]           @relation("students_parent_user_idTousers")
+  students_students_user_idTousers        students[]           @relation("students_user_idTousers")
   tutors                                  tutors[]
   session_messages                        session_messages[]
+  session_recordings                      session_recordings[]
 
   @@schema("app")
 }
