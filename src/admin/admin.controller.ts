@@ -67,8 +67,14 @@ export class AdminController {
                 throw new UnauthorizedException('Only admins can view tutors.');
             }
             const pageNum = parseInt(page || '1', 10);
-            const limitNum = parseInt(limit || '50', 10);
-            return await this.adminService.getTutors(pageNum, limitNum);
+            const limitNum = parseInt(limit || '1000', 10); // Default to large number to get all
+            const result = await this.adminService.getTutors(pageNum, limitNum);
+            
+            // If no pagination params provided, return just the array for backward compatibility
+            if (!page && !limit) {
+                return result.data;
+            }
+            return result;
         } catch (e) {
             console.error('GET /admin/tutors failed:', e);
             throw e;
@@ -98,8 +104,14 @@ export class AdminController {
                 throw new UnauthorizedException('Only admins can view students.');
             }
             const pageNum = parseInt(page || '1', 10);
-            const limitNum = parseInt(limit || '50', 10);
-            return await this.adminService.getStudents(pageNum, limitNum);
+            const limitNum = parseInt(limit || '1000', 10); // Default to large number to get all
+            const result = await this.adminService.getStudents(pageNum, limitNum);
+            
+            // If no pagination params provided, return just the array for backward compatibility
+            if (!page && !limit) {
+                return result.data;
+            }
+            return result;
         } catch (e) {
             console.error('GET /admin/students failed:', e);
             throw e;

@@ -67,8 +67,25 @@ export class AdminService {
             this.prisma.tutors.count(),
         ]);
 
+        // Format tutors for frontend compatibility
+        const formattedTutors = tutors.map(tutor => ({
+            id: tutor.id,
+            user_id: tutor.user_id,
+            bio: tutor.bio,
+            qualifications: tutor.qualifications,
+            skills: tutor.skills,
+            hourly_rate_cents: tutor.hourly_rate_cents,
+            employment_type: tutor.employment_type,
+            is_active: tutor.is_active,
+            created_at: tutor.created_at,
+            email: tutor.users.email,
+            first_name: tutor.users.first_name,
+            last_name: tutor.users.last_name,
+            subjects: (tutor.skills as any)?.subjects || [],
+        }));
+
         return {
-            data: tutors,
+            data: formattedTutors,
             total,
             page,
             limit,
