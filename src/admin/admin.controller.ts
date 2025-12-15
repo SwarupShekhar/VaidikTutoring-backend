@@ -29,13 +29,13 @@ class CreateTutorDto {
 
 class AllocateTutorDto {
     @IsUUID()
-    student_id!: string;
+    studentId!: string;
 
     @IsUUID()
-    tutor_id!: string;
+    tutorId!: string;
 
     @IsString()
-    subject_id!: string;
+    subjectId!: string;
 }
 
 @Controller('admin')
@@ -126,7 +126,7 @@ export class AdminController {
             if (!actor || actor.role !== 'admin') {
                 throw new UnauthorizedException('Only admins can allocate tutors.');
             }
-            return await this.adminService.allocateTutor(dto.student_id, dto.tutor_id, dto.subject_id);
+            return await this.adminService.allocateTutor(dto.studentId, dto.tutorId, dto.subjectId);
         } catch (e) {
             console.error('POST /admin/allocations failed:', e);
             throw e;
