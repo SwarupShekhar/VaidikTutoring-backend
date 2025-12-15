@@ -126,6 +126,7 @@ export class AdminController {
             if (!actor || actor.role !== 'admin') {
                 throw new UnauthorizedException('Only admins can allocate tutors.');
             }
+            console.log('POST /admin/allocations - DTO received:', JSON.stringify(dto));
             return await this.adminService.allocateTutor(dto.studentId, dto.tutorId, dto.subjectId);
         } catch (e) {
             console.error('POST /admin/allocations failed:', e);

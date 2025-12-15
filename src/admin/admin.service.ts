@@ -282,12 +282,15 @@ export class AdminService {
         }
 
         // Verify subject exists (by ID or name)
+        console.log('[allocateTutor] Looking up subject with ID/Name:', subjectId);
         let subject = await this.prisma.subjects.findUnique({
             where: { id: subjectId },
         });
+        console.log('[allocateTutor] Subject found by ID:', subject ? subject.id : 'NOT FOUND');
 
         // If not found by ID, try by name (case-insensitive)
         if (!subject) {
+            console.log('[allocateTutor] Not found by ID, trying by name...');
             subject = await this.prisma.subjects.findFirst({
                 where: {
                     name: {
@@ -296,6 +299,7 @@ export class AdminService {
                     }
                 }
             });
+            console.log('[allocateTutor] Subject found by name:', subject ? subject.id : 'NOT FOUND');
         }
 
         if (!subject) {
