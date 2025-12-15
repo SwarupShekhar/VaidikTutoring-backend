@@ -29,13 +29,13 @@ class CreateTutorDto {
 
 class AllocateTutorDto {
     @IsUUID()
-    studentId!: string;
+    student_id!: string;
 
     @IsUUID()
-    tutorId!: string;
+    tutor_id!: string;
 
     @IsString()
-    subjectId!: string;
+    subject_id!: string;
 }
 
 @Controller('admin')
@@ -69,7 +69,7 @@ export class AdminController {
             const pageNum = parseInt(page || '1', 10);
             const limitNum = parseInt(limit || '1000', 10); // Default to large number to get all
             const result = await this.adminService.getTutors(pageNum, limitNum);
-            
+
             // If no pagination params provided, return just the array for backward compatibility
             if (!page && !limit) {
                 return result.data;
@@ -106,7 +106,7 @@ export class AdminController {
             const pageNum = parseInt(page || '1', 10);
             const limitNum = parseInt(limit || '1000', 10); // Default to large number to get all
             const result = await this.adminService.getStudents(pageNum, limitNum);
-            
+
             // If no pagination params provided, return just the array for backward compatibility
             if (!page && !limit) {
                 return result.data;
@@ -126,7 +126,7 @@ export class AdminController {
             if (!actor || actor.role !== 'admin') {
                 throw new UnauthorizedException('Only admins can allocate tutors.');
             }
-            return await this.adminService.allocateTutor(dto.studentId, dto.tutorId, dto.subjectId);
+            return await this.adminService.allocateTutor(dto.student_id, dto.tutor_id, dto.subject_id);
         } catch (e) {
             console.error('POST /admin/allocations failed:', e);
             throw e;
