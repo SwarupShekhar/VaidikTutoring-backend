@@ -77,4 +77,11 @@ export class BookingsController {
   async claimBooking(@Param('id') id: string, @Req() req) {
     return this.svc.claimBooking(id, req.user.userId);
   }
+
+  // Get single booking by ID (for session page)
+  @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  async getBookingById(@Param('id') id: string, @Req() req) {
+    return this.svc.getBookingById(id, req.user);
+  }
 }

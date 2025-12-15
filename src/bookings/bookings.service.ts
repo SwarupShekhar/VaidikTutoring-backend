@@ -352,4 +352,56 @@ export class BookingsService {
       orderBy: { requested_start: 'asc' },
     });
   }
+
+  // Get single booking by ID with full details including session
+  async getBookingById(bookingId: string, user: any) {
+    const booking = await this.prisma.bookings.findUnique({
+      where: { id: bookingId },
+      include: {
+        subjects: true,
+        students: {
+          select: {
+            id: true,
+            user_id: true,
+            parent_user_id: true,
+            first_name: true,
+            last_name: true,
+            grade: true
+          }
+        },
+        tutors: {
+          include: {
+            users: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                email: true
+              }
+            }
+          }
+        },
+        sessions: {
+          orderBy: { start_time: 'desc' },
+          take: 1
+        }
+      }
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    // Check authorization: user must be the student, parent, assigned tutor, or admin
+    const isStudent = user.role === 'student' && booking.students?.user_id === user.userId;
+    const isParent = user.role === 'parent' && booking.students?.parent_user_id === user.userId;
+    const isTutor = user.role === 'tutor' && booking.tutors?.user_id === user.userId;
+    const isAdmin = user.role === 'admin';
+
+    if (!isStudent && !isParent && !isTutor && !isAdmin) {
+      throw new ForbiddenException('You do not have access to this booking');
+    }
+
+    return booking;
+  }
 }
