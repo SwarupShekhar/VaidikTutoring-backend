@@ -168,15 +168,20 @@ export class SessionsService {
 
     // Append Jitsi JWT for each session based on the current user
     return sessions.map((session) => {
-      const isTeacher = user.role === 'tutor' || user.role === 'admin';
-      const token = this.jitsiTokenService.generateToken(
-        user.id,
-        `${user.first_name} ${user.last_name}`,
-        user.email,
-        '', // avatar
-        `k12-${session.bookings?.id || session.id}`, // Room name MUST match the URL structure
-        isTeacher, // Tutor/Admin = Moderator
-      );
+      let token: string | null = null;
+      try {
+        const isTeacher = user.role === 'tutor' || user.role === 'admin';
+        token = this.jitsiTokenService.generateToken(
+          user.id,
+          `${user.first_name} ${user.last_name}`,
+          user.email,
+          '', // avatar
+          `k12-${session.bookings?.id || session.id}`, // Room name MUST match the URL structure
+          isTeacher, // Tutor/Admin = Moderator
+        );
+      } catch (e) {
+        this.logger.error(`Failed to generate Jitsi token for session ${session.id}`, e);
+      }
 
       return {
         ...session,

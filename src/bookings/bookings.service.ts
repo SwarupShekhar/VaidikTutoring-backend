@@ -552,23 +552,33 @@ export class BookingsService {
       user.role === 'tutor' && booking.tutors?.user_id === user.userId;
     const isAdmin = user.role === 'admin';
 
-    if (!isStudent && !isParent && !isTutor && !isAdmin) {
-      throw new ForbiddenException('You do not have access to this booking');
-    }
-
     const session = booking.sessions?.[0]; // Get the latest session
     let jitsiToken: string | null = null;
 
     if (session) {
-      const isTeacher = user.role === 'tutor' || user.role === 'admin';
-      jitsiToken = this.jitsiTokenService.generateToken(
-        user.userId, // Note: user object passed here might have userId or sub
-        `${user.first_name || ''} ${user.last_name || ''}`.trim(),
-        user.email,
-        '',
-        `k12-${booking.id}`, // Room name logic must match!
-        isTeacher,
-      );
+      try {
+        // Fetch full user details to ensure we have name/email for the token
+        const fullUser = await this.prisma.users.findUnique({
+          where: { id: user.userId },
+        });
+
+        if (fullUser) {
+          const isTeacher = user.role === 'tutor' || user.role === 'admin';
+          jitsiToken = this.jitsiTokenService.generateToken(
+            fullUser.id,
+            `${fullUser.first_name || ''} ${fullUser.last_name || ''}`.trim(),
+            fullUser.email || '',
+            '',
+            `k12-${booking.id}`,
+            isTeacher,
+          );
+        } else {
+          this.logger.warn(`User ${user.userId} not found during token generation`);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to generate Jitsi token for booking ${bookingId}`, error);
+        // Do not crash the request; just return null logic
+      }
     }
 
     return {
