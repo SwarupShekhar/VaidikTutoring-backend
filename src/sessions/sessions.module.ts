@@ -6,6 +6,7 @@ import { SessionsGateway } from './sessions.gateway';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { JitsiTokenService } from '../common/services/jitsi-token.service';
+import { DailyService } from '../daily/daily.service';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { JitsiTokenService } from '../common/services/jitsi-token.service';
     JwtModule.register({ secret: process.env.JWT_SECRET || 'secret' }),
   ],
   controllers: [SessionsController, LegacySessionController],
-  providers: [SessionsService, SessionsGateway, JitsiTokenService],
+  providers: [SessionsService, SessionsGateway, JitsiTokenService, DailyService],
   exports: [SessionsService],
 })
 export class SessionsModule { }

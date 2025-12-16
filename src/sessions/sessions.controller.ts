@@ -14,13 +14,17 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { SessionsService } from './sessions.service';
+import { DailyService } from '../daily/daily.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UploadRecordingDto } from './dto/upload-recording.dto';
 import { Response } from 'express';
 
 @Controller('sessions')
 export class SessionsController {
-  constructor(private readonly sessionsService: SessionsService) { }
+  constructor(
+    private readonly sessionsService: SessionsService,
+    private readonly dailyService: DailyService,
+  ) { }
 
   // Create a session (basic)
   @UseGuards(JwtAuthGuard)
@@ -105,6 +109,31 @@ export class SessionsController {
   async getJitsiToken(@Param('id') id: string, @Req() req: any) {
     const token = await this.sessionsService.generateTokenForSession(id, req.user.userId);
     return { token };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/daily-token')
+  async getDailyToken(@Param('id') sessionId: string, @Req() req: any) {
+    const user = req.user;
+
+    // Create or get Daily.co room
+    const room = await this.dailyService.createRoom(sessionId);
+
+    // Determine if user is owner (tutor/admin)
+    const isOwner = user.role === 'tutor' || user.role === 'admin';
+
+    // Generate meeting token
+    const userName = user.first_name || user.email || 'User';
+    const token = await this.dailyService.createMeetingToken(
+      room.name,
+      isOwner,
+      userName
+    );
+
+    return {
+      roomUrl: room.url,
+      token: token
+    };
   }
 
   @Post('validate-token')
