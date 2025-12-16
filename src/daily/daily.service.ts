@@ -1,117 +1,52 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import axios from 'axios';
-
 @Injectable()
 export class DailyService {
-    private readonly logger = new Logger(DailyService.name);
     private readonly apiKey = process.env.DAILY_API_KEY;
     private readonly apiUrl = 'https://api.daily.co/v1';
-
-    /**
-     * Creates a Daily.co room for a session or retrieves existing one
-     * @param sessionId - Unique session identifier
-     * @returns Room object with name and url
-     */
     async createRoom(sessionId: string) {
-        if (!this.apiKey) {
-            this.logger.error('DAILY_API_KEY not configured');
-            throw new Error('Daily.co API key not configured');
-        }
-
         const roomName = `k12-session-${sessionId}`;
-
         try {
-            // Check if room already exists
-            const existingRoom = await this.getRoom(roomName);
-            if (existingRoom) {
-                this.logger.log(`Room already exists: ${roomName}`);
-                return existingRoom;
-            }
-        } catch (error) {
-            // Room doesn't exist, continue to create
-        }
-
-        try {
-            // Create new room with 2-hour expiration
-            const response = await axios.post(
-                `${this.apiUrl}/rooms`,
-                {
-                    name: roomName,
-                    privacy: 'private',
-                    properties: {
-                        exp: Math.floor(Date.now() / 1000) + 7200, // 2 hours from now
-                        enable_chat: true,
-                        enable_screenshare: true,
-                        enable_knocking: false,
-                        enable_prejoin_ui: false,
-                        start_video_off: true,
-                        start_audio_off: true,
-                    },
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.apiKey}`,
-                        'Content-Type': 'application/json',
-                    },
+            // 1. Try to get existing room (most likely scenario)
+            const getResponse = await axios.get(`${this.apiUrl}/rooms/${roomName}`, {
+                headers: { Authorization: `Bearer ${this.apiKey}` }
+            });
+            return getResponse.data;
+        } catch (err: any) {
+            if (err.response?.status === 404) {
+                // 2. Create if doesn't exist
+                try {
+                    console.log(`[Daily] Creating room: ${roomName}`);
+                    const createResponse = await axios.post(
+                        `${this.apiUrl}/rooms`,
+                        {
+                            name: roomName,
+                            privacy: 'private',
+                            properties: {
+                                enable_screenshare: true,
+                                enable_chat: true,
+                                exp: Math.floor(Date.now() / 1000) + 7200
+                            }
+                        },
+                        {
+                            headers: {
+                                Authorization: `Bearer ${this.apiKey}`,
+                                'Content-Type': 'application/json'
+                            }
+                        }
+                    );
+                    return createResponse.data;
+                } catch (createErr: any) {
+                    // CRITICAL: Log the specific error reason from Daily API
+                    console.error('[Daily] Room creation failed details:', createErr.response?.data);
+                    throw createErr;
                 }
-            );
-
-            this.logger.log(`Created Daily.co room: ${roomName}`);
-            return {
-                name: response.data.name,
-                url: response.data.url,
-            };
-        } catch (error) {
-            this.logger.error(`Failed to create Daily.co room: ${error.message}`);
-            throw new Error('Failed to create video room');
+            }
+            console.error('[Daily] Get room failed:', err.response?.data);
+            throw new HttpException('Failed to create video room', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
-
-    /**
-     * Retrieves an existing Daily.co room
-     * @param roomName - Name of the room
-     * @returns Room object or null if not found
-     */
-    private async getRoom(roomName: string) {
-        try {
-            const response = await axios.get(
-                `${this.apiUrl}/rooms/${roomName}`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.apiKey}`,
-                    },
-                }
-            );
-
-            return {
-                name: response.data.name,
-                url: response.data.url,
-            };
-        } catch (error) {
-            if (error.response?.status === 404) {
-                return null;
-            }
-            throw error;
-        }
-    }
-
-    /**
-     * Creates a meeting token for a user to join a Daily.co room
-     * @param roomName - Name of the room
-     * @param isOwner - Whether user should have owner privileges (tutor/admin)
-     * @param userName - Display name for the user
-     * @returns Meeting token string
-     */
-    async createMeetingToken(
-        roomName: string,
-        isOwner: boolean,
-        userName: string
-    ): Promise<string> {
-        if (!this.apiKey) {
-            this.logger.error('DAILY_API_KEY not configured');
-            throw new Error('Daily.co API key not configured');
-        }
-
+    async createMeetingToken(roomName: string, isOwner: boolean, userName: string): Promise<string> {
         try {
             const response = await axios.post(
                 `${this.apiUrl}/meeting-tokens`,
@@ -123,22 +58,15 @@ export class DailyService {
                         enable_screenshare: true,
                         start_video_off: true,
                         start_audio_off: true,
-                        exp: Math.floor(Date.now() / 1000) + 7200, // 2 hours
-                    },
+                        exp: Math.floor(Date.now() / 1000) + 7200
+                    }
                 },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.apiKey}`,
-                        'Content-Type': 'application/json',
-                    },
-                }
+                { headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' } }
             );
-
-            this.logger.log(`Created meeting token for ${userName} (owner: ${isOwner})`);
             return response.data.token;
-        } catch (error) {
-            this.logger.error(`Failed to create meeting token: ${error.message}`);
-            throw new Error('Failed to create meeting token');
+        } catch (err: any) {
+            console.error('[Daily] Token creation failed:', err.response?.data);
+            throw new HttpException('Failed to create token', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }
