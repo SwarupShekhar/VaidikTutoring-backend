@@ -244,6 +244,61 @@ export class AdminService {
         };
     }
 
+    async getBookings(page: number = 1, limit: number = 50) {
+        const skip = (page - 1) * limit;
+
+        const [bookings, total] = await Promise.all([
+            this.prisma.bookings.findMany({
+                skip,
+                take: limit,
+                include: {
+                    students: {
+                        include: {
+                            users_students_parent_user_idTousers: {
+                                select: {
+                                    email: true,
+                                    first_name: true,
+                                    last_name: true
+                                }
+                            }
+                        }
+                    },
+                    tutors: {
+                        include: {
+                            users: {
+                                select: {
+                                    id: true,
+                                    first_name: true,
+                                    last_name: true,
+                                    email: true
+                                }
+                            }
+                        }
+                    },
+                    subjects: true,
+                    curricula: true,
+                    packages: true,
+                    sessions: {
+                        orderBy: { start_time: 'desc' },
+                        take: 1
+                    }
+                },
+                orderBy: {
+                    created_at: 'desc',
+                },
+            }),
+            this.prisma.bookings.count(),
+        ]);
+
+        return {
+            data: bookings,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        };
+    }
+
     async allocateTutor(studentId: string, tutorId: string, subjectId: string) {
         // Verify student exists
         const student = await this.prisma.students.findUnique({

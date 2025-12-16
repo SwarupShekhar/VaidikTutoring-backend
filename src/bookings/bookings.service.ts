@@ -5,13 +5,16 @@ import { CreateBookingDto } from './create-booking.dto.js';
 import { EmailService } from '../email/email.service';
 import { subMinutes } from 'date-fns';
 
+import { NotificationsService } from '../notifications/notifications.service';
+
 @Injectable()
 export class BookingsService {
   private readonly logger = new Logger(BookingsService.name);
 
   constructor(
     private prisma: PrismaService,
-    private readonly emailService: EmailService
+    private readonly emailService: EmailService,
+    private readonly notificationsService: NotificationsService
   ) { }
 
   // Create booking and attempt auto-assign tutor
@@ -122,43 +125,122 @@ export class BookingsService {
     return createdBookings;
   }
 
-  // Simple auto-assignment algorithm:
-  // - find active tutor whose skills include the subject (if stored in JSONB)
-  // - ensure tutor has no overlapping confirmed sessions at that time
-  // - fallback to any active tutor
-  async autoAssignTutor(booking) {
-    // naive: find tutors whose skills contain the subject canonical code OR fallback
+  // Enhanced auto-assignment algorithm (V2):
+  // 1. Bulk Fetch Conflicts (N+1 Fix)
+  // 2. Score/Sort by Load (Fairness)
+  // 3. Atomicity (Transaction)
+  // 4. Notifications
+  async autoAssignTutor(booking: any) {
+    // 1. Fetch ALL active tutors with their skills
     const tutors = await this.prisma.tutors.findMany({
       where: { is_active: true },
       include: { users: true },
-      orderBy: { created_at: 'asc' }
     });
 
-    for (const t of tutors) {
-      // check overlap: any session for this tutor where times overlap and session not cancelled
-      const overlapping = await this.prisma.bookings.findFirst({
-        where: {
-          assigned_tutor_id: t.id,
-          status: { in: ['confirmed', 'requested'] },
-          AND: [
-            { requested_start: { lte: booking.requested_end } },
-            { requested_end: { gte: booking.requested_start } },
-          ]
-        }
-      });
-      if (!overlapping) {
-        // assign
-        await this.prisma.bookings.update({
-          where: { id: booking.id },
-          data: { assigned_tutor_id: t.id, status: 'confirmed' }
+    // Filter by Expertise
+    const candidates = tutors.filter(t => {
+      const skills = t.skills as any;
+      if (!skills || !skills.subjects || !Array.isArray(skills.subjects)) return false;
+      return skills.subjects.includes(booking.subject_id);
+    });
+
+    if (candidates.length === 0) {
+      this.logger.warn(`No tutor found with expertise in subject ${booking.subject_id}`);
+      return false;
+    }
+
+    // 2. Bulk Fetch Conflicts (N+1 Fix)
+    const candidateIds = candidates.map(t => t.id);
+    const conflicts = await this.prisma.bookings.findMany({
+      where: {
+        assigned_tutor_id: { in: candidateIds },
+        status: { in: ['confirmed', 'requested'] },
+        AND: [
+          { requested_start: { lte: booking.requested_end } },
+          { requested_end: { gte: booking.requested_start } },
+        ]
+      },
+      select: { assigned_tutor_id: true }
+    });
+
+    const busyTutorIds = new Set(conflicts.map(c => c.assigned_tutor_id));
+
+    // Filter out busy tutors
+    let availableCandidates = candidates.filter(t => !busyTutorIds.has(t.id));
+
+    if (availableCandidates.length === 0) {
+      this.logger.warn(`All expert tutors are busy for booking ${booking.id}`);
+      return false;
+    }
+
+    // 3. Fairness / Load Balancing
+    // We want to avoid "First Tutor Wins".
+    // Strategy: Sort by "random" for now, or if we had 'last_assigned_at' we'd use that.
+    // Let's use a simple random shuffle for V1 fairness to distribute load.
+    // In production, we'd query 'count of upcoming sessions' and pick min.
+    availableCandidates = availableCandidates.sort(() => Math.random() - 0.5);
+
+    const chosenTutor = availableCandidates[0];
+
+    // 4. Atomic Assignment
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Double-check conflict inside transaction for safety (optional but good for strict correctness)
+        // For high-speed, we might skip, but let's be safe.
+        const isStillBusy = await tx.bookings.findFirst({
+          where: {
+            assigned_tutor_id: chosenTutor.id,
+            status: { in: ['confirmed', 'requested'] },
+            AND: [
+              { requested_start: { lte: booking.requested_end } },
+              { requested_end: { gte: booking.requested_start } },
+            ]
+          }
         });
-        return true;
+
+        if (isStillBusy) {
+          throw new ConflictException('Tutor became busy during transaction');
+        }
+
+        await tx.bookings.update({
+          where: { id: booking.id },
+          data: { assigned_tutor_id: chosenTutor.id, status: 'confirmed' }
+        });
+      });
+    } catch (e) {
+      this.logger.warn(`Atomic assignment failed for tutor ${chosenTutor.id}: ${e.message}`);
+      return false; // Could retry loop here if we wanted strict robustness
+    }
+
+    // 5. Notifications (Post-Transaction)
+    // Tutor Notification
+    await this.notificationsService.create(
+      chosenTutor.user_id,
+      'session_assigned',
+      {
+        message: `You have been assigned a new session for subject ${booking.subject_id}`,
+        bookingId: booking.id,
+        startTime: booking.requested_start
+      }
+    );
+
+    // Student Notification
+    if (booking.student_id) {
+      const student = await this.prisma.students.findUnique({ where: { id: booking.student_id } });
+      if (student && student.user_id) {
+        await this.notificationsService.create(
+          student.user_id,
+          'session_confirmed',
+          {
+            message: `Your session with ${chosenTutor.users.first_name} is confirmed.`,
+            bookingId: booking.id,
+            tutorName: chosenTutor.users.first_name
+          }
+        );
       }
     }
 
-    // no tutor found - BROADCAST TO ALL
-    await this.broadcastToTutors(booking, tutors);
-    return false;
+    return true;
   }
 
   async broadcastToTutors(booking, tutors) {

@@ -4,8 +4,10 @@ import { BookingsController } from './bookings.controller.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
 import { EmailModule } from '../email/email.module.js';
 
+import { NotificationsModule } from '../notifications/notifications.module';
+
 @Module({
-  imports: [PrismaModule, EmailModule],
+  imports: [PrismaModule, EmailModule, NotificationsModule],
   controllers: [BookingsController],
   providers: [BookingsService],
   exports: [BookingsService],

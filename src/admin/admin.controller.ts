@@ -118,6 +118,22 @@ export class AdminController {
         }
     }
 
+    @Get('bookings')
+    async getBookings(@Req() req: any, @Query('page') page?: string, @Query('limit') limit?: string) {
+        try {
+            const actor = req.user;
+            if (!actor || actor.role !== 'admin') {
+                throw new UnauthorizedException('Only admins can view bookings.');
+            }
+            const pageNum = parseInt(page || '1', 10);
+            const limitNum = parseInt(limit || '50', 10);
+            return await this.adminService.getBookings(pageNum, limitNum);
+        } catch (e) {
+            console.error('GET /admin/bookings failed:', e);
+            throw e;
+        }
+    }
+
     @Post('allocations')
     @HttpCode(HttpStatus.CREATED)
     async allocateTutor(@Req() req: Request, @Body() dto: AllocateTutorDto) {
