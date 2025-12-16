@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
@@ -17,6 +18,10 @@ async function bootstrap() {
   });
 
   const app = await NestFactory.create(AppModule);
+
+  // Increase body limit to 50mb for large blog posts
+  app.use(json({ limit: '50mb' }));
+  app.use(urlencoded({ limit: '50mb', extended: true }));
 
   // ✅ Enable CORS so frontend (Next.js) can call backend
   app.enableCors({

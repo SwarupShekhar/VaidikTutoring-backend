@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -508,29 +509,37 @@ export class SessionsService {
   }
 
   async generateTokenForSession(sessionId: string, userId: string) {
-    await this.verifySessionAccess(sessionId, userId);
+    try {
+      await this.verifySessionAccess(sessionId, userId);
 
-    const session = await this.prisma.sessions.findUnique({
-      where: { id: sessionId },
-      include: { bookings: true },
-    });
+      const session = await this.prisma.sessions.findUnique({
+        where: { id: sessionId },
+        include: { bookings: true },
+      });
 
-    if (!session) throw new NotFoundException('Session not found');
+      if (!session) throw new NotFoundException('Session not found');
 
-    const user = await this.prisma.users.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
+      const user = await this.prisma.users.findUnique({ where: { id: userId } });
+      if (!user) throw new NotFoundException('User not found');
 
-    const isTeacher = user.role === 'tutor' || user.role === 'admin';
+      const isTeacher = user.role === 'tutor' || user.role === 'admin';
 
-    const token = this.jitsiTokenService.generateToken(
-      user.id,
-      `${user.first_name || ''} ${user.last_name || ''}`.trim(),
-      user.email || '',
-      '',
-      `k12-${session.bookings?.id || session.id}`,
-      isTeacher
-    );
+      const token = this.jitsiTokenService.generateToken(
+        user.id,
+        `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+        user.email || '',
+        '',
+        `k12-${session.bookings?.id || session.id}`,
+        isTeacher
+      );
 
-    return token;
+      return token;
+    } catch (error) {
+      this.logger.error(`Error generating token for session ${sessionId} user ${userId}`, error);
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to generate session token');
+    }
   }
 }

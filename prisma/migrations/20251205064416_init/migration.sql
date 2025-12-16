@@ -1,3 +1,8 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "app";
+
+SET search_path TO "app", "public";
+
 -- CreateTable
 CREATE TABLE "assessment_attempts" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
