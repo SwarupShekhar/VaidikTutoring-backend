@@ -10,6 +10,8 @@ export class JitsiTokenService {
     // but for self-hosted or configured instances, they are critical.
     private readonly appId = process.env.JITSI_APP_ID || '';
     private readonly appSecret = process.env.JITSI_APP_SECRET || '';
+    private readonly jitsiDomain = process.env.JITSI_DOMAIN || 'meet.jit.si';
+    private readonly jitsiKid = process.env.JITSI_KID || '';
 
     generateToken(
         userIndex: string, // Unique ID for user
@@ -19,24 +21,20 @@ export class JitsiTokenService {
         roomName: string,
         isModerator: boolean,
     ): string | null {
-        // If no secret provided, we can't sign a valid token for a secured instance.
-        // However, if the user is using the free public instance without config, a generic token *might* not help 
-        // unless the room is claimed. But assuming standard Jitsi token auth structure:
-
         if (!this.appSecret) {
             this.logger.warn('JITSI_APP_SECRET not set. Skipping token generation to avoid invalid auth.');
             return null;
         }
 
         const now = Math.floor(Date.now() / 1000);
-        const exp = now + 7200; // 2 hours
+        const exp = now + 60 * 60; // 1 hour
         const nbf = now - 10;
 
         const payload = {
             aud: 'jitsi',
-            iss: this.appId || 'chat', // 'chat' is often default for meet.jit.si
-            sub: '*', // room wildcard or specific
-            room: '*',
+            iss: this.appId, // User said iss must be APP_ID
+            sub: this.jitsiDomain, // User said sub must be DOMAIN
+            room: roomName,
             iat: now,
             exp: exp,
             nbf: nbf,
@@ -46,19 +44,25 @@ export class JitsiTokenService {
                     name: userName,
                     email: userEmail,
                     avatar: userAvatar,
-                    moderator: isModerator ? 'true' : 'false',
+                    moderator: isModerator, // boolean true/false
                 },
                 features: {
-                    recording: 'true',
-                    livestreaming: 'true',
-                    screenSharing: 'true',
+                    recording: false,
+                    livestreaming: false,
+                    transcription: false,
                 },
             },
         };
 
-        // If using the public free meet.jit.si, the secret is usually not shared/known.
-        // BUT, the "wait for moderator" behavior implies the room IS secured or expects auth.
-        // We sign with the provided secret.
-        return jwt.sign(payload, this.appSecret || 'secret');
+        const options: jwt.SignOptions = {
+            algorithm: 'HS256',
+            header: {
+                alg: 'HS256',
+                typ: 'JWT',
+                kid: this.jitsiKid, // User said kid is required in header
+            },
+        };
+
+        return jwt.sign(payload, this.appSecret, options);
     }
 }

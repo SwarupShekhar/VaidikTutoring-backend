@@ -506,4 +506,31 @@ export class SessionsService {
 
     return true;
   }
+
+  async generateTokenForSession(sessionId: string, userId: string) {
+    await this.verifySessionAccess(sessionId, userId);
+
+    const session = await this.prisma.sessions.findUnique({
+      where: { id: sessionId },
+      include: { bookings: true },
+    });
+
+    if (!session) throw new NotFoundException('Session not found');
+
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const isTeacher = user.role === 'tutor' || user.role === 'admin';
+
+    const token = this.jitsiTokenService.generateToken(
+      user.id,
+      `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+      user.email || '',
+      '',
+      `k12-${session.bookings?.id || session.id}`,
+      isTeacher
+    );
+
+    return token;
+  }
 }

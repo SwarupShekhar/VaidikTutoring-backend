@@ -20,7 +20,7 @@ import { Response } from 'express';
 
 @Controller('sessions')
 export class SessionsController {
-  constructor(private readonly sessionsService: SessionsService) {}
+  constructor(private readonly sessionsService: SessionsService) { }
 
   // Create a session (basic)
   @UseGuards(JwtAuthGuard)
@@ -98,6 +98,13 @@ export class SessionsController {
   @Get(':id/recordings')
   async getRecordings(@Param('id') id: string, @Req() req: any) {
     return this.sessionsService.getRecordings(id, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/jitsi-token')
+  async getJitsiToken(@Param('id') id: string, @Req() req: any) {
+    const token = await this.sessionsService.generateTokenForSession(id, req.user.userId);
+    return { token };
   }
 
   @Post('validate-token')
