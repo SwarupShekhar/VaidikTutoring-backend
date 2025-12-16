@@ -11,15 +11,12 @@ import { nodeProfilingIntegration } from '@sentry/profiling-node';
 async function bootstrap() {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
-    integrations: [
-      nodeProfilingIntegration(),
-    ],
+    integrations: [nodeProfilingIntegration()],
     tracesSampleRate: 1.0,
     profilesSampleRate: 1.0,
   });
 
   const app = await NestFactory.create(AppModule);
-
 
   // ✅ Enable CORS so frontend (Next.js) can call backend
   app.enableCors({
@@ -27,9 +24,9 @@ async function bootstrap() {
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:3002',
-      'https://k-12-backend-vnp4.vercel.app',  // <-- ADD YOUR VERCEL DOMAIN HERE
-      'https://k-12-vaidik.vercel.app',       // <--- ADD THIS ONE!
-      'https://k-12-backend.onrender.com'
+      'https://k-12-backend-vnp4.vercel.app', // <-- ADD YOUR VERCEL DOMAIN HERE
+      'https://k-12-vaidik.vercel.app', // <--- ADD THIS ONE!
+      'https://k-12-backend.onrender.com',
     ],
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
@@ -41,12 +38,11 @@ async function bootstrap() {
   const httpAdapter = app.get(HttpAdapterHost);
   app.useGlobalFilters(
     new HttpExceptionFilter(),
-    new SentryFilter(httpAdapter.httpAdapter)
+    new SentryFilter(httpAdapter.httpAdapter),
   );
 
   // Global Validation Pipe
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
-
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);

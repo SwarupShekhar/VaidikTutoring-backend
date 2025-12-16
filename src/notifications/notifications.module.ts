@@ -6,9 +6,9 @@ import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 
 @Module({
-    imports: [EmailModule, PrismaModule],
-    controllers: [NotificationsController],
-    providers: [RemindersService, NotificationsService],
-    exports: [RemindersService, NotificationsService],
+  imports: [EmailModule, PrismaModule],
+  controllers: [NotificationsController],
+  providers: [RemindersService, NotificationsService],
+  exports: [RemindersService, NotificationsService],
 })
-export class NotificationsModule { }
+export class NotificationsModule {}

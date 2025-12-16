@@ -3,7 +3,7 @@ import { AuthService } from './auth.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private auth: AuthService) { }
+  constructor(private auth: AuthService) {}
 
   @Post('signup')
   signup(@Body() body: any) {
@@ -22,7 +22,9 @@ export class AuthController {
     // I will add a NEW endpoint `POST /auth/register-tutor` protected by JWT Guard.
     if (body.role !== 'parent' && body.role !== 'student') {
       // We'll throw unless...
-      throw new BadRequestException('Invalid role for public signup. Only "parent" and "student" are allowed.');
+      throw new BadRequestException(
+        'Invalid role for public signup. Only "parent" and "student" are allowed.',
+      );
     }
     return this.auth.signup(body);
   }
@@ -35,7 +37,8 @@ export class AuthController {
   // For now just allow it as a separate endpoint that we can protect later or protect now if Guards exist.
   // I will just add logic:
   createTutor(@Body() body: any) {
-    if (body.role !== 'tutor') throw new BadRequestException('Role must be tutor');
+    if (body.role !== 'tutor')
+      throw new BadRequestException('Role must be tutor');
     return this.auth.signup(body);
   }
 

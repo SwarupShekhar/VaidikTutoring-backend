@@ -12,4 +12,4 @@ import { NotificationsModule } from '../notifications/notifications.module';
   providers: [BookingsService],
   exports: [BookingsService],
 })
-export class BookingsModule { }
+export class BookingsModule {}

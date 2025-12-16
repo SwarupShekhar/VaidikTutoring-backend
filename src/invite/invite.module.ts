@@ -4,9 +4,9 @@ import { InviteController } from './invite.controller.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
 
 @Module({
-    imports: [PrismaModule],
-    providers: [InviteService],
-    controllers: [InviteController],
-    exports: [InviteService],
+  imports: [PrismaModule],
+  providers: [InviteService],
+  controllers: [InviteController],
+  exports: [InviteService],
 })
-export class InviteModule { }
+export class InviteModule {}

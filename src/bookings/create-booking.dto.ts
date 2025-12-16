@@ -1,5 +1,11 @@
 // src/bookings/dto/create-booking.dto.ts
-import { IsUUID, IsString, IsOptional, IsISO8601, IsArray } from 'class-validator';
+import {
+  IsUUID,
+  IsString,
+  IsOptional,
+  IsISO8601,
+  IsArray,
+} from 'class-validator';
 
 export class CreateBookingDto {
   @IsUUID()

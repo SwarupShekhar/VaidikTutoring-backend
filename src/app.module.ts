@@ -32,10 +32,8 @@ import { AdminModule } from './admin/admin.module.js';
     ScheduleModule.forRoot(),
     NotificationsModule,
     AdminModule,
-
-
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

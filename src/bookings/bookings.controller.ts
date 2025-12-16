@@ -1,5 +1,14 @@
 // src/bookings/bookings.controller.ts
-import { Controller, Post, Body, UseGuards, Req, Get, Param, Patch } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Req,
+  Get,
+  Param,
+  Patch,
+} from '@nestjs/common';
 import { BookingsService } from './bookings.service.js';
 import { CreateBookingDto } from './create-booking.dto.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
@@ -8,7 +17,7 @@ import { RolesGuard } from '../common/guards/roles.guard.js';
 
 @Controller('bookings')
 export class BookingsController {
-  constructor(private readonly svc: BookingsService) { }
+  constructor(private readonly svc: BookingsService) {}
 
   // Student/Parent creates a booking
   @UseGuards(JwtAuthGuard, RolesGuard)

@@ -9,6 +9,6 @@ import { BookingsModule } from '../bookings/bookings.module';
   // TutorsController uses BookingsService, so we need BookingsModule to export it.
   controllers: [TutorsController],
   providers: [TutorsService],
-  exports: [TutorsService]
+  exports: [TutorsService],
 })
-export class TutorsModule { }
+export class TutorsModule {}

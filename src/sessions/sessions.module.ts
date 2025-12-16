@@ -10,10 +10,10 @@ import { EmailModule } from 'src/email/email.module';
   imports: [
     PrismaModule,
     EmailModule,
-    JwtModule.register({ secret: process.env.JWT_SECRET || 'secret' })
+    JwtModule.register({ secret: process.env.JWT_SECRET || 'secret' }),
   ],
   controllers: [SessionsController],
   providers: [SessionsService, SessionsGateway],
   exports: [SessionsService],
 })
-export class SessionsModule { }
+export class SessionsModule {}

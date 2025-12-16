@@ -1,5 +1,12 @@
 // src/bookings/bookings.service.ts
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateBookingDto } from './create-booking.dto.js';
 import { EmailService } from '../email/email.service';
@@ -14,8 +21,8 @@ export class BookingsService {
   constructor(
     private prisma: PrismaService,
     private readonly emailService: EmailService,
-    private readonly notificationsService: NotificationsService
-  ) { }
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   // Create booking and attempt auto-assign tutor
   // Create booking and attempt auto-assign tutor
@@ -27,7 +34,7 @@ export class BookingsService {
       // Check if a Student profile exists for this User ID
       // In our schema, students are linked via user_id
       const existingStudent = await this.prisma.students.findFirst({
-        where: { user_id: user.userId } // user.userId is the ID from JWT (via JwtStrategy)
+        where: { user_id: user.userId }, // user.userId is the ID from JWT (via JwtStrategy)
       });
 
       if (!existingStudent) {
@@ -39,7 +46,7 @@ export class BookingsService {
             last_name: user.last_name || '',
             grade: 'TBD',
             // We do not set parent_user_id here as they are self-registered
-          }
+          },
         });
         finalStudentId = newStudent.id;
       } else {
@@ -47,16 +54,24 @@ export class BookingsService {
       }
     } else {
       // For parents, validate the passed student_id exists
-      const studentExists = await this.prisma.students.findUnique({ where: { id: finalStudentId } });
+      const studentExists = await this.prisma.students.findUnique({
+        where: { id: finalStudentId },
+      });
       if (!studentExists) {
-        throw new NotFoundException('Student profile not found for the provided ID');
+        throw new NotFoundException(
+          'Student profile not found for the provided ID',
+        );
       }
     }
 
-    const pkg = await this.prisma.packages.findUnique({ where: { id: createDto.package_id } });
+    const pkg = await this.prisma.packages.findUnique({
+      where: { id: createDto.package_id },
+    });
     if (!pkg) throw new NotFoundException('Package not found');
 
-    const curriculum = await this.prisma.curricula.findUnique({ where: { id: createDto.curriculum_id } });
+    const curriculum = await this.prisma.curricula.findUnique({
+      where: { id: createDto.curriculum_id },
+    });
     if (!curriculum) throw new NotFoundException('Curriculum not found');
 
     // VALIDATION: Check dates
@@ -65,18 +80,25 @@ export class BookingsService {
     const now = new Date();
 
     if (start < now) {
-      throw new ForbiddenException('Requested start time must be in the future.'); // Using Forbidden or BadRequest
+      throw new ForbiddenException(
+        'Requested start time must be in the future.',
+      ); // Using Forbidden or BadRequest
     }
     if (end <= start) {
-      throw new ForbiddenException('Requested end time must be after the start time.');
+      throw new ForbiddenException(
+        'Requested end time must be after the start time.',
+      );
     }
 
     const createdBookings: any[] = [];
 
     // Loop through each subject and create a separate booking
     for (const subjectId of createDto.subject_ids) {
-      const subject = await this.prisma.subjects.findUnique({ where: { id: subjectId } });
-      if (!subject) throw new NotFoundException(`Subject with ID ${subjectId} not found`);
+      const subject = await this.prisma.subjects.findUnique({
+        where: { id: subjectId },
+      });
+      if (!subject)
+        throw new NotFoundException(`Subject with ID ${subjectId} not found`);
 
       const booking = await this.prisma.bookings.create({
         data: {
@@ -88,7 +110,7 @@ export class BookingsService {
           requested_end: end,
           note: createDto.note,
           status: 'requested',
-        }
+        },
       });
 
       // Try auto-assign a tutor
@@ -103,7 +125,7 @@ export class BookingsService {
             meet_link: null,
             whiteboard_link: null,
             status: 'scheduled',
-          }
+          },
         });
       }
 
@@ -116,9 +138,9 @@ export class BookingsService {
             students: true,
             packages: true,
             curricula: true,
-            tutors: { include: { users: true } }
-          }
-        })
+            tutors: { include: { users: true } },
+          },
+        }),
       );
     }
 
@@ -138,19 +160,22 @@ export class BookingsService {
     });
 
     // Filter by Expertise
-    const candidates = tutors.filter(t => {
+    const candidates = tutors.filter((t) => {
       const skills = t.skills as any;
-      if (!skills || !skills.subjects || !Array.isArray(skills.subjects)) return false;
+      if (!skills || !skills.subjects || !Array.isArray(skills.subjects))
+        return false;
       return skills.subjects.includes(booking.subject_id);
     });
 
     if (candidates.length === 0) {
-      this.logger.warn(`No tutor found with expertise in subject ${booking.subject_id}`);
+      this.logger.warn(
+        `No tutor found with expertise in subject ${booking.subject_id}`,
+      );
       return false;
     }
 
     // 2. Bulk Fetch Conflicts (N+1 Fix)
-    const candidateIds = candidates.map(t => t.id);
+    const candidateIds = candidates.map((t) => t.id);
     const conflicts = await this.prisma.bookings.findMany({
       where: {
         assigned_tutor_id: { in: candidateIds },
@@ -158,15 +183,15 @@ export class BookingsService {
         AND: [
           { requested_start: { lte: booking.requested_end } },
           { requested_end: { gte: booking.requested_start } },
-        ]
+        ],
       },
-      select: { assigned_tutor_id: true }
+      select: { assigned_tutor_id: true },
     });
 
-    const busyTutorIds = new Set(conflicts.map(c => c.assigned_tutor_id));
+    const busyTutorIds = new Set(conflicts.map((c) => c.assigned_tutor_id));
 
     // Filter out busy tutors
-    let availableCandidates = candidates.filter(t => !busyTutorIds.has(t.id));
+    let availableCandidates = candidates.filter((t) => !busyTutorIds.has(t.id));
 
     if (availableCandidates.length === 0) {
       this.logger.warn(`All expert tutors are busy for booking ${booking.id}`);
@@ -194,8 +219,8 @@ export class BookingsService {
             AND: [
               { requested_start: { lte: booking.requested_end } },
               { requested_end: { gte: booking.requested_start } },
-            ]
-          }
+            ],
+          },
         });
 
         if (isStillBusy) {
@@ -204,11 +229,13 @@ export class BookingsService {
 
         await tx.bookings.update({
           where: { id: booking.id },
-          data: { assigned_tutor_id: chosenTutor.id, status: 'confirmed' }
+          data: { assigned_tutor_id: chosenTutor.id, status: 'confirmed' },
         });
       });
     } catch (e) {
-      this.logger.warn(`Atomic assignment failed for tutor ${chosenTutor.id}: ${e.message}`);
+      this.logger.warn(
+        `Atomic assignment failed for tutor ${chosenTutor.id}: ${e.message}`,
+      );
       return false; // Could retry loop here if we wanted strict robustness
     }
 
@@ -220,13 +247,15 @@ export class BookingsService {
       {
         message: `You have been assigned a new session for subject ${booking.subject_id}`,
         bookingId: booking.id,
-        startTime: booking.requested_start
-      }
+        startTime: booking.requested_start,
+      },
     );
 
     // Student Notification
     if (booking.student_id) {
-      const student = await this.prisma.students.findUnique({ where: { id: booking.student_id } });
+      const student = await this.prisma.students.findUnique({
+        where: { id: booking.student_id },
+      });
       if (student && student.user_id) {
         await this.notificationsService.create(
           student.user_id,
@@ -234,8 +263,8 @@ export class BookingsService {
           {
             message: `Your session with ${chosenTutor.users.first_name} is confirmed.`,
             bookingId: booking.id,
-            tutorName: chosenTutor.users.first_name
-          }
+            tutorName: chosenTutor.users.first_name,
+          },
         );
       }
     }
@@ -249,7 +278,7 @@ export class BookingsService {
 
     // We assume tutors list is passed or we fetch it.
 
-    const candidates = tutors.filter(t => t.users && t.users.email); // Ensure email exists
+    const candidates = tutors.filter((t) => t.users && t.users.email); // Ensure email exists
 
     for (const t of candidates) {
       // In real app: check t.skills for booking.subject_id match
@@ -259,27 +288,38 @@ export class BookingsService {
         await this.emailService.sendMail({
           to: t.users.email,
           subject: `New Tutoring Opportunity!`,
-          text: `A new session is available for claim.\n\nTime: ${booking.requested_start}\nLink: ${process.env.FRONTEND_URL}/tutor/claim-session/${booking.id}\n\nClick fast to claim!`
+          text: `A new session is available for claim.\n\nTime: ${booking.requested_start}\nLink: ${process.env.FRONTEND_URL}/tutor/claim-session/${booking.id}\n\nClick fast to claim!`,
         });
       } catch (e) {
-        this.logger.error(`Failed to email tutor ${t.users.email}: ${e.message}`);
+        this.logger.error(
+          `Failed to email tutor ${t.users.email}: ${e.message}`,
+        );
       }
     }
-    this.logger.log(`Broadcasted booking ${booking.id} to ${candidates.length} tutors.`);
+    this.logger.log(
+      `Broadcasted booking ${booking.id} to ${candidates.length} tutors.`,
+    );
   }
 
   // Claim a booking (Tutor Race)
   async claimBooking(bookingId: string, tutorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const booking = await tx.bookings.findUnique({ where: { id: bookingId } });
+      const booking = await tx.bookings.findUnique({
+        where: { id: bookingId },
+      });
       if (!booking) throw new NotFoundException('Booking not found');
 
       if (booking.assigned_tutor_id || booking.status === 'confirmed') {
-        throw new ConflictException('Session already claimed by another tutor.');
+        throw new ConflictException(
+          'Session already claimed by another tutor.',
+        );
       }
 
-      const tutor = await tx.tutors.findFirst({ where: { user_id: tutorUserId } });
-      if (!tutor) throw new ForbiddenException('User is not a registered tutor');
+      const tutor = await tx.tutors.findFirst({
+        where: { user_id: tutorUserId },
+      });
+      if (!tutor)
+        throw new ForbiddenException('User is not a registered tutor');
 
       // Check overlaps again for this specific tutor
       // (Simplified: assuming if we are here, we can claim. OR verify overlaps)
@@ -293,20 +333,20 @@ export class BookingsService {
             AND: [
               { requested_start: { lte: booking.requested_end } },
               { requested_end: { gte: booking.requested_start } },
-            ]
-          }
+            ],
+          },
         });
-        if (overlapping) throw new ConflictException('You have an overlapping session.');
+        if (overlapping)
+          throw new ConflictException('You have an overlapping session.');
       }
-
 
       // Assign
       const updated = await tx.bookings.update({
         where: { id: bookingId },
         data: {
           assigned_tutor_id: tutor.id,
-          status: 'confirmed'
-        }
+          status: 'confirmed',
+        },
       });
 
       // Create/Update Session
@@ -318,8 +358,8 @@ export class BookingsService {
           start_time: booking.requested_start ?? new Date(),
           end_time: booking.requested_end ?? new Date(Date.now() + 3600000),
           status: 'scheduled',
-          meet_link: `https://meet.jit.si/k12-${booking.id}` // auto-gen link
-        }
+          meet_link: `https://meet.jit.si/k12-${booking.id}`, // auto-gen link
+        },
       });
 
       return updated;
@@ -328,22 +368,28 @@ export class BookingsService {
 
   // Admin endpoint to reassign tutor
   async reassign(bookingId: string, tutorId: string) {
-    const booking = await this.prisma.bookings.findUnique({ where: { id: bookingId } });
+    const booking = await this.prisma.bookings.findUnique({
+      where: { id: bookingId },
+    });
     if (!booking) throw new NotFoundException('Booking not found');
-    const tutor = await this.prisma.tutors.findUnique({ where: { id: tutorId } });
+    const tutor = await this.prisma.tutors.findUnique({
+      where: { id: tutorId },
+    });
     if (!tutor) throw new NotFoundException('Tutor not found');
 
     const updated = await this.prisma.bookings.update({
       where: { id: bookingId },
-      data: { assigned_tutor_id: tutorId, status: 'confirmed' }
+      data: { assigned_tutor_id: tutorId, status: 'confirmed' },
     });
 
     // update or create session record
-    const sess = await this.prisma.sessions.findFirst({ where: { booking_id: bookingId } });
+    const sess = await this.prisma.sessions.findFirst({
+      where: { booking_id: bookingId },
+    });
     if (sess) {
       await this.prisma.sessions.update({
         where: { id: sess.id },
-        data: { status: 'scheduled' }
+        data: { status: 'scheduled' },
       });
     } else {
       await this.prisma.sessions.create({
@@ -351,8 +397,8 @@ export class BookingsService {
           booking_id: bookingId,
           start_time: booking.requested_start,
           end_time: booking.requested_end,
-          status: 'scheduled'
-        }
+          status: 'scheduled',
+        },
       });
     }
 
@@ -362,24 +408,31 @@ export class BookingsService {
   // get bookings for student
   async forStudent(studentUserId: string) {
     // find student id(s) linked to this user
-    const stud = await this.prisma.students.findFirst({ where: { user_id: studentUserId } });
+    const stud = await this.prisma.students.findFirst({
+      where: { user_id: studentUserId },
+    });
     if (!stud) throw new NotFoundException('Student profile not found');
     return this.prisma.bookings.findMany({
       where: { student_id: stud.id },
       include: {
         subjects: true,
-        tutors: { include: { users: true } }
+        tutors: { include: { users: true } },
       },
-      orderBy: { requested_start: 'asc' }
+      orderBy: { requested_start: 'asc' },
     });
   }
 
   // get bookings for tutor
   async forTutor(tutorUserId: string) {
     console.log('[forTutor] Looking up tutor with user_id:', tutorUserId);
-    const tutor = await this.prisma.tutors.findFirst({ where: { user_id: tutorUserId } });
+    const tutor = await this.prisma.tutors.findFirst({
+      where: { user_id: tutorUserId },
+    });
     if (!tutor) {
-      console.log('[forTutor] Tutor profile not found for user_id:', tutorUserId);
+      console.log(
+        '[forTutor] Tutor profile not found for user_id:',
+        tutorUserId,
+      );
       throw new NotFoundException('Tutor profile not found');
     }
     console.log('[forTutor] Found tutor:', tutor.id);
@@ -388,25 +441,36 @@ export class BookingsService {
       include: {
         subjects: true,
         students: { select: { first_name: true, last_name: true } },
-        tutors: { include: { users: { select: { first_name: true, last_name: true } } } }
+        tutors: {
+          include: { users: { select: { first_name: true, last_name: true } } },
+        },
       },
-      orderBy: { requested_start: 'desc' }
+      orderBy: { requested_start: 'desc' },
     });
-    console.log('[forTutor] Found', bookings.length, 'bookings for tutor', tutor.id);
+    console.log(
+      '[forTutor] Found',
+      bookings.length,
+      'bookings for tutor',
+      tutor.id,
+    );
     return bookings;
   }
 
   async forParent(parentUserId: string) {
-    const students = await this.prisma.students.findMany({ where: { parent_user_id: parentUserId } });
-    const ids = students.map(s => s.id);
+    const students = await this.prisma.students.findMany({
+      where: { parent_user_id: parentUserId },
+    });
+    const ids = students.map((s) => s.id);
     return this.prisma.bookings.findMany({
       where: { student_id: { in: ids } },
       include: {
         subjects: true,
         students: { select: { first_name: true, last_name: true } },
-        tutors: { include: { users: { select: { first_name: true, last_name: true } } } }
+        tutors: {
+          include: { users: { select: { first_name: true, last_name: true } } },
+        },
       },
-      orderBy: { requested_start: 'desc' }
+      orderBy: { requested_start: 'desc' },
     });
   }
 
@@ -414,7 +478,9 @@ export class BookingsService {
   // Filter by: unclaimed, future start time
   async getAvailableForTutor(tutorUserId: string) {
     // Get tutor profile to potentially filter by skills
-    const tutor = await this.prisma.tutors.findFirst({ where: { user_id: tutorUserId } });
+    const tutor = await this.prisma.tutors.findFirst({
+      where: { user_id: tutorUserId },
+    });
     if (!tutor) throw new NotFoundException('Tutor profile not found');
 
     const now = new Date();
@@ -448,8 +514,8 @@ export class BookingsService {
             parent_user_id: true,
             first_name: true,
             last_name: true,
-            grade: true
-          }
+            grade: true,
+          },
         },
         tutors: {
           include: {
@@ -458,16 +524,16 @@ export class BookingsService {
                 id: true,
                 first_name: true,
                 last_name: true,
-                email: true
-              }
-            }
-          }
+                email: true,
+              },
+            },
+          },
         },
         sessions: {
           orderBy: { start_time: 'desc' },
-          take: 1
-        }
-      }
+          take: 1,
+        },
+      },
     });
 
     if (!booking) {
@@ -475,9 +541,13 @@ export class BookingsService {
     }
 
     // Check authorization: user must be the student, parent, assigned tutor, or admin
-    const isStudent = user.role === 'student' && booking.students?.user_id === user.userId;
-    const isParent = user.role === 'parent' && booking.students?.parent_user_id === user.userId;
-    const isTutor = user.role === 'tutor' && booking.tutors?.user_id === user.userId;
+    const isStudent =
+      user.role === 'student' && booking.students?.user_id === user.userId;
+    const isParent =
+      user.role === 'parent' &&
+      booking.students?.parent_user_id === user.userId;
+    const isTutor =
+      user.role === 'tutor' && booking.tutors?.user_id === user.userId;
     const isAdmin = user.role === 'admin';
 
     if (!isStudent && !isParent && !isTutor && !isAdmin) {
