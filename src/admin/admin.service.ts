@@ -354,7 +354,7 @@ export class AdminService {
             // Map relations to what frontend likely expects & ensure names are populated
             student: b.students
                 ? {
-                    ...b.students,
+                    id: b.students.id,
                     first_name:
                         b.students.first_name ||
                         (b.students.users_students_user_idTousers
@@ -365,6 +365,11 @@ export class AdminService {
                         (b.students.users_students_user_idTousers
                             ? b.students.users_students_user_idTousers.last_name
                             : null),
+                    grade: b.students.grade,
+                    school: b.students.school,
+                    // Serialize dates properly
+                    birth_date: b.students.birth_date ? b.students.birth_date.toISOString() : null,
+                    created_at: b.students.created_at ? b.students.created_at.toISOString() : null,
                     // Correctly place user inside student object
                     user: b.students.users_students_user_idTousers,
                 }
