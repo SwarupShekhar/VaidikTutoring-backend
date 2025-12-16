@@ -104,12 +104,7 @@ export class SessionsController {
     return this.sessionsService.getRecordings(id, req.user.userId);
   }
 
-  @UseGuards(JwtAuthGuard)
-  @Get(':id/jitsi-token')
-  async getJitsiToken(@Param('id') id: string, @Req() req: any) {
-    const token = await this.sessionsService.generateTokenForSession(id, req.user.userId);
-    return { token };
-  }
+
 
   @UseGuards(JwtAuthGuard)
   @Get(':id/daily-token')

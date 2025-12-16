@@ -42,9 +42,10 @@ export class DailyService {
                         exp: Math.floor(Date.now() / 1000) + 7200, // 2 hours from now
                         enable_chat: true,
                         enable_screenshare: true,
-                        enable_recording: 'cloud',
-                        start_video_off: false,
-                        start_audio_off: false,
+                        enable_knocking: false,
+                        enable_prejoin_ui: false,
+                        start_video_off: true,
+                        start_audio_off: true,
                     },
                 },
                 {
@@ -119,8 +120,9 @@ export class DailyService {
                         room_name: roomName,
                         is_owner: isOwner,
                         user_name: userName,
-                        enable_recording: isOwner ? 'cloud' : false,
-                        start_cloud_recording: false,
+                        enable_screenshare: true,
+                        start_video_off: true,
+                        start_audio_off: true,
                         exp: Math.floor(Date.now() / 1000) + 7200, // 2 hours
                     },
                 },
