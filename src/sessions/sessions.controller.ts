@@ -110,10 +110,20 @@ export class SessionsController {
   @Post('validate-token')
   async validateToken(@Body() body: { sessionId: string; token: string }) {
     // Validate the specific session join token.
-    // This token is separate from the main Auth JWT, or it could be a specialized JWT?
-    // The user helper says: "Token should be a signed JWT containing { userId, role, sessionId }"
-    // We need to decode/verify it.
-    // For now, let's delegate to Service.
     return this.sessionsService.validateJoinToken(body.sessionId, body.token);
+  }
+}
+
+// Compatibility Controller for frontend using singular 'session'
+@Controller('session')
+export class LegacySessionController {
+  constructor(private readonly sessionsService: SessionsService) { }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/token')
+  async getToken(@Param('id') id: string, @Req() req: any) {
+    // Maps /session/:id/token -> service logic
+    const token = await this.sessionsService.generateTokenForSession(id, req.user.userId);
+    return { token };
   }
 }
