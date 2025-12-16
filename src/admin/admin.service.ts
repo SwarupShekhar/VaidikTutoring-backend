@@ -365,6 +365,8 @@ export class AdminService {
                         (b.students.users_students_user_idTousers
                             ? b.students.users_students_user_idTousers.last_name
                             : null),
+                    // Correctly place user inside student object
+                    user: b.students.users_students_user_idTousers,
                 }
                 : null,
             subject: b.subjects, // Alias plural 'subjects' to singular 'subject'
