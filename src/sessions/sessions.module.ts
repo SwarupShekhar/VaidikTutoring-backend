@@ -3,8 +3,9 @@ import { JwtModule } from '@nestjs/jwt';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
 import { SessionsGateway } from './sessions.gateway';
-import { PrismaModule } from 'src/prisma/prisma.module';
-import { EmailModule } from 'src/email/email.module';
+import { PrismaModule } from '../prisma/prisma.module';
+import { EmailModule } from '../email/email.module';
+import { JitsiTokenService } from '../common/services/jitsi-token.service';
 
 @Module({
   imports: [
@@ -13,7 +14,7 @@ import { EmailModule } from 'src/email/email.module';
     JwtModule.register({ secret: process.env.JWT_SECRET || 'secret' }),
   ],
   controllers: [SessionsController],
-  providers: [SessionsService, SessionsGateway],
+  providers: [SessionsService, SessionsGateway, JitsiTokenService],
   exports: [SessionsService],
 })
-export class SessionsModule {}
+export class SessionsModule { }

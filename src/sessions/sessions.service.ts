@@ -7,8 +7,9 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { EmailService } from 'src/email/email.service';
+import { EmailService } from '../email/email.service';
 import { JwtService } from '@nestjs/jwt';
+import { JitsiTokenService } from '../common/services/jitsi-token.service';
 
 @Injectable()
 export class SessionsService {
@@ -18,7 +19,8 @@ export class SessionsService {
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly jwtService: JwtService,
-  ) {}
+    private readonly jitsiTokenService: JitsiTokenService,
+  ) { }
 
   async create(dto: any) {
     if (!dto?.booking_id)
@@ -149,7 +151,8 @@ export class SessionsService {
     }
 
     // Fetch sessions for these bookings
-    return this.prisma.sessions.findMany({
+    // Fetch sessions for these bookings
+    const sessions = await this.prisma.sessions.findMany({
       where: { booking_id: { in: bookingIds } },
       orderBy: { start_time: 'asc' },
       include: {
@@ -161,6 +164,24 @@ export class SessionsService {
           },
         },
       },
+    });
+
+    // Append Jitsi JWT for each session based on the current user
+    return sessions.map((session) => {
+      const isTeacher = user.role === 'tutor' || user.role === 'admin';
+      const token = this.jitsiTokenService.generateToken(
+        user.id,
+        `${user.first_name} ${user.last_name}`,
+        user.email,
+        '', // avatar
+        `k12-${session.bookings?.id || session.id}`, // Room name MUST match the URL structure
+        isTeacher, // Tutor/Admin = Moderator
+      );
+
+      return {
+        ...session,
+        jitsi_token: token,
+      };
     });
   }
 
@@ -187,8 +208,8 @@ export class SessionsService {
 
     const booking = session.booking_id
       ? await this.prisma.bookings.findUnique({
-          where: { id: session.booking_id },
-        })
+        where: { id: session.booking_id },
+      })
       : null;
 
     let studentUser: any = null;
@@ -219,18 +240,18 @@ export class SessionsService {
 
     const subject = booking?.subject_id
       ? await this.prisma.subjects.findUnique({
-          where: { id: booking.subject_id },
-        })
+        where: { id: booking.subject_id },
+      })
       : null;
     const pkg = booking?.package_id
       ? await this.prisma.packages.findUnique({
-          where: { id: booking.package_id },
-        })
+        where: { id: booking.package_id },
+      })
       : null;
     const curriculum = booking?.curriculum_id
       ? await this.prisma.curricula.findUnique({
-          where: { id: booking.curriculum_id },
-        })
+        where: { id: booking.curriculum_id },
+      })
       : null;
 
     const startDt = session.start_time

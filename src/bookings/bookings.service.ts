@@ -13,6 +13,7 @@ import { EmailService } from '../email/email.service';
 import { subMinutes } from 'date-fns';
 
 import { NotificationsService } from '../notifications/notifications.service';
+import { JitsiTokenService } from '../common/services/jitsi-token.service';
 
 @Injectable()
 export class BookingsService {
@@ -22,7 +23,8 @@ export class BookingsService {
     private prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly notificationsService: NotificationsService,
-  ) {}
+    private readonly jitsiTokenService: JitsiTokenService,
+  ) { }
 
   // Create booking and attempt auto-assign tutor
   // Create booking and attempt auto-assign tutor
@@ -554,6 +556,29 @@ export class BookingsService {
       throw new ForbiddenException('You do not have access to this booking');
     }
 
-    return booking;
+    const session = booking.sessions?.[0]; // Get the latest session
+    let jitsiToken: string | null = null;
+
+    if (session) {
+      const isTeacher = user.role === 'tutor' || user.role === 'admin';
+      jitsiToken = this.jitsiTokenService.generateToken(
+        user.userId, // Note: user object passed here might have userId or sub
+        `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+        user.email,
+        '',
+        `k12-${booking.id}`, // Room name logic must match!
+        isTeacher,
+      );
+    }
+
+    return {
+      ...booking,
+      jitsi_token: jitsiToken,
+      // Map session token if needed directly on session object too
+      sessions: booking.sessions.map((s) => ({
+        ...s,
+        jitsi_token: jitsiToken,
+      })),
+    };
   }
 }

@@ -5,11 +5,12 @@ import { PrismaModule } from '../prisma/prisma.module.js';
 import { EmailModule } from '../email/email.module.js';
 
 import { NotificationsModule } from '../notifications/notifications.module';
+import { JitsiTokenService } from '../common/services/jitsi-token.service';
 
 @Module({
   imports: [PrismaModule, EmailModule, NotificationsModule],
   controllers: [BookingsController],
-  providers: [BookingsService],
+  providers: [BookingsService, JitsiTokenService],
   exports: [BookingsService],
 })
-export class BookingsModule {}
+export class BookingsModule { }
