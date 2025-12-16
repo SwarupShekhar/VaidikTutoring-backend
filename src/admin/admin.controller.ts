@@ -59,7 +59,7 @@ class AllocateTutorDto {
 @Controller('admin')
 @UseGuards(JwtAuthGuard)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(private readonly adminService: AdminService) { }
 
   @Get('stats')
   async getStats(@Req() req: any) {
@@ -93,10 +93,8 @@ export class AdminController {
       const result = await this.adminService.getTutors(pageNum, limitNum);
 
       // If no pagination params provided, return just the array for backward compatibility
-      if (!page && !limit) {
-        return result.data;
-      }
-      return result;
+      // FORCE FIX: Always return array to prevent frontend crash
+      return result.data;
     } catch (e) {
       console.error('GET /admin/tutors failed:', e);
       throw e;
@@ -136,10 +134,8 @@ export class AdminController {
       const result = await this.adminService.getStudents(pageNum, limitNum);
 
       // If no pagination params provided, return just the array for backward compatibility
-      if (!page && !limit) {
-        return result.data;
-      }
-      return result;
+      // FORCE FIX: Always return array to prevent frontend crash
+      return result.data;
     } catch (e) {
       console.error('GET /admin/students failed:', e);
       throw e;
@@ -159,7 +155,8 @@ export class AdminController {
       }
       const pageNum = parseInt(page || '1', 10);
       const limitNum = parseInt(limit || '50', 10);
-      return await this.adminService.getBookings(pageNum, limitNum);
+      const result = await this.adminService.getBookings(pageNum, limitNum);
+      return result.data;
     } catch (e) {
       console.error('GET /admin/bookings failed:', e);
       throw e;
