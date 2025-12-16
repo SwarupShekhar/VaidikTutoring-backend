@@ -290,8 +290,21 @@ export class AdminService {
             this.prisma.bookings.count(),
         ]);
 
+        // Sanitize and format bookings to prevent "Invalid time value" frontend crashes
+        const formattedBookings = bookings.map(b => ({
+            ...b,
+            requested_start: b.requested_start ? b.requested_start.toISOString() : null,
+            requested_end: b.requested_end ? b.requested_end.toISOString() : null,
+            created_at: b.created_at ? b.created_at.toISOString() : null,
+            sessions: b.sessions.map(s => ({
+                ...s,
+                start_time: s.start_time ? s.start_time.toISOString() : null,
+                end_time: s.end_time ? s.end_time.toISOString() : null,
+            }))
+        }));
+
         return {
-            data: bookings,
+            data: formattedBookings,
             total,
             page,
             limit,
