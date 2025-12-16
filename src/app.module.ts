@@ -15,6 +15,7 @@ import { EmailModule } from './email/email.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { AdminModule } from './admin/admin.module.js';
+import { BlogsModule } from './blogs/blogs.module.js';
 
 @Module({
   imports: [
@@ -27,13 +28,13 @@ import { AdminModule } from './admin/admin.module.js';
     InviteModule,
     TestEmailModule,
     EmailModule,
-    EmailModule,
     CatalogModule,
     ScheduleModule.forRoot(),
     NotificationsModule,
     AdminModule,
+    BlogsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
