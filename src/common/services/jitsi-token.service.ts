@@ -18,13 +18,14 @@ export class JitsiTokenService {
         userAvatar: string,
         roomName: string,
         isModerator: boolean,
-    ): string {
+    ): string | null {
         // If no secret provided, we can't sign a valid token for a secured instance.
         // However, if the user is using the free public instance without config, a generic token *might* not help 
         // unless the room is claimed. But assuming standard Jitsi token auth structure:
 
         if (!this.appSecret) {
-            this.logger.warn('JITSI_APP_SECRET not set. Token generation might fail validation on server.');
+            this.logger.warn('JITSI_APP_SECRET not set. Skipping token generation to avoid invalid auth.');
+            return null;
         }
 
         const now = Math.floor(Date.now() / 1000);
