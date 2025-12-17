@@ -418,6 +418,7 @@ export class BookingsService {
       where: {
         student_id: stud.id,
         status: { not: 'archived' },
+        requested_end: { gt: new Date() }, // HIDE PAST SESSIONS
       },
       include: {
         subjects: true,
@@ -445,10 +446,12 @@ export class BookingsService {
     }
 
     console.log('[forTutor] Found tutor:', tutor.id);
+    const now = new Date();
     const bookings = await this.prisma.bookings.findMany({
       where: {
         assigned_tutor_id: tutor.id,
         status: { not: 'archived' },
+        requested_end: { gt: now }, // HIDE PAST SESSIONS
       },
       include: {
         subjects: true,
@@ -478,8 +481,14 @@ export class BookingsService {
       where: { parent_user_id: parentUserId },
     });
     const ids = students.map((s) => s.id);
+    // OPTIONAL: Do parents want to see history? Usually yes, but user request implies strict "expire" for "tutoring portal".
+    // Assuming Parent Dashboard behaves like Student Dashboard for consistency regarding "joining".
+    // But Admin said "booked session log must be visible only in the Admin dashboard", so let's hide for parents too.
     return this.prisma.bookings.findMany({
-      where: { student_id: { in: ids } },
+      where: {
+        student_id: { in: ids },
+        requested_end: { gt: new Date() }, // HIDE PAST SESSIONS
+      },
       include: {
         subjects: true,
         students: { select: { first_name: true, last_name: true } },

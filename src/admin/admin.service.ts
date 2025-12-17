@@ -90,7 +90,7 @@ export class AdminService {
                 hourly_rate_cents: tutor.hourly_rate_cents,
                 employment_type: tutor.employment_type,
                 is_active: tutor.is_active,
-                created_at: tutor.created_at ? tutor.created_at.toISOString() : null, // Sanitized
+                created_at: this.safeIso(tutor.created_at),
                 email: tutor.users.email,
                 first_name: tutor.users.first_name,
                 last_name: tutor.users.last_name,
@@ -272,9 +272,9 @@ export class AdminService {
                     : null),
             grade: student.grade,
             school: student.school,
-            birth_date: student.birth_date ? student.birth_date.toISOString() : null, // Sanitized
+            birth_date: this.safeIso(student.birth_date),
             curriculum: student.curricula?.name || null,
-            created_at: student.created_at ? student.created_at.toISOString() : null, // Sanitized
+            created_at: this.safeIso(student.created_at),
             parent: student.users_students_parent_user_idTousers
                 ? {
                     id: student.users_students_parent_user_idTousers.id,
@@ -368,23 +368,21 @@ export class AdminService {
                     grade: b.students.grade,
                     school: b.students.school,
                     // Serialize dates properly
-                    birth_date: b.students.birth_date ? b.students.birth_date.toISOString() : null,
-                    created_at: b.students.created_at ? b.students.created_at.toISOString() : null,
+                    birth_date: this.safeIso(b.students.birth_date),
+                    created_at: this.safeIso(b.students.created_at),
                     // Correctly place user inside student object
                     user: b.students.users_students_user_idTousers,
                 }
                 : null,
             subject: b.subjects, // Alias plural 'subjects' to singular 'subject'
             tutor: b.tutors, // Ensure tutor is accessible via 'tutor' if needed
-            requested_start: b.requested_start
-                ? b.requested_start.toISOString()
-                : null,
-            requested_end: b.requested_end ? b.requested_end.toISOString() : null,
-            created_at: b.created_at ? b.created_at.toISOString() : null,
+            requested_start: this.safeIso(b.requested_start),
+            requested_end: this.safeIso(b.requested_end),
+            created_at: this.safeIso(b.created_at),
             sessions: b.sessions.map((s) => ({
                 ...s,
-                start_time: s.start_time ? s.start_time.toISOString() : null,
-                end_time: s.end_time ? s.end_time.toISOString() : null,
+                start_time: this.safeIso(s.start_time),
+                end_time: this.safeIso(s.end_time),
             })),
         }));
         return {
@@ -609,5 +607,11 @@ export class AdminService {
                 },
             },
         };
+    }
+
+
+    private safeIso(d: Date | null | undefined): string | null {
+        if (!d || !(d instanceof Date) || isNaN(d.getTime())) return null;
+        return d.toISOString();
     }
 }
