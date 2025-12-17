@@ -7,10 +7,12 @@ import { EmailModule } from '../email/email.module.js';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { JitsiTokenService } from '../common/services/jitsi-token.service';
 
+import { BookingsCleanupService } from './bookings.cleanup.service.js';
+
 @Module({
   imports: [PrismaModule, EmailModule, NotificationsModule],
   controllers: [BookingsController],
-  providers: [BookingsService, JitsiTokenService],
+  providers: [BookingsService, JitsiTokenService, BookingsCleanupService],
   exports: [BookingsService],
 })
 export class BookingsModule { }

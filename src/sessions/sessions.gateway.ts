@@ -65,7 +65,8 @@ export class SessionsGateway
       return { success: true, message: 'Joined session successfully' };
     } catch (error) {
       this.logger.error(`Failed to join session: ${error.message}`);
-      // disconnect if unauthorized? For now just return failure
+      // Security: Disconnect unauthorized client
+      client.disconnect(true);
       return { success: false, error: error.message };
     }
   }

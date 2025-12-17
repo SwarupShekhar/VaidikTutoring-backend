@@ -415,7 +415,10 @@ export class BookingsService {
     });
     if (!stud) throw new NotFoundException('Student profile not found');
     return this.prisma.bookings.findMany({
-      where: { student_id: stud.id },
+      where: {
+        student_id: stud.id,
+        status: { not: 'archived' },
+      },
       include: {
         subjects: true,
         tutors: { include: { users: true } },
@@ -443,7 +446,10 @@ export class BookingsService {
 
     console.log('[forTutor] Found tutor:', tutor.id);
     const bookings = await this.prisma.bookings.findMany({
-      where: { assigned_tutor_id: tutor.id },
+      where: {
+        assigned_tutor_id: tutor.id,
+        status: { not: 'archived' },
+      },
       include: {
         subjects: true,
         students: { select: { first_name: true, last_name: true } },
