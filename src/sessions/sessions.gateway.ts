@@ -28,14 +28,13 @@ import { SessionsService } from './sessions.service';
   },
 })
 export class SessionsGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+  implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(SessionsGateway.name);
 
-  constructor(private sessionsService: SessionsService) {}
+  constructor(private sessionsService: SessionsService) { }
 
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`);
@@ -55,7 +54,7 @@ export class SessionsGateway
   ) {
     try {
       // Verify user has access to this session
-      await this.sessionsService['verifySessionAccess'](
+      await this.sessionsService.verifySessionAccess(
         data.sessionId,
         data.userId,
       );
@@ -66,6 +65,7 @@ export class SessionsGateway
       return { success: true, message: 'Joined session successfully' };
     } catch (error) {
       this.logger.error(`Failed to join session: ${error.message}`);
+      // disconnect if unauthorized? For now just return failure
       return { success: false, error: error.message };
     }
   }
@@ -89,19 +89,26 @@ export class SessionsGateway
   @SubscribeMessage('sendMessage')
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { sessionId: string; userId: string; text: string },
+    @MessageBody() payload: { sessionId: string; text: string; senderName: string; senderId: string },
   ) {
     try {
-      const message = await this.sessionsService.postMessage(
-        data.sessionId,
-        data.userId,
-        data.text,
+      // 1. Save message to Database (Optional but recommended for history)
+      // Note: postMessage expects userId, text. We use senderId from payload.
+      await this.sessionsService.postMessage(
+        payload.sessionId,
+        payload.senderId,
+        payload.text,
       );
 
-      // Broadcast to all clients in the session room
-      this.server.to(`session-${data.sessionId}`).emit('newMessage', message);
+      // 2. Broadcast to everyone in the room EXCEPT sender (client side handles 'me')
+      client.broadcast.to(`session-${payload.sessionId}`).emit('receiveMessage', {
+        text: payload.text,
+        senderName: payload.senderName,
+        senderId: payload.senderId,
+        timestamp: new Date(),
+      });
 
-      return { success: true, message };
+      return { success: true };
     } catch (error) {
       this.logger.error(`Failed to send message: ${error.message}`);
       return { success: false, error: error.message };

@@ -467,7 +467,7 @@ export class SessionsService {
    * - The student themselves
    * - The assigned tutor
    */
-  private async verifySessionAccess(sessionId: string, userId: string) {
+  public async verifySessionAccess(sessionId: string, userId: string) {
     const session = await this.prisma.sessions.findUnique({
       where: { id: sessionId },
       include: {
