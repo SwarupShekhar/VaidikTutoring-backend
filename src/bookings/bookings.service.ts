@@ -13,7 +13,6 @@ import { EmailService } from '../email/email.service';
 import { subMinutes } from 'date-fns';
 
 import { NotificationsService } from '../notifications/notifications.service';
-import { JitsiTokenService } from '../common/services/jitsi-token.service';
 
 @Injectable()
 export class BookingsService {
@@ -23,7 +22,6 @@ export class BookingsService {
     private prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly notificationsService: NotificationsService,
-    private readonly jitsiTokenService: JitsiTokenService,
   ) { }
 
   // Create booking and attempt auto-assign tutor
@@ -583,42 +581,9 @@ export class BookingsService {
     const isAdmin = user.role === 'admin';
 
     const session = booking.sessions?.[0]; // Get the latest session
-    let jitsiToken: string | null = null;
-
-    if (session) {
-      try {
-        // Fetch full user details to ensure we have name/email for the token
-        const fullUser = await this.prisma.users.findUnique({
-          where: { id: user.userId },
-        });
-
-        if (fullUser) {
-          const isTeacher = user.role === 'tutor' || user.role === 'admin';
-          jitsiToken = this.jitsiTokenService.generateToken(
-            fullUser.id,
-            `${fullUser.first_name || ''} ${fullUser.last_name || ''}`.trim(),
-            fullUser.email || '',
-            '',
-            `k12-${booking.id}`,
-            isTeacher,
-          );
-        } else {
-          this.logger.warn(`User ${user.userId} not found during token generation`);
-        }
-      } catch (error) {
-        this.logger.error(`Failed to generate Jitsi token for booking ${bookingId}`, error);
-        // Do not crash the request; just return null logic
-      }
-    }
-
     return {
       ...booking,
-      jitsi_token: jitsiToken,
-      // Map session token if needed directly on session object too
-      sessions: booking.sessions.map((s) => ({
-        ...s,
-        jitsi_token: jitsiToken,
-      })),
+      // Removed jitsi_token
     };
   }
 }

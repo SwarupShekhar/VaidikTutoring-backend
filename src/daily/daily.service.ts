@@ -24,7 +24,7 @@ export class DailyService {
                             privacy: 'private',
                             properties: {
                                 enable_screenshare: true,
-                                enable_chat: true,
+                                enable_chat: false,
                                 exp: Math.floor(Date.now() / 1000) + 7200
                             }
                         },

@@ -138,16 +138,3 @@ export class SessionsController {
   }
 }
 
-// Compatibility Controller for frontend using singular 'session'
-@Controller('session')
-export class LegacySessionController {
-  constructor(private readonly sessionsService: SessionsService) { }
-
-  @UseGuards(JwtAuthGuard)
-  @Get(':id/token')
-  async getToken(@Param('id') id: string, @Req() req: any) {
-    // Maps /session/:id/token -> service logic
-    const token = await this.sessionsService.generateTokenForSession(id, req.user.userId);
-    return { token };
-  }
-}

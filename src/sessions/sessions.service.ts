@@ -10,7 +10,6 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { JwtService } from '@nestjs/jwt';
-import { JitsiTokenService } from '../common/services/jitsi-token.service';
 
 @Injectable()
 export class SessionsService {
@@ -20,7 +19,6 @@ export class SessionsService {
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly jwtService: JwtService,
-    private readonly jitsiTokenService: JitsiTokenService,
   ) { }
 
   async create(dto: any) {
@@ -41,7 +39,7 @@ export class SessionsService {
         end_time: dto.end_time
           ? new Date(dto.end_time)
           : (booking.requested_end ?? new Date(Date.now() + 60 * 60 * 1000)),
-        meet_link: dto.meet_link ?? `https://meet.jit.si/k12-${booking.id}`,
+        meet_link: dto.meet_link ?? null, // Default to null, will be populated by Daily.co later or manually
         whiteboard_link: dto.whiteboard_link ?? null,
         status: dto.status ?? 'scheduled',
       },
@@ -167,28 +165,7 @@ export class SessionsService {
       },
     });
 
-    // Append Jitsi JWT for each session based on the current user
-    return sessions.map((session) => {
-      let token: string | null = null;
-      try {
-        const isTeacher = user.role === 'tutor' || user.role === 'admin';
-        token = this.jitsiTokenService.generateToken(
-          user.id,
-          `${user.first_name} ${user.last_name}`,
-          user.email,
-          '', // avatar
-          `k12-${session.bookings?.id || session.id}`, // Room name MUST match the URL structure
-          isTeacher, // Tutor/Admin = Moderator
-        );
-      } catch (e) {
-        this.logger.error(`Failed to generate Jitsi token for session ${session.id}`, e);
-      }
-
-      return {
-        ...session,
-        jitsi_token: token,
-      };
-    });
+    return sessions;
   }
 
   private toIcsDate(d: Date) {
@@ -508,38 +485,4 @@ export class SessionsService {
     return true;
   }
 
-  async generateTokenForSession(sessionId: string, userId: string) {
-    try {
-      await this.verifySessionAccess(sessionId, userId);
-
-      const session = await this.prisma.sessions.findUnique({
-        where: { id: sessionId },
-        include: { bookings: true },
-      });
-
-      if (!session) throw new NotFoundException('Session not found');
-
-      const user = await this.prisma.users.findUnique({ where: { id: userId } });
-      if (!user) throw new NotFoundException('User not found');
-
-      const isTeacher = user.role === 'tutor' || user.role === 'admin';
-
-      const token = this.jitsiTokenService.generateToken(
-        user.id,
-        `${user.first_name || ''} ${user.last_name || ''}`.trim(),
-        user.email || '',
-        '',
-        `k12-${session.bookings?.id || session.id}`,
-        isTeacher
-      );
-
-      return token;
-    } catch (error) {
-      this.logger.error(`Error generating token for session ${sessionId} user ${userId}`, error);
-      if (error instanceof ForbiddenException || error instanceof NotFoundException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Failed to generate session token');
-    }
-  }
 }
