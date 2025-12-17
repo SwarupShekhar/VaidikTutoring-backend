@@ -425,11 +425,14 @@ export class BookingsService {
   }
 
   // get bookings for tutor
+  // get bookings for tutor
   async forTutor(tutorUserId: string) {
     console.log('[forTutor] Looking up tutor with user_id:', tutorUserId);
+    // FIX: Find tutor by user_id
     const tutor = await this.prisma.tutors.findFirst({
       where: { user_id: tutorUserId },
     });
+
     if (!tutor) {
       console.log(
         '[forTutor] Tutor profile not found for user_id:',
@@ -437,6 +440,7 @@ export class BookingsService {
       );
       throw new NotFoundException('Tutor profile not found');
     }
+
     console.log('[forTutor] Found tutor:', tutor.id);
     const bookings = await this.prisma.bookings.findMany({
       where: { assigned_tutor_id: tutor.id },
@@ -446,9 +450,14 @@ export class BookingsService {
         tutors: {
           include: { users: { select: { first_name: true, last_name: true } } },
         },
+        sessions: {
+          orderBy: { start_time: 'desc' },
+          take: 1
+        }
       },
       orderBy: { requested_start: 'desc' },
     });
+
     console.log(
       '[forTutor] Found',
       bookings.length,
@@ -477,7 +486,7 @@ export class BookingsService {
   }
 
   // Get available (unclaimed) bookings for a tutor
-  // Filter by: unclaimed, future start time
+  // Filter by: unclaimed, future start time, AND matching subject skills
   async getAvailableForTutor(tutorUserId: string) {
     // Get tutor profile to potentially filter by skills
     const tutor = await this.prisma.tutors.findFirst({
@@ -487,12 +496,18 @@ export class BookingsService {
 
     const now = new Date();
 
-    // Return all unclaimed, future bookings
+    // Parse skills to get subjects
+    const skills = tutor.skills as any;
+    const tutorSubjects = skills?.subjects || [];
+
+    // Return all unclaimed, future bookings matching subjects
     return this.prisma.bookings.findMany({
       where: {
         assigned_tutor_id: null,
         status: { in: ['requested', 'open'] },
         requested_start: { gt: now }, // Only future sessions
+        // Filter by subject if tutor has specific subjects
+        ...(tutorSubjects.length > 0 ? { subject_id: { in: tutorSubjects } } : {})
       },
       include: {
         subjects: true,

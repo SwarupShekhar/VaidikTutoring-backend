@@ -415,7 +415,8 @@ export class AdminService {
         }
 
         // Verify tutor exists
-        const tutor = await this.prisma.tutors.findUnique({
+        // FIX: Admin might send User ID instead of Tutor ID. We check both.
+        let tutor = await this.prisma.tutors.findUnique({
             where: { id: tutorId },
             include: {
                 users: {
@@ -429,23 +430,34 @@ export class AdminService {
             },
         });
 
+        if (!tutor) {
+            console.log('[allocateTutor] Tutor not found by ID, checking by User ID:', tutorId);
+            tutor = await this.prisma.tutors.findFirst({
+                where: { user_id: tutorId },
+                include: {
+                    users: {
+                        select: {
+                            id: true,
+                            email: true,
+                            first_name: true,
+                            last_name: true,
+                        },
+                    },
+                },
+            });
+        }
+
         if (!tutor || !tutor.is_active) {
             throw new BadRequestException('Tutor not found or inactive');
         }
 
         // Verify subject exists (by ID or name)
-        console.log('[allocateTutor] Looking up subject with ID/Name:', subjectId);
         let subject = await this.prisma.subjects.findUnique({
             where: { id: subjectId },
         });
-        console.log(
-            '[allocateTutor] Subject found by ID:',
-            subject ? subject.id : 'NOT FOUND',
-        );
 
         // If not found by ID, try by name (case-insensitive)
         if (!subject) {
-            console.log('[allocateTutor] Not found by ID, trying by exact name...');
             subject = await this.prisma.subjects.findFirst({
                 where: {
                     name: {
@@ -454,17 +466,10 @@ export class AdminService {
                     },
                 },
             });
-            console.log(
-                '[allocateTutor] Subject found by exact name:',
-                subject ? subject.id : 'NOT FOUND',
-            );
         }
 
-        // If still not found, try partial match (e.g., "chemistry" matches "Science (Chemistry)")
+        // If still not found, try partial match
         if (!subject) {
-            console.log(
-                '[allocateTutor] Not found by exact name, trying partial match...',
-            );
             subject = await this.prisma.subjects.findFirst({
                 where: {
                     name: {
@@ -473,10 +478,6 @@ export class AdminService {
                     },
                 },
             });
-            console.log(
-                '[allocateTutor] Subject found by partial match:',
-                subject ? subject.id : 'NOT FOUND',
-            );
         }
 
         if (!subject) {
@@ -500,7 +501,7 @@ export class AdminService {
             allocation = await this.prisma.bookings.update({
                 where: { id: existingBooking.id },
                 data: {
-                    assigned_tutor_id: tutorId,
+                    assigned_tutor_id: tutor.id, // Use the Tutor ID (UUID)
                     status: 'confirmed',
                     note: existingBooking.note
                         ? `${existingBooking.note}\n\nAllocated by admin to ${tutor.users.first_name} ${tutor.users.last_name || ''}`
@@ -544,7 +545,7 @@ export class AdminService {
             allocation = await this.prisma.bookings.create({
                 data: {
                     student_id: studentId,
-                    assigned_tutor_id: tutorId,
+                    assigned_tutor_id: tutor.id,
                     subject_id: subject.id,
                     status: 'confirmed',
                     requested_start: tomorrow,
@@ -563,8 +564,6 @@ export class AdminService {
                     meet_link: `https://meet.jit.si/k12-${allocation.id}`,
                 },
             });
-
-            console.log('[allocateTutor] Created new booking:', allocation.id);
         }
 
         // Send notification email to tutor

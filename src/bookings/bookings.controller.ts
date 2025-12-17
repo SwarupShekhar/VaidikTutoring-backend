@@ -17,7 +17,7 @@ import { RolesGuard } from '../common/guards/roles.guard.js';
 
 @Controller('bookings')
 export class BookingsController {
-  constructor(private readonly svc: BookingsService) {}
+  constructor(private readonly svc: BookingsService) { }
 
   // Student/Parent creates a booking
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -55,7 +55,7 @@ export class BookingsController {
     return this.svc.forParent(req.user.userId);
   }
 
-  // Tutor fetch assigned bookings
+  // Tutor fetch assigned bookings (Legacy /bookings/tutor)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   @Get('tutor')
@@ -63,12 +63,46 @@ export class BookingsController {
     return this.svc.forTutor(req.user.userId);
   }
 
+  // NEW: Tutor Dashboard Endpoints (Match specific requirements)
+  // Path: /bookings/tutor/bookings
+  @Get('tutor/bookings')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  async getTutorBookings(@Req() req) {
+    const bookings = await this.svc.forTutor(req.user.userId);
+
+    // Transform to match frontend expectations
+    return bookings.map(b => ({
+      id: b.id,
+      start_time: b.sessions?.[0]?.start_time || b.requested_start,
+      end_time: b.sessions?.[0]?.end_time || b.requested_end,
+      date: b.sessions?.[0]?.start_time || b.requested_start, // Alias for compatibility
+      status: b.status,
+      subject_name: b.subjects?.name || 'Unknown Subject',
+      child_name: b.students ? `${b.students.first_name} ${b.students.last_name || ''}`.trim() : 'Unknown Student',
+      student_id: b.student_id,
+      note: b.note,
+      meet_link: b.sessions?.[0]?.meet_link
+    }));
+  }
+
   // Tutor: get available (unclaimed) bookings
+  // Path: /bookings/available
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   @Get('available')
   async availableBookings(@Req() req) {
-    return this.svc.getAvailableForTutor(req.user.userId);
+    // This was previously defined but let's update it to match the requested format if needed
+    const available = await this.svc.getAvailableForTutor(req.user.userId);
+
+    // Transform for "Available Jobs" view
+    return available.map(b => ({
+      id: b.id,
+      subject_name: b.subjects?.name,
+      requested_start: b.requested_start,
+      student_name: b.students ? `${b.students.first_name} ${b.students.last_name || ''}`.trim() : 'Unknown Student',
+      note: b.note
+    }));
   }
 
   // Admin: reassign a booking to a tutor
