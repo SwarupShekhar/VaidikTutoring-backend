@@ -12,8 +12,10 @@ export class NotificationsGateway implements OnGatewayConnection {
 
     @SubscribeMessage('join_personal_room')
     handleJoinRoom(client: Socket, payload: { userId: string }) {
-        client.join(`user-${payload.userId}`);
-        console.log(`User ${payload.userId} joined room user-${payload.userId}`);
+        if (payload.userId) {
+            client.join(`user-${payload.userId}`);
+            console.log(`User ${payload.userId} joined notification room: user-${payload.userId}`);
+        }
     }
 
     // Call this method from your BookingsService
