@@ -3,8 +3,10 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   UseGuards,
   Req,
+  Param,
   HttpCode,
   HttpStatus,
   UnauthorizedException,
@@ -182,6 +184,20 @@ export class AdminController {
       );
     } catch (e) {
       console.error('POST /admin/allocations failed:', e);
+      throw e;
+    }
+  }
+
+  @Delete('tutors/:id')
+  async removeTutor(@Req() req: Request, @Param('id') id: string) {
+    try {
+      const actor = (req as any).user;
+      if (!actor || actor.role !== 'admin') {
+        throw new UnauthorizedException('Only admins can delete tutors.');
+      }
+      return await this.adminService.removeTutor(id);
+    } catch (e) {
+      console.error('DELETE /admin/tutors/:id failed:', e);
       throw e;
     }
   }

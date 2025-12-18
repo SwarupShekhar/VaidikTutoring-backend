@@ -610,6 +610,35 @@ export class AdminService {
     }
 
 
+    async removeTutor(tutorId: string) {
+        const tutor = await this.prisma.tutors.findUnique({
+            where: { id: tutorId },
+        });
+
+        if (!tutor) {
+            throw new BadRequestException('Tutor not found');
+        }
+
+        // 1. Unassign all bookings
+        // We set them back to 'requested' so they can be re-allocated
+        await this.prisma.bookings.updateMany({
+            where: { assigned_tutor_id: tutorId },
+            data: {
+                assigned_tutor_id: null,
+                status: 'requested',
+                note: 'Tutor was removed by admin. Please re-assign.',
+            },
+        });
+
+        // 2. Delete the User (Cascades to Tutor profile, Shifts, etc.)
+        // We delete the USER record to fully remove credentials
+        await this.prisma.users.delete({
+            where: { id: tutor.user_id },
+        });
+
+        return { success: true, message: 'Tutor deleted successfully' };
+    }
+
     private safeIso(d: Date | null | undefined): string | null {
         if (!d || !(d instanceof Date) || isNaN(d.getTime())) return null;
         return d.toISOString();
