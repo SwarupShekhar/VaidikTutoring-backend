@@ -22,38 +22,12 @@ export class NotificationsService {
       },
     });
 
-    // 2. Emit Real-time Event
-    // Map internal types to frontend socket events
-    if (type === 'session_assigned' || type === 'session_allocated') {
-      // For Tutor/Student
-      this.gateway.notifyUser(userId, 'booking:allocated', {
-        ...payload,
-        notificationId: saved.id,
-      });
-    } else if (type === 'session_confirmed') {
-      // For Student
-      this.gateway.notifyUser(userId, 'booking:allocated', {
-        ...payload,
-        notificationId: saved.id,
-      });
-    } else if (type === 'booking_created' || type === 'admin_alert') {
-      // For Admin (if userId is generic or we just want to broadcast)
-      // Usually admins also have userIds, but creating for specific admin userId vs broadcast is different.
-      // If userId is passed, notify that user.
-      this.gateway.notifyUser(userId, 'booking:created', {
-        ...payload,
-        notificationId: saved.id,
-      });
-    }
-
+    // 2. Emit Real-time Event - DEPRECATED/MOVED
+    // The new Gateway implementation uses specific methods called explicitly by services.
+    // We only save to DB here.
     return saved;
   }
 
-  // Helper to broadcast to all admins (if not bound to a single user in DB)
-  async notifyAdmins(type: string, payload: any) {
-    this.gateway.notifyAdmins(type, payload);
-    // Optionally save to DB for a generic admin user or skipping DB for broadcast
-  }
 
   async findAll(userId: string) {
     return this.prisma.notifications.findMany({
@@ -74,5 +48,17 @@ export class NotificationsService {
       where: { id },
       data: { is_read: true },
     });
+  }
+  async notifyAdminBooking(studentName: string) {
+    // Wrapper for gateway method
+    this.gateway.notifyAdminBooking(studentName);
+  }
+
+  async notifyStudentAllocation(userId: string, tutorName: string) {
+    this.gateway.notifyStudentAllocation(userId, tutorName);
+  }
+
+  async notifyTutorAllocation(userId: string, studentName: string, scheduledTime: string) {
+    this.gateway.notifyTutorAllocation(userId, studentName, scheduledTime);
   }
 }

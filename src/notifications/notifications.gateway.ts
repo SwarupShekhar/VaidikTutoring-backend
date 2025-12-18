@@ -1,71 +1,31 @@
-import {
-    WebSocketGateway,
-    WebSocketServer,
-    OnGatewayConnection,
-    OnGatewayDisconnect,
-    SubscribeMessage,
-    MessageBody,
-    ConnectedSocket,
-} from '@nestjs/websockets';
+import { WebSocketGateway, WebSocketServer, SubscribeMessage, OnGatewayConnection } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
 
-@WebSocketGateway({
-    namespace: 'notifications',
-    cors: {
-        origin: '*', // Configure for production
-        credentials: true,
-    },
-})
-export class NotificationsGateway
-    implements OnGatewayConnection, OnGatewayDisconnect {
+@WebSocketGateway({ cors: { origin: '*' } }) // Root namespace
+export class NotificationsGateway implements OnGatewayConnection {
     @WebSocketServer()
     server: Server;
 
-    private readonly logger = new Logger(NotificationsGateway.name);
-
     handleConnection(client: Socket) {
-        this.logger.log(`Notification Client connected: ${client.id}`);
+        console.log('Client connected to notifications:', client.id);
     }
 
-    handleDisconnect(client: Socket) {
-        this.logger.log(`Notification Client disconnected: ${client.id}`);
+    @SubscribeMessage('join_personal_room')
+    handleJoinRoom(client: Socket, payload: { userId: string }) {
+        client.join(`user-${payload.userId}`);
+        console.log(`User ${payload.userId} joined room user-${payload.userId}`);
     }
 
-    /**
-     * Client joins their personal room or admin room
-     * Expected data: { userId: string, role: string }
-     */
-    @SubscribeMessage('joinParams')
-    handleJoinParams(
-        @ConnectedSocket() client: Socket,
-        @MessageBody() data: { userId: string; role: string },
-    ) {
-        if (data.userId) {
-            const userRoom = `user-${data.userId}`;
-            client.join(userRoom);
-            this.logger.log(`Client ${client.id} joined ${userRoom}`);
-        }
-
-        if (data.role === 'admin') {
-            client.join('admin');
-            this.logger.log(`Client ${client.id} joined admin room`);
-        }
-
-        return { success: true };
+    // Call this method from your BookingsService
+    notifyAdminBooking(studentName: string) {
+        this.server.emit('booking:created', { studentName });
     }
 
-    /**
-     * Emit event to a specific user
-     */
-    notifyUser(userId: string, event: string, payload: any) {
-        this.server.to(`user-${userId}`).emit(event, payload);
+    notifyStudentAllocation(userId: string, tutorName: string) {
+        this.server.to(`user-${userId}`).emit('booking:allocated', { tutorName });
     }
 
-    /**
-     * Emit event to all admins
-     */
-    notifyAdmins(event: string, payload: any) {
-        this.server.to('admin').emit(event, payload);
+    notifyTutorAllocation(userId: string, studentName: string, scheduledTime: string) {
+        this.server.to(`user-${userId}`).emit('booking:assigned_to_me', { studentName, scheduledTime });
     }
 }

@@ -144,12 +144,7 @@ export class BookingsService {
       );
 
       // Notify Admins
-      await this.notificationsService.notifyAdmins('booking:created', {
-        studentName: user.first_name || 'A Student',
-        bookingId: booking.id,
-        subjectName: subject.name,
-        message: `${user.first_name || 'Student'} just booked a session for ${subject.name}`,
-      });
+      this.notificationsService.notifyAdminBooking(user.first_name || 'Student');
     }
 
     return createdBookings;
@@ -258,6 +253,12 @@ export class BookingsService {
         startTime: booking.requested_start,
       },
     );
+    // Real-time (User Spec)
+    this.notificationsService.notifyTutorAllocation(
+      chosenTutor.user_id,
+      booking.student_id ? 'Student' : 'A Student', // We might need to fetch student name if not here
+      booking.requested_start ? booking.requested_start.toString() : 'Scheduled Time'
+    );
 
     // Student Notification
     if (booking.student_id) {
@@ -274,6 +275,8 @@ export class BookingsService {
             tutorName: chosenTutor.users.first_name,
           },
         );
+        // Real-time (User Spec)
+        this.notificationsService.notifyStudentAllocation(student.user_id, chosenTutor.users.first_name || 'Tutor');
       }
     }
 
