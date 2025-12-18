@@ -142,6 +142,14 @@ export class BookingsService {
           },
         }),
       );
+
+      // Notify Admins
+      await this.notificationsService.notifyAdmins('booking:created', {
+        studentName: user.first_name || 'A Student',
+        bookingId: booking.id,
+        subjectName: subject.name,
+        message: `${user.first_name || 'Student'} just booked a session for ${subject.name}`,
+      });
     }
 
     return createdBookings;

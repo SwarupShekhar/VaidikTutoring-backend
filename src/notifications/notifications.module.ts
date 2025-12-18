@@ -4,11 +4,12 @@ import { EmailModule } from '../email/email.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
+import { NotificationsGateway } from './notifications.gateway';
 
 @Module({
   imports: [EmailModule, PrismaModule],
   controllers: [NotificationsController],
-  providers: [RemindersService, NotificationsService],
-  exports: [RemindersService, NotificationsService],
+  providers: [RemindersService, NotificationsService, NotificationsGateway],
+  exports: [RemindersService, NotificationsService, NotificationsGateway],
 })
-export class NotificationsModule {}
+export class NotificationsModule { }
