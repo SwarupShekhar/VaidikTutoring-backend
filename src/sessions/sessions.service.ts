@@ -466,6 +466,40 @@ export class SessionsService {
       throw new NotFoundException('Booking not found for this session');
     }
 
+    return this.checkBookingAccess(booking, userId);
+  }
+
+  /**
+   * Verifies access for an ID that could be a Session ID OR a Booking ID.
+   * Useful for connection tokens where the frontend might send either.
+   */
+  public async verifySessionOrBookingAccess(id: string, userId: string) {
+    // 1. Try as Session ID
+    const session = await this.prisma.sessions.findUnique({
+      where: { id },
+      include: { bookings: { include: { students: true, tutors: true } } },
+    });
+
+    if (session) {
+      if (!session.bookings) throw new NotFoundException('Booking data missing');
+      return this.checkBookingAccess(session.bookings, userId);
+    }
+
+    // 2. Try as Booking ID
+    const booking = await this.prisma.bookings.findUnique({
+      where: { id },
+      include: { students: true, tutors: true },
+    });
+
+    if (booking) {
+      return this.checkBookingAccess(booking, userId);
+    }
+
+    // 3. Neither found
+    throw new NotFoundException('Session or Booking not found');
+  }
+
+  private checkBookingAccess(booking: any, userId: string): boolean {
     const student = booking.students;
     const tutor = booking.tutors;
 
@@ -478,7 +512,18 @@ export class SessionsService {
     // Check if user is the tutor
     const isTutor = tutor?.user_id === userId;
 
+    // Check if user is admin (optional, handled by Guards usually but safe to add)
+    // We don't have easy role check here without fetching User, assuming Guard handled Role.
+    // Actually, Admin needs access too.
+    // If the caller needs Admin check, they should handle it.
+    // But for safety, strict ownership is better.
+    // Let's rely on the calling Controller Guard for Admin bypass if needed.
+    // But wait, if an Admin calls this, it will fail 403.
+    // So we should realistically check if the user is an Admin?
+    // The previous verifySessionAccess didn't check for Admin.
+
     if (!isParent && !isStudent && !isTutor) {
+      // Allow passing for now, or throw? The original code threw Forbidden.
       throw new ForbiddenException('Access denied to this session');
     }
 

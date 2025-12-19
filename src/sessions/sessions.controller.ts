@@ -114,6 +114,23 @@ export class SessionsController {
   async getDailyToken(@Param('id') sessionId: string, @Req() req: any) {
     const user = req.user;
 
+    // VALIDATION: Ensure session/booking exists and user has access
+    // This prevents generating tokens for deleted bookings or unauthorized access
+    // Pass user.role === 'admin' logic if admin should always have access?
+    // Current helper checks specific ownership.
+    if (user.role !== 'admin') {
+      await this.sessionsService.verifySessionOrBookingAccess(sessionId, user.userId);
+    } else {
+      // Admin: just check existence
+      try {
+        await this.sessionsService.verifySessionOrBookingAccess(sessionId, user.userId);
+      } catch (e) {
+        // If 403, ignore for admin. If 404, throw.
+        if (e instanceof Error && e.message.includes('not found')) throw e;
+        // If 403 Forbidden, Admin overrides it.
+      }
+    }
+
     // Create or get Daily.co room
     const room = await this.dailyService.createRoom(sessionId);
 
