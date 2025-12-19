@@ -7,8 +7,10 @@ export class EmailService {
   private logger = new Logger(EmailService.name);
 
   constructor() {
-    this.resend = new Resend(process.env.RESEND_API_KEY);
-    if (!process.env.RESEND_API_KEY) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (apiKey) {
+      this.resend = new Resend(apiKey);
+    } else {
       this.logger.warn('RESEND_API_KEY is not set. Emails will fail.');
     }
   }
@@ -27,6 +29,13 @@ export class EmailService {
   }) {
     const from = opts.from || process.env.EMAIL_FROM || 'onboarding@resend.dev';
     const to = Array.isArray(opts.to) ? opts.to : [opts.to];
+
+    if (!this.resend) {
+      this.logger.error('Cannot send email: RESEND_API_KEY is missing.');
+      // Don't throw if you want the app to stay alive, but typically email failure should throw?
+      // Let's log and throw a nicer error.
+      throw new Error('RESEND_API_KEY is missing');
+    }
 
     try {
       const data = await this.resend.emails.send({
