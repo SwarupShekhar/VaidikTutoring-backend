@@ -17,6 +17,7 @@ import { CatalogModule } from './catalog/catalog.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { BlogsModule } from './blogs/blogs.module.js';
+import { ParentModule } from './parent/parent.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { BlogsModule } from './blogs/blogs.module.js';
     NotificationsModule,
     AdminModule,
     BlogsModule,
+    ParentModule,
   ],
   controllers: [AppController],
   providers: [AppService],

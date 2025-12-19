@@ -52,16 +52,38 @@ export class BookingsService {
       } else {
         finalStudentId = existingStudent.id;
       }
+    } else if (user.role === 'parent') {
+      // 1. If parent, student_id is required
+      if (!finalStudentId) {
+        throw new BadRequestException('student_id is required for parent booking');
+      }
+
+      // 2. Validate student exists
+      const student = await this.prisma.students.findUnique({
+        where: { id: finalStudentId },
+      });
+
+      if (!student) {
+        throw new NotFoundException('Student profile not found');
+      }
+
+      // 3. SECURITY: Ensure this parent owns this student
+      // Check both old link (parent_user_id) AND potentially new link via User table if needed.
+      // Current schema migration added parent_id to User, but student profile has parent_user_id.
+      // We rely on `parent_user_id` in Students table as primary link for now (synced).
+      if (student.parent_user_id !== user.userId) {
+        throw new ForbiddenException('You can only book for your own children');
+      }
     } else {
-      // For parents, validate the passed student_id exists
+      // Admin or other roles? Restricted to Student/Parent/Admin usually.
+      // If Admin, they can book for anyone?
+      if (user.role !== 'admin') {
+        // Fallback validation
+      }
       const studentExists = await this.prisma.students.findUnique({
         where: { id: finalStudentId },
       });
-      if (!studentExists) {
-        throw new NotFoundException(
-          'Student profile not found for the provided ID',
-        );
-      }
+      if (!studentExists) throw new NotFoundException('Student not found');
     }
 
     const pkg = await this.prisma.packages.findUnique({
@@ -158,7 +180,10 @@ export class BookingsService {
   async autoAssignTutor(booking: any) {
     // 1. Fetch ALL active tutors with their skills
     const tutors = await this.prisma.tutors.findMany({
-      where: { is_active: true },
+      where: {
+        is_active: true,
+        tutor_approved: true // Only approved tutors can be auto-assigned
+      },
       include: { users: true },
     });
 
@@ -517,6 +542,7 @@ export class BookingsService {
       where: { user_id: tutorUserId },
     });
     if (!tutor) throw new NotFoundException('Tutor profile not found');
+    if (!tutor.tutor_approved) throw new ForbiddenException('Your tutor account is pending approval.');
 
     const now = new Date();
 

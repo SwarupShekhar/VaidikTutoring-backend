@@ -7,11 +7,13 @@ import {
 } from '@nestjs/common';
 import { BookingsService } from '../bookings/bookings.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { EmailVerifiedGuard } from '../auth/email-verified.guard';
+import { TutorStatusGuard } from '../auth/tutor-status.guard';
 
 @Controller('tutor')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
 export class TutorsController {
-  constructor(private readonly bookingsService: BookingsService) {}
+  constructor(private readonly bookingsService: BookingsService) { }
 
   @Get('bookings')
   async getBookings(@Req() req: any) {

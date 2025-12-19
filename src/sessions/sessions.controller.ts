@@ -18,6 +18,9 @@ import { DailyService } from '../daily/daily.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UploadRecordingDto } from './dto/upload-recording.dto';
 import { Response } from 'express';
+import { EmailVerifiedGuard } from '../auth/email-verified.guard';
+import { PasswordChangeGuard } from '../auth/password-change.guard';
+import { TutorStatusGuard } from '../auth/tutor-status.guard';
 
 @Controller('sessions')
 export class SessionsController {
@@ -27,7 +30,7 @@ export class SessionsController {
   ) { }
 
   // Create a session (basic)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
   @Post('create')
   create(@Body() dto: any) {
     return this.sessionsService.create(dto);
@@ -106,7 +109,7 @@ export class SessionsController {
 
 
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
   @Get(':id/daily-token')
   async getDailyToken(@Param('id') sessionId: string, @Req() req: any) {
     const user = req.user;

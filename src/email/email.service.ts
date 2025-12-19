@@ -84,4 +84,20 @@ export class EmailService {
       ],
     });
   }
+  async sendVerificationEmail(to: string, token: string) {
+    const verificationUrl = process.env.FRONTEND_URL
+      ? `${process.env.FRONTEND_URL}/verify-email?token=${token}`
+      : `http://localhost:3000/verify-email?token=${token}`;
+
+    return this.sendMail({
+      to,
+      subject: 'Verify your email - K12 Tutoring',
+      html: `
+        <h1>Welcome to K12 Tutoring!</h1>
+        <p>Please click the link below to verify your email address:</p>
+        <p><a href="${verificationUrl}">${verificationUrl}</a></p>
+        <p>This link will expire in 24 hours.</p>
+      `,
+    });
+  }
 }

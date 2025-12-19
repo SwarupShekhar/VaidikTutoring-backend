@@ -264,6 +264,8 @@ model tutors {
   hourly_rate_cents Int?
   employment_type   String?
   is_active         Boolean?       @default(true)
+  tutor_approved    Boolean        @default(false)
+  tutor_review_notes String?
   created_at        DateTime?      @default(now()) @db.Timestamptz(6)
   bookings          bookings[]
   tutor_shifts      tutor_shifts[]
@@ -283,17 +285,38 @@ model users {
   phone                                   String?
   timezone                                String?         @default("UTC")
   is_active                               Boolean?        @default(true)
+  email_verified                          Boolean         @default(false)
+  force_password_change                   Boolean         @default(false)
+  email_verification_token                String?
+  email_verification_expires              DateTime?       @db.Timestamptz(6)
+  tutor_invite_token                      String?
+  tutor_invite_expires                    DateTime?       @db.Timestamptz(6)
   created_at                              DateTime?       @default(now()) @db.Timestamptz(6)
   assessments                             assessments[]
   audit_logs                              audit_logs[]
   notifications                           notifications[]
   purchases                               purchases[]
-  students_students_parent_user_idTousers students[]           @relation("students_parent_user_idTousers")
-  students_students_user_idTousers        students[]           @relation("students_user_idTousers")
+  students_students_parent_user_idTousers students[]      @relation("students_parent_user_idTousers")
+  students_students_user_idTousers        students[]      @relation("students_user_idTousers")
   tutors                                  tutors[]
   session_messages                        session_messages[]
   session_recordings                      session_recordings[]
   blogs                                   blogs[]
+  
+  // Parent-Student Relationship
+  parent_id                               String?         @db.Uuid
+  parent                                  users?          @relation("ParentChildren", fields: [parent_id], references: [id])
+  children                                users[]         @relation("ParentChildren")
+
+  // Tutor Status
+  tutor_status                            TutorStatus     @default(ACTIVE)
+
+  @@schema("app")
+}
+
+enum TutorStatus {
+  ACTIVE
+  SUSPENDED
 
   @@schema("app")
 }

@@ -201,4 +201,18 @@ export class AdminController {
       throw e;
     }
   }
+
+  @Post('tutors/:id/suspend')
+  async suspendTutor(@Req() req: Request, @Param('id') id: string, @Body('reason') reason?: string) {
+    const actor = (req as any).user;
+    if (!actor || actor.role !== 'admin') throw new UnauthorizedException('Admin only');
+    return this.adminService.suspendTutor(id, reason);
+  }
+
+  @Post('tutors/:id/activate')
+  async activateTutor(@Req() req: Request, @Param('id') id: string) {
+    const actor = (req as any).user;
+    if (!actor || actor.role !== 'admin') throw new UnauthorizedException('Admin only');
+    return this.adminService.activateTutor(id);
+  }
 }

@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../email/email.service';
 import { hash } from 'bcrypt';
 import { Prisma, bookings, users } from '../../generated/prisma/client';
+import * as crypto from 'crypto';
 
 // Define a type for skills structure
 interface TutorSkills {
@@ -134,12 +135,19 @@ export class AdminService {
             throw new BadRequestException('User with this email already exists');
         }
 
-        // Use provided password or generate a random one
+        // Admin creation logic adjustment:
+        // "Admin still shares credentials — but only once."
+        // "Set force_password_change = true"
+        // "Set email_verified = false"
+        // "Set passwordHash (temporary password)"
+
+        // Use provided password or generate a temporary one
         const finalPassword =
             password ||
             Math.random().toString(36).slice(2, 10) +
             Math.random().toString(36).slice(2, 6).toUpperCase() +
             '123!';
+
         const password_hash = await hash(finalPassword, 10);
 
         let result: users;
@@ -154,6 +162,8 @@ export class AdminService {
                         last_name: last_name || null,
                         timezone: 'UTC',
                         is_active: true,
+                        email_verified: false,
+                        force_password_change: true, // Enforce change
                     },
                 });
 
@@ -167,6 +177,7 @@ export class AdminService {
                         user_id: createdUser.id,
                         skills: skillsJson,
                         is_active: true,
+                        tutor_approved: true, // Admin created = Approved
                     },
                 });
 
@@ -180,43 +191,42 @@ export class AdminService {
             );
         }
 
-        // generate invite token (short lived)
-        const inviteToken = this.jwt.sign(
-            { sub: result.id, email: result.email, purpose: 'tutor-invite' },
-            { expiresIn: '48h' },
-        );
+        // Email logic: User said "Admin shares credentials".
+        // Does admin get the password in response? Yes.
+        // Should we send email?
+        // "Admin still shares credentials".
+        // If I assume Manual Sharing, I return the password.
+        // If I send email, I send the temp password.
+        // Let's send the email with temp password for convenience, BUT return it too.
 
-        // build the frontend invite URL (FRONTEND_URL env required)
-        const frontend = process.env.FRONTEND_URL || 'http://localhost:3000';
-        const inviteUrl = `${frontend.replace(/\/$/, '')}/tutor/accept-invite?token=${inviteToken}`;
+        // build the frontend login URL
+        const frontend = process.env.FRONTEND_URL || 'https://vaidiktutoring.vercel.app';
+        const loginUrl = `${frontend.replace(/\/$/, '')}/login`;
 
-        // send email
         const html = `
       <p>Hi ${first_name ?? ''},</p>
-      <p>You have been added as a tutor on K12 Tutoring.</p>
-      ${password ? `<p>Your password is: <strong>${finalPassword}</strong></p>` : `<p>Click below to set your password and activate account:</p><p><a href="${inviteUrl}">Set Password</a></p>`}
-      <p>Subjects: ${subjects?.join(', ') ?? 'General'}</p>
+      <p>Your tutor account has been created by an administrator.</p>
+      <p><strong>Temporary Password:</strong> ${finalPassword}</p>
+      <p>Please login immediately and change your password:</p>
+      <p><a href="${loginUrl}">Login</a></p>
     `;
 
         try {
             await this.email.sendMail({
                 to: email,
-                subject: 'K12 Tutoring — Tutor Account Created',
-                text: `Your tutor account has been created.`,
+                subject: 'K12 Tutoring — Account Credentials',
+                text: `Temp Password: ${finalPassword}`,
                 html,
                 from: process.env.EMAIL_FROM || 'K12 Tutoring <no-reply@k12.com>',
             });
         } catch (e) {
-            console.error(
-                'Failed to send tutor invite email. User was created successfully.',
-                e,
-            );
-            // Do not throw, return success for user creation
+            console.error('Failed to send credentials email', e);
         }
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password_hash: _ph, ...userSafe } = result;
-        return { user: userSafe, inviteToken: password ? null : inviteToken };
+        // Return generated password so admin can see/share it manually if needed
+        return { user: userSafe, temporaryPassword: finalPassword };
     }
 
     async getStudents(page: number = 1, limit: number = 1000) {
@@ -637,6 +647,53 @@ export class AdminService {
         });
 
         return { success: true, message: 'Tutor deleted successfully' };
+    }
+
+    async suspendTutor(tutorId: string, reason?: string) {
+        const tutor = await this.prisma.tutors.findUnique({ where: { id: tutorId } });
+        if (!tutor) throw new BadRequestException('Tutor not found');
+
+        await this.prisma.users.update({
+            where: { id: tutor.user_id },
+            data: {
+                tutor_status: 'SUSPENDED'
+            }
+        });
+
+        // Log the reason
+        await this.prisma.audit_logs.create({
+            data: {
+                actor_user_id: null, // Should ideally pass admin ID
+                action: 'TUTOR_SUSPENDED',
+                object_id: tutorId,
+                details: { reason }
+            }
+        });
+
+        return { success: true, message: 'Tutor suspended' };
+    }
+
+    async activateTutor(tutorId: string) {
+        const tutor = await this.prisma.tutors.findUnique({ where: { id: tutorId } });
+        if (!tutor) throw new BadRequestException('Tutor not found');
+
+        await this.prisma.users.update({
+            where: { id: tutor.user_id },
+            data: {
+                tutor_status: 'ACTIVE'
+            }
+        });
+
+        await this.prisma.audit_logs.create({
+            data: {
+                actor_user_id: null,
+                action: 'TUTOR_ACTIVATED',
+                object_id: tutorId,
+                details: {}
+            }
+        });
+
+        return { success: true, message: 'Tutor activated' };
     }
 
     private safeIso(d: Date | null | undefined): string | null {

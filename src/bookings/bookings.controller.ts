@@ -14,13 +14,16 @@ import { CreateBookingDto } from './create-booking.dto.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 import { Roles } from '../common/decorators/roles.decorators.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
+import { EmailVerifiedGuard } from '../auth/email-verified.guard.js';
+import { PasswordChangeGuard } from '../auth/password-change.guard.js';
+import { TutorStatusGuard } from '../auth/tutor-status.guard.js';
 
 @Controller('bookings')
 export class BookingsController {
   constructor(private readonly svc: BookingsService) { }
 
   // Student/Parent creates a booking
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, EmailVerifiedGuard)
   @Roles('parent', 'student')
   @Post('create')
   async create(@Body() dto: CreateBookingDto, @Req() req) {
@@ -56,7 +59,7 @@ export class BookingsController {
   }
 
   // Tutor fetch assigned bookings (Legacy /bookings/tutor)
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
   @Roles('tutor')
   @Get('tutor')
   async tutorBookings(@Req() req) {
@@ -66,7 +69,7 @@ export class BookingsController {
   // NEW: Tutor Dashboard Endpoints (Match specific requirements)
   // Path: /bookings/tutor/bookings
   @Get('tutor/bookings')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
   @Roles('tutor')
   async getTutorBookings(@Req() req) {
     const bookings = await this.svc.forTutor(req.user.userId);
@@ -88,7 +91,7 @@ export class BookingsController {
 
   // Tutor: get available (unclaimed) bookings
   // Path: /bookings/available
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
   @Roles('tutor')
   @Get('available')
   async availableBookings(@Req() req) {
@@ -114,7 +117,7 @@ export class BookingsController {
   }
 
   // Feature 6: Broadcast & Claim
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
   @Roles('tutor')
   @Post(':id/claim')
   async claimBooking(@Param('id') id: string, @Req() req) {
