@@ -99,6 +99,37 @@ export class BookingsService {
     // VALIDATION: Check dates
     const start = new Date(createDto.requested_start);
     const end = new Date(createDto.requested_end);
+
+    if (start >= end) {
+      throw new BadRequestException('End time must be after start time');
+    }
+
+    // VALIDATION: Check for overlaps for this student
+    const overlap = await this.prisma.bookings.findFirst({
+      where: {
+        student_id: finalStudentId,
+        status: { not: 'cancelled' }, // Ignore cancelled bookings
+        OR: [
+          {
+            // Existing starts within new range
+            requested_start: { gte: start, lt: end },
+          },
+          {
+            // Existing ends within new range
+            requested_end: { gt: start, lte: end },
+          },
+          {
+            // New is inside existing
+            requested_start: { lte: start },
+            requested_end: { gte: end },
+          },
+        ],
+      },
+    });
+
+    if (overlap) {
+      throw new ConflictException('This time slot overlaps with an existing booking.');
+    }
     const now = new Date();
 
     if (start < now) {

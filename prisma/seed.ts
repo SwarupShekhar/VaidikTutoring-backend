@@ -209,27 +209,39 @@ async function main() {
     });
 
     if (!bookingExists) {
-        const booking = await prisma.bookings.create({
-            data: {
+        // Also check if ANY booking exists for this time slot (more robust)
+        const conflict = await prisma.bookings.findFirst({
+            where: {
                 student_id: studentProfile.id,
-                subject_id: mathSlug,
-                package_id: starterPackage.name.toLowerCase(),
-                status: 'confirmed',
-                requested_start: new Date(Date.now() + 86400000), // +1 day
-                requested_end: new Date(Date.now() + 86400000 + 3600000)
+                requested_start: new Date(Date.now() + 86400000)
             }
         });
 
-        await prisma.sessions.create({
-            data: {
-                booking_id: booking.id,
-                start_time: new Date(Date.now() + 86400000),
-                end_time: new Date(Date.now() + 86400000 + 3600000),
-                status: 'scheduled',
-                meet_link: `https://meet.jit.si/k12-${booking.id}`
-            }
-        });
-        console.log('Test booking and session created.');
+        if (!conflict) {
+            const booking = await prisma.bookings.create({
+                data: {
+                    student_id: studentProfile.id,
+                    subject_id: mathSlug,
+                    package_id: starterPackage.name.toLowerCase(),
+                    status: 'confirmed',
+                    requested_start: new Date(Date.now() + 86400000), // +1 day
+                    requested_end: new Date(Date.now() + 86400000 + 3600000)
+                }
+            });
+
+            await prisma.sessions.create({
+                data: {
+                    booking_id: booking.id,
+                    start_time: new Date(Date.now() + 86400000),
+                    end_time: new Date(Date.now() + 86400000 + 3600000),
+                    status: 'scheduled',
+                    meet_link: `https://meet.jit.si/k12-${booking.id}`
+                }
+            });
+            console.log('Test booking and session created.');
+        } else {
+            console.log('Conflicting test booking found (skipping).');
+        }
     } else {
         console.log('Test booking already exists (skipping duplicates).');
     }
