@@ -1,35 +1,16 @@
-// src/email/email.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
 @Injectable()
 export class EmailService {
-  private transporter: nodemailer.Transporter | null = null;
+  private resend: Resend;
   private logger = new Logger(EmailService.name);
 
-  private getTransporter() {
-    if (this.transporter) return this.transporter;
-
-    const host = process.env.SMTP_HOST;
-    const port = Number(process.env.SMTP_PORT || 587);
-    const secure = process.env.SMTP_SECURE === 'true';
-    const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
-
-    if (!host || !user || !pass) {
-      this.logger.warn(
-        'SMTP not fully configured (SMTP_HOST/SMTP_USER/SMTP_PASS). Emails will fail.',
-      );
+  constructor() {
+    this.resend = new Resend(process.env.RESEND_API_KEY);
+    if (!process.env.RESEND_API_KEY) {
+      this.logger.warn('RESEND_API_KEY is not set. Emails will fail.');
     }
-
-    this.transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: user && pass ? { user, pass } : undefined,
-    });
-
-    return this.transporter;
   }
 
   async sendMail(opts: {
@@ -44,23 +25,28 @@ export class EmailService {
     }>;
     from?: string;
   }) {
-    const transporter = this.getTransporter();
-    const from =
-      opts.from || process.env.EMAIL_FROM || 'no-reply@k12tutoring.local';
+    const from = opts.from || process.env.EMAIL_FROM || 'onboarding@resend.dev';
+    const to = Array.isArray(opts.to) ? opts.to : [opts.to];
 
-    const info = await transporter.sendMail({
-      from,
-      to: Array.isArray(opts.to) ? opts.to.join(',') : opts.to,
-      subject: opts.subject,
-      text: opts.text,
-      html: opts.html,
-      attachments: opts.attachments,
-    });
+    try {
+      const data = await this.resend.emails.send({
+        from,
+        to,
+        subject: opts.subject,
+        html: opts.html || opts.text || '', // Resend requires html or react
+        text: opts.text, // Optional plaintext fallback
+        attachments: opts.attachments?.map(a => ({
+          filename: a.filename,
+          content: a.content,
+        })),
+      });
 
-    this.logger.log(
-      `Email sent: ${info && info.messageId ? info.messageId : JSON.stringify(info)}`,
-    );
-    return info;
+      this.logger.log(`Email sent via Resend: ${data.data?.id || JSON.stringify(data)}`);
+      return data;
+    } catch (error) {
+      this.logger.error(`Failed to send email via Resend: ${error}`);
+      throw error;
+    }
   }
 
   async sendSessionInvite(params: {
@@ -84,12 +70,17 @@ export class EmailService {
       ],
     });
   }
-  async sendVerificationEmail(to: string, token: string) {
-    const verificationUrl = process.env.FRONTEND_URL
-      ? `${process.env.FRONTEND_URL}/verify-email?token=${token}`
-      : `http://localhost:3000/verify-email?token=${token}`;
 
-    return this.sendMail({
+  async sendVerificationEmail(to: string, token: string) {
+    // Determine Verification URL (Frontend vs Local)
+    // If FRONTEND_URL is set (e.g., https://vaidik-tutoring.vercel.app), use it.
+    // Otherwise fallback to localhost.
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    // Remove trailing slash if present to avoid double slashes
+    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    const verificationUrl = `${cleanBaseUrl}/verify-email?token=${token}`;
+
+    const result = await this.sendMail({
       to,
       subject: 'Verify your email - K12 Tutoring',
       html: `
@@ -99,5 +90,10 @@ export class EmailService {
         <p>This link will expire in 24 hours.</p>
       `,
     });
+
+    // DEBUG: Log the link for local development
+    this.logger.log(`[EmailService] Verification URL: ${verificationUrl}`);
+
+    return result;
   }
 }
