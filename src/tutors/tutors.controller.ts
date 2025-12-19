@@ -9,6 +9,7 @@ import { BookingsService } from '../bookings/bookings.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { EmailVerifiedGuard } from '../auth/email-verified.guard';
 import { TutorStatusGuard } from '../auth/tutor-status.guard';
+import { PasswordChangeGuard } from '../auth/password-change.guard';
 
 @Controller('tutor')
 @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
