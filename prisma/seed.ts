@@ -175,15 +175,24 @@ async function main() {
     });
 
     // Link Student Profile
-    const studentProfile = await prisma.students.create({
-        data: {
-            user_id: studentUser.id,
-            parent_user_id: parent.id,
-            first_name: 'Jane',
-            last_name: 'Doe',
-            grade: '10'
-        }
+    const existingProfile = await prisma.students.findFirst({
+        where: { user_id: studentUser.id }
     });
+
+    let studentProfile;
+    if (!existingProfile) {
+        studentProfile = await prisma.students.create({
+            data: {
+                user_id: studentUser.id,
+                parent_user_id: parent.id,
+                first_name: 'Jane',
+                last_name: 'Doe',
+                grade: '10'
+            }
+        });
+    } else {
+        studentProfile = existingProfile;
+    }
 
     // Fake Booking & Session (Future)
     const mathSubject = subjectsList[0];
