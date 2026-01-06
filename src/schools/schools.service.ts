@@ -76,4 +76,73 @@ export class SchoolsService {
             programs: programs.map(p => ({ id: p.id, name: p.name, status: p.status }))
         };
     }
+
+
+    async getSchoolProfile(userId: string) {
+        // Find which school this user belongs to
+        const user = await this.prisma.users.findUnique({
+            where: { id: userId },
+            include: { school: { include: { district: true } } }
+        });
+
+        if (!user || !user.school) {
+            throw new NotFoundException('User is not associated with any school');
+        }
+
+        const school = user.school;
+        // Calculate aggregated compliance score (reusing logic or simplified)
+        // For 'me' usage, reuse dashboard logic or simpler? 
+        // Req: id, name, complianceScore, district.
+
+        const dashboard = await this.getSchoolDashboard(school.id);
+
+        return {
+            id: school.id,
+            name: school.name,
+            district: school.district,
+            complianceScore: dashboard.complianceScore
+        };
+    }
+
+    async getSchoolPrograms(schoolId: string) {
+        const programs = await this.prisma.program.findMany({
+            where: { schoolId },
+            include: {
+                _count: { select: { students: true, sessions: true } }
+            }
+        });
+
+        // Return metrics: sessionsDelivered, hoursUsed, studentCount
+        // Need to calculate these per program?
+        // Let's do a map.
+
+        const result: any[] = [];
+        for (const p of programs) {
+            // Calculate hours used
+            const sessions = await this.prisma.sessions.findMany({
+                where: { program_id: p.id, status: 'completed' },
+                select: { start_time: true, end_time: true }
+            });
+            const hours = sessions.reduce((acc, s) => {
+                if (s.start_time && s.end_time) return acc + (s.end_time.getTime() - s.start_time.getTime()) / 1000 / 3600;
+                return acc;
+            }, 0);
+
+            // Calculate compliance per program
+            const allSessions = await this.prisma.sessions.findMany({ where: { program_id: p.id } });
+            const rec = allSessions.filter(s => s.recordingUploaded).length;
+            const rev = allSessions.filter(s => s.reviewedByAdmin).length;
+            const total = allSessions.length || 1;
+            const complianceScore = ((rec / total) + (rev / total)) / 2 * 100;
+
+            result.push({
+                ...p,
+                studentCount: p._count.students,
+                sessionsDelivered: sessions.length,
+                hoursUsed: Math.floor(hours),
+                complianceScore: Math.round(complianceScore)
+            });
+        }
+        return result;
+    }
 }

@@ -81,16 +81,20 @@ export class BlogsService {
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
 
         if (isUuid) {
-            return this.prisma.blogs.findUnique({
+            const blog = await this.prisma.blogs.findUnique({
                 where: { id: idOrSlug },
                 include: { users: { select: { first_name: true, last_name: true } } }
             });
+            if (!blog) return null;
+            return { ...blog, author: blog.users, users: undefined };
         }
 
-        return this.prisma.blogs.findUnique({
+        const blog = await this.prisma.blogs.findUnique({
             where: { slug: idOrSlug },
             include: { users: { select: { first_name: true, last_name: true } } }
         });
+        if (!blog) return null;
+        return { ...blog, author: blog.users, users: undefined };
     }
 
     async updateStatus(id: string, status: string) {
