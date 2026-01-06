@@ -69,6 +69,8 @@ model bookings {
   packages          packages?  @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   students          students?  @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   subjects          subjects?  @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  program_id        String?    @db.Uuid
+  program           Program?   @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sessions          sessions[]
 
   @@schema("app")
@@ -167,6 +169,8 @@ model purchases {
   payment_provider_id String?
   created_at          DateTime? @default(now()) @db.Timestamptz(6)
   packages            packages? @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  program_id          String?   @db.Uuid
+  program             Program?  @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users               users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("app")
@@ -197,7 +201,14 @@ model sessions {
   meet_link          String?
   whiteboard_link    String?
   status             String?
+  recordingRequired  Boolean?             @default(true) @map("recording_required")
+  recordingUploaded  Boolean?             @default(false) @map("recording_uploaded")
+  reviewedByAdmin    Boolean?             @default(false) @map("reviewed_by_admin")
+  flagged            Boolean?             @default(false)
   created_at         DateTime?            @default(now()) @db.Timestamptz(6)
+  attendance         Attendance[]
+  program_id         String?              @db.Uuid
+  program            Program?             @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   session_recordings session_recordings[]
   session_messages   session_messages[]
   bookings           bookings?            @relation(fields: [booking_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -217,9 +228,12 @@ model students {
   curriculum_preference                String?
   created_at                           DateTime?             @default(now()) @db.Timestamptz(6)
   assessment_attempts                  assessment_attempts[]
+  attendance                           Attendance[]
   bookings                             bookings[]
   progress_points                      progress_points[]
   curricula                            curricula?            @relation(fields: [curriculum_preference], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  program_id                           String?               @db.Uuid
+  program                              Program?              @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users_students_parent_user_idTousers users?                @relation("students_parent_user_idTousers", fields: [parent_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users_students_user_idTousers        users?                @relation("students_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -269,6 +283,8 @@ model tutors {
   created_at        DateTime?      @default(now()) @db.Timestamptz(6)
   bookings          bookings[]
   tutor_shifts      tutor_shifts[]
+  program_id        String?        @db.Uuid
+  program           Program?       @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users             users          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("app")
@@ -347,5 +363,71 @@ model blogs {
   updated_at  DateTime? @updatedAt @db.Timestamptz(6)
   users       users    @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@schema("app")
+}
+
+model Program {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  status    String   // "draft" | "active" | "completed"
+
+  startDate DateTime @map("start_date") @db.Timestamptz(6)
+  endDate   DateTime @map("end_date") @db.Timestamptz(6)
+
+  academic  Json
+  operational Json
+  financial Json
+  staffing  Json
+  delivery  Json
+  reporting Json
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  schoolId  String?    @map("school_id") @db.Uuid
+  school    School?    @relation(fields: [schoolId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  students  students[]
+  tutors    tutors[]
+  bookings  bookings[]
+  sessions  sessions[]
+  purchases purchases[]
+
+  @@map("programs")
+  @@schema("app")
+}
+
+model District {
+  id   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name String
+  schools School[]
+
+  @@map("districts")
+  @@schema("app")
+}
+
+model School {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  districtId String?   @map("district_id") @db.Uuid
+  district   District? @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  programs   Program[]
+
+  @@map("schools")
+  @@schema("app")
+}
+
+model Attendance {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId       String    @map("session_id") @db.Uuid
+  studentId       String    @map("student_id") @db.Uuid
+  present         Boolean   @default(false)
+  minutesAttended Int?      @map("minutes_attended")
+  joinedAt        DateTime? @map("joined_at") @db.Timestamptz(6)
+  leftAt          DateTime? @map("left_at") @db.Timestamptz(6)
+
+  sessions        sessions  @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  students        students  @relation(fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("attendance")
   @@schema("app")
 }

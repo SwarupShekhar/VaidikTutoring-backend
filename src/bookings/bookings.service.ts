@@ -28,30 +28,27 @@ export class BookingsService {
   // Create booking and attempt auto-assign tutor
   async create(createDto: CreateBookingDto, user: any) {
     let finalStudentId = createDto.student_id;
+    let studentRecord: any = null;
 
     // FIX: If the logged-in user is a student, ensure they have a Student Record
     if (user.role === 'student') {
       // Check if a Student profile exists for this User ID
-      // In our schema, students are linked via user_id
-      const existingStudent = await this.prisma.students.findFirst({
-        where: { user_id: user.userId }, // user.userId is the ID from JWT (via JwtStrategy)
+      studentRecord = await this.prisma.students.findFirst({
+        where: { user_id: user.userId },
       });
 
-      if (!existingStudent) {
+      if (!studentRecord) {
         // Auto-create a Student record for this user if missing
-        const newStudent = await this.prisma.students.create({
+        studentRecord = await this.prisma.students.create({
           data: {
             user_id: user.userId,
             first_name: user.first_name || 'Student',
             last_name: user.last_name || '',
             grade: 'TBD',
-            // We do not set parent_user_id here as they are self-registered
           },
         });
-        finalStudentId = newStudent.id;
-      } else {
-        finalStudentId = existingStudent.id;
       }
+      finalStudentId = studentRecord.id;
     } else if (user.role === 'parent') {
       // 1. If parent, student_id is required
       if (!finalStudentId) {
@@ -59,32 +56,39 @@ export class BookingsService {
       }
 
       // 2. Validate student exists
-      const student = await this.prisma.students.findUnique({
+      studentRecord = await this.prisma.students.findUnique({
         where: { id: finalStudentId },
       });
 
-      if (!student) {
+      if (!studentRecord) {
         throw new NotFoundException('Student profile not found');
       }
 
       // 3. SECURITY: Ensure this parent owns this student
-      // Check both old link (parent_user_id) AND potentially new link via User table if needed.
-      // Current schema migration added parent_id to User, but student profile has parent_user_id.
-      // We rely on `parent_user_id` in Students table as primary link for now (synced).
-      if (student.parent_user_id !== user.userId) {
+      if (studentRecord.parent_user_id !== user.userId) {
         throw new ForbiddenException('You can only book for your own children');
       }
     } else {
-      // Admin or other roles? Restricted to Student/Parent/Admin usually.
-      // If Admin, they can book for anyone?
+      // Admin check
       if (user.role !== 'admin') {
-        // Fallback validation
+        // Fallback or error? Assuming admin for now if not student/parent
       }
-      const studentExists = await this.prisma.students.findUnique({
+      if (!finalStudentId) throw new BadRequestException('student_id is required');
+
+      studentRecord = await this.prisma.students.findUnique({
         where: { id: finalStudentId },
       });
-      if (!studentExists) throw new NotFoundException('Student not found');
+      if (!studentRecord) throw new NotFoundException('Student not found');
     }
+
+    // 4. PROGRAM INTEGRITY CHECK
+    // Ensure student is enrolled in a program (or handle default?)
+    // Requirement: "Sessions must reference Program.id"
+    if (!studentRecord.program_id) {
+      // Option A: Reject. Option B: Allow null (legacy). User said "Requires programId".
+      throw new BadRequestException('Student is not enrolled in any program.');
+    }
+    const programId = studentRecord.program_id;
 
     const pkg = await this.prisma.packages.findUnique({
       where: { id: createDto.package_id },
@@ -159,6 +163,7 @@ export class BookingsService {
           package_id: createDto.package_id,
           subject_id: subjectId,
           curriculum_id: createDto.curriculum_id,
+          program_id: programId, // Set Program ID
           requested_start: start,
           requested_end: end,
           note: createDto.note,
@@ -173,6 +178,7 @@ export class BookingsService {
         await this.prisma.sessions.create({
           data: {
             booking_id: booking.id,
+            program_id: programId, // Set Program ID
             start_time: booking.requested_start,
             end_time: booking.requested_end,
             meet_link: null,
@@ -209,11 +215,12 @@ export class BookingsService {
   // 3. Atomicity (Transaction)
   // 4. Notifications
   async autoAssignTutor(booking: any) {
-    // 1. Fetch ALL active tutors with their skills
+    // 1. Fetch ALL active tutors with their skills AND filtering by Program ID
     const tutors = await this.prisma.tutors.findMany({
       where: {
         is_active: true,
-        tutor_approved: true // Only approved tutors can be auto-assigned
+        tutor_approved: true, // Only approved tutors can be auto-assigned
+        program_id: booking.program_id // STRICT SCOPING: Only assign tutors in the same program
       },
       include: { users: true },
     });
@@ -228,7 +235,7 @@ export class BookingsService {
 
     if (candidates.length === 0) {
       this.logger.warn(
-        `No tutor found with expertise in subject ${booking.subject_id}`,
+        `No tutor found with expertise in subject ${booking.subject_id} for Program ${booking.program_id}`,
       );
       return false;
     }
