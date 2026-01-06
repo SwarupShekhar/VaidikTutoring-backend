@@ -323,6 +323,10 @@ model users {
   parent_id                               String?         @db.Uuid
   parent                                  users?          @relation("ParentChildren", fields: [parent_id], references: [id])
   children                                users[]         @relation("ParentChildren")
+  
+  // School Relationship (For School Admins)
+  school_id                               String?         @db.Uuid
+  school                                  School?         @relation(fields: [school_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   // Tutor Status
   tutor_status                            TutorStatus     @default(ACTIVE)
@@ -411,6 +415,7 @@ model School {
   districtId String?   @map("district_id") @db.Uuid
   district   District? @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   programs   Program[]
+  users      users[]
 
   @@map("schools")
   @@schema("app")

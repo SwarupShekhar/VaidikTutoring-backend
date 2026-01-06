@@ -84,11 +84,15 @@ export class BookingsService {
     // 4. PROGRAM INTEGRITY CHECK
     // Ensure student is enrolled in a program (or handle default?)
     // Requirement: "Sessions must reference Program.id"
-    if (!studentRecord.program_id) {
-      // Option A: Reject. Option B: Allow null (legacy). User said "Requires programId".
+    const programId = studentRecord.program_id;
+    if (!programId) {
       throw new BadRequestException('Student is not enrolled in any program.');
     }
-    const programId = studentRecord.program_id;
+
+    // VALIDATE payload program_id if present
+    if (createDto.program_id && createDto.program_id !== programId) {
+      throw new BadRequestException('Mismatch between requested Program ID and Student enrollment.');
+    }
 
     const pkg = await this.prisma.packages.findUnique({
       where: { id: createDto.package_id },
