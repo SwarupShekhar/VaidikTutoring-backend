@@ -10,6 +10,9 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -62,7 +65,15 @@ export class SessionsController {
   @UseInterceptors(FileInterceptor('file'))
   async uploadRecording(
     @Param('id') id: string,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 500 * 1024 * 1024 }), // 500MB
+          new FileTypeValidator({ fileType: 'video/mp4' }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
     @Body() dto: UploadRecordingDto,
     @Req() req: any,
   ) {
@@ -70,8 +81,8 @@ export class SessionsController {
       throw new BadRequestException('No file uploaded');
     }
 
-    // TODO: Upload file to S3/Cloudinary and get URL
-    // For now, using a local path as placeholder
+    // Placeholder: In a real local setup, Multer would save this to disk.
+    // Here we just simulate a path.
     const fileUrl = `/uploads/recordings/${Date.now()}-${file.originalname}`;
 
     return this.sessionsService.uploadRecording(
