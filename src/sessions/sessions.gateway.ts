@@ -23,7 +23,7 @@ import { SessionsService } from './sessions.service';
 @WebSocketGateway({
   namespace: 'sessions',
   cors: {
-    origin: '*', // Configure this for your frontend URL in production
+    origin: process.env.FRONTEND_URL || '*',
     credentials: true,
   },
 })
