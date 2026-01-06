@@ -17,6 +17,10 @@ function getDirectUrl(): string {
 
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
+    if (process.env.VERCEL || process.env.CI || process.env.RENDER) {
+      console.warn('⚠️  DATABASE_URL not set in build environment. Using dummy URL for generation.');
+      return 'postgresql://dummy:dummy@localhost:5432/dummy';
+    }
     throw new Error('Either DIRECT_URL or DATABASE_URL must be set');
   }
 
@@ -24,14 +28,14 @@ function getDirectUrl(): string {
   // Example: ep-super-feather-ahnp7ryx-pooler.c-3.us-east-1.aws.neon.tech
   //       -> ep-super-feather-ahnp7ryx.c-3.us-east-1.aws.neon.tech
   const directDerivedUrl = databaseUrl.replace(/-pooler\./, '.');
-  
+
   if (directDerivedUrl === databaseUrl) {
     console.log('⚠️  WARNING: DATABASE_URL does not contain "-pooler", using as-is for migrations');
   } else {
     console.log('⚠️  DIRECT_URL not set, derived from DATABASE_URL by removing "-pooler"');
   }
   console.log('📍 Migration URL:', directDerivedUrl.replace(/:[^:@]+@/, ':****@'));
-  
+
   return directDerivedUrl;
 }
 
