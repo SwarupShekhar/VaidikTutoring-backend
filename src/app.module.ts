@@ -18,6 +18,9 @@ import { NotificationsModule } from './notifications/notifications.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { BlogsModule } from './blogs/blogs.module.js';
 import { ParentModule } from './parent/parent.module';
+import { ProgramsModule } from './programs/programs.module';
+import { SchoolsModule } from './schools/schools.module';
+
 
 @Module({
   imports: [
@@ -37,6 +40,8 @@ import { ParentModule } from './parent/parent.module';
     AdminModule,
     BlogsModule,
     ParentModule,
+    ProgramsModule,
+    SchoolsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
