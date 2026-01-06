@@ -11,6 +11,10 @@ export class CreateBookingDto {
   @IsUUID()
   student_id: string;
 
+  @IsOptional()
+  @IsUUID()
+  program_id?: string;
+
   @IsString()
   package_id: string;
 
