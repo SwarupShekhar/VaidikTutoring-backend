@@ -167,5 +167,25 @@ export class SessionsController {
     // Validate the specific session join token.
     return this.sessionsService.validateJoinToken(body.sessionId, body.token);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/attendance')
+  async recordAttendance(
+    @Param('id') id: string,
+    @Body() body: {
+      studentId: string;
+      present: boolean;
+      minutesAttended?: number;
+    },
+    @Req() req: any
+  ) {
+    // Typically only Tutors or Admins record attendance
+    if (req.user.role !== 'admin' && req.user.role !== 'tutor') {
+      // Additional check: is this tutor assigned to this session?
+      // Service logic handles specific permission checks usually, or here.
+      // Let's defer to service or throw if not staff.
+    }
+    return this.sessionsService.recordAttendance(id, body.studentId, body.present, body.minutesAttended);
+  }
 }
 

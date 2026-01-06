@@ -459,6 +459,13 @@ export class AdminService {
             throw new BadRequestException('Tutor not found or inactive');
         }
 
+        // Program Integrity Check
+        if (student.program_id !== tutor.program_id) {
+            throw new BadRequestException(
+                `Program mismatch: Student is in Program ${student.program_id} but Tutor is in ${tutor.program_id || 'None'}`
+            );
+        }
+
         // Verify subject exists (by ID or name)
         let subject = await this.prisma.subjects.findUnique({
             where: { id: subjectId },
@@ -510,6 +517,7 @@ export class AdminService {
                 where: { id: existingBooking.id },
                 data: {
                     assigned_tutor_id: tutor.id, // Use the Tutor ID (UUID)
+                    program_id: student.program_id, // Ensure Program ID is set/synced
                     status: 'confirmed',
                     note: existingBooking.note
                         ? `${existingBooking.note}\n\nAllocated by admin to ${tutor.users.first_name} ${tutor.users.last_name || ''}`
@@ -530,6 +538,7 @@ export class AdminService {
                 await this.prisma.sessions.create({
                     data: {
                         booking_id: allocation.id,
+                        program_id: student.program_id, // Set Program ID
                         start_time: allocation.requested_start,
                         end_time: allocation.requested_end,
                         status: 'scheduled',
@@ -555,6 +564,7 @@ export class AdminService {
                     student_id: studentId,
                     assigned_tutor_id: tutor.id,
                     subject_id: subject.id,
+                    program_id: student.program_id, // Set Program ID
                     status: 'confirmed',
                     requested_start: tomorrow,
                     requested_end: endTime,
@@ -566,6 +576,7 @@ export class AdminService {
             await this.prisma.sessions.create({
                 data: {
                     booking_id: allocation.id,
+                    program_id: student.program_id, // Set Program ID
                     start_time: allocation.requested_start,
                     end_time: allocation.requested_end,
                     status: 'scheduled',
