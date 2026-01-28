@@ -10,6 +10,8 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards } from '@nestjs/common';
 import { SessionsService } from './sessions.service';
+import { AttentionEventsService } from '../attention-events/attention-events.service.js';
+import { AttentionEventType } from '../../generated/prisma/enums.js';
 
 /**
  * WebSocket Gateway for real-time session chat
@@ -34,7 +36,10 @@ export class SessionsGateway
 
   private readonly logger = new Logger(SessionsGateway.name);
 
-  constructor(private sessionsService: SessionsService) { }
+  constructor(
+    private sessionsService: SessionsService,
+    private attentionEventsService: AttentionEventsService,
+  ) { }
 
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`);
@@ -112,6 +117,38 @@ export class SessionsGateway
       return { success: true };
     } catch (error) {
       this.logger.error(`Failed to send message: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Log an attention event in real-time
+   */
+  @SubscribeMessage('session.attentionEvent.create')
+  async handleAttentionEvent(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: {
+      sessionId: string;
+      type: AttentionEventType;
+      studentId: string;
+      tutorId: string;
+      metadata?: any
+    },
+  ) {
+    try {
+      // 1. Persist event
+      const event = await this.attentionEventsService.createEvent(payload);
+
+      // 2. Broadcast update to the room
+      this.server.to(`session-${payload.sessionId}`).emit('session.attentionEvent.created', event);
+
+      // 3. Also emit updated summary
+      const summary = await this.attentionEventsService.getSummary(payload.sessionId);
+      this.server.to(`session-${payload.sessionId}`).emit('session.attentionSummary.updated', summary);
+
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Failed to log attention event: ${error.message}`);
       return { success: false, error: error.message };
     }
   }

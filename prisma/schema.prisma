@@ -211,6 +211,9 @@ model sessions {
   program            Program?             @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   session_recordings session_recordings[]
   session_messages   session_messages[]
+  attention_status   String?
+  attention_meta     Json?
+  attention_events   AttentionEvent[]
   bookings           bookings?            @relation(fields: [booking_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("app")
@@ -318,6 +321,8 @@ model users {
   session_messages                        session_messages[]
   session_recordings                      session_recordings[]
   blogs                                   blogs[]
+  student_attention_events               AttentionEvent[] @relation("StudentAttentionEvents")
+  tutor_attention_events                 AttentionEvent[] @relation("TutorAttentionEvents")
   
   // Parent-Student Relationship
   parent_id                               String?         @db.Uuid
@@ -434,5 +439,34 @@ model Attendance {
   students        students  @relation(fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("attendance")
+  @@schema("app")
+}
+
+model AttentionEvent {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId     String             @db.Uuid @map("session_id")
+  studentId     String             @db.Uuid @map("student_id")
+  tutorId       String             @db.Uuid @map("tutor_id")
+
+  type          AttentionEventType
+  timestamp     DateTime           @default(now()) @db.Timestamptz(6)
+
+  metadata      Json?
+
+  Session       sessions           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  Student       users              @relation("StudentAttentionEvents", fields: [studentId], references: [id], onDelete: Cascade)
+  Tutor         users              @relation("TutorAttentionEvents", fields: [tutorId], references: [id], onDelete: Cascade)
+
+  @@map("attention_events")
+  @@schema("app")
+}
+
+enum AttentionEventType {
+  CHECK_IN
+  EXPLANATION
+  RESPONSE
+  CORRECTION
+  PRAISE
+
   @@schema("app")
 }
