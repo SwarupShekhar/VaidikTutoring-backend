@@ -20,6 +20,7 @@ import { BlogsModule } from './blogs/blogs.module.js';
 import { ParentModule } from './parent/parent.module';
 import { ProgramsModule } from './programs/programs.module';
 import { SchoolsModule } from './schools/schools.module';
+import { AttentionEventsModule } from './attention-events/attention-events.module';
 
 
 @Module({
@@ -42,6 +43,7 @@ import { SchoolsModule } from './schools/schools.module';
     ParentModule,
     ProgramsModule,
     SchoolsModule,
+    AttentionEventsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
