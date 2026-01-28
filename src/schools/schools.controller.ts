@@ -1,6 +1,6 @@
 import { Controller, Get, Param, UseGuards, UnauthorizedException, Req } from '@nestjs/common';
-import { SchoolsService } from './schools.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { SchoolsService } from './schools.service.js';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 
 @Controller('admin/schools')
 @UseGuards(JwtAuthGuard)
