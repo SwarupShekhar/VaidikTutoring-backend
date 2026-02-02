@@ -21,6 +21,7 @@ import { ParentModule } from './parent/parent.module';
 import { ProgramsModule } from './programs/programs.module';
 import { SchoolsModule } from './schools/schools.module';
 import { AttentionEventsModule } from './attention-events/attention-events.module';
+import { SessionPhasesModule } from './session-phases/session-phases.module';
 
 
 @Module({
@@ -44,6 +45,7 @@ import { AttentionEventsModule } from './attention-events/attention-events.modul
     ProgramsModule,
     SchoolsModule,
     AttentionEventsModule,
+    SessionPhasesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,7 +1,7 @@
 import { Body, Controller, Post, BadRequestException, UseGuards, Req } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { signupSchema } from './schemas/signup.schema';
-import { AuthGuard } from '@nestjs/passport';
+import { AuthService } from './auth.service.js';
+import { signupSchema } from './schemas/signup.schema.js';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 
 @Controller('auth')
 export class AuthController {
@@ -21,7 +21,7 @@ export class AuthController {
   }
 
   @Post('resend-verification')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   resendVerification(@Req() req: any) {
     return this.auth.resendVerification(req.user.userId || req.user.sub || req.user.id);
   }
@@ -58,7 +58,7 @@ export class AuthController {
   }
 
   @Post('change-password')
-  @UseGuards(AuthGuard('jwt')) // Must be logged in to change
+  @UseGuards(JwtAuthGuard) // Must be logged in to change
   changePassword(@Body() body: any, @Req() req: any) {
     if (!body.password) throw new BadRequestException('Password is required');
     return this.auth.changePassword(req.user.userId || req.user.sub, body.password);

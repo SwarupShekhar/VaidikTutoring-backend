@@ -11,7 +11,8 @@ import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards } from '@nestjs/common';
 import { SessionsService } from './sessions.service';
 import { AttentionEventsService } from '../attention-events/attention-events.service.js';
-import { AttentionEventType } from '../../generated/prisma/enums.js';
+import { SessionPhasesService } from '../session-phases/session-phases.service.js';
+import { AttentionEventType, SessionPhase } from '../../generated/prisma/enums.js';
 
 /**
  * WebSocket Gateway for real-time session chat
@@ -39,6 +40,7 @@ export class SessionsGateway
   constructor(
     private sessionsService: SessionsService,
     private attentionEventsService: AttentionEventsService,
+    private sessionPhasesService: SessionPhasesService,
   ) { }
 
   handleConnection(client: Socket) {
@@ -149,6 +151,34 @@ export class SessionsGateway
       return { success: true };
     } catch (error) {
       this.logger.error(`Failed to log attention event: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Update session phase in real-time
+   */
+  @SubscribeMessage('session.phase.update')
+  async handlePhaseUpdate(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: {
+      sessionId: string;
+      phase: SessionPhase;
+    },
+  ) {
+    try {
+      // 1. Update Phase
+      await this.sessionPhasesService.advancePhase(payload.sessionId, payload.phase);
+
+      // 2. Broadcast to everyone
+      this.server.to(`session-${payload.sessionId}`).emit('session.phase.updated', {
+        phase: payload.phase,
+        timestamp: new Date()
+      });
+
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Failed to update phase: ${error.message}`);
       return { success: false, error: error.message };
     }
   }
