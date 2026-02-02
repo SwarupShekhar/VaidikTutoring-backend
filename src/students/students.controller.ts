@@ -8,18 +8,18 @@ import {
   Delete,
   Param,
 } from '@nestjs/common';
-import { StudentsService } from './students.service';
-import { AuthGuard } from '@nestjs/passport';
+import { StudentsService } from './students.service.js';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 
 // Assuming you have an AuthGuard or similar to get the user
 // If not, you might need to extract userId differently.
 // Standard pattern: @UseGuards(JwtAuthGuard)
 @Controller('students')
 export class StudentsController {
-  constructor(private readonly studentsService: StudentsService) {}
+  constructor(private readonly studentsService: StudentsService) { }
 
   @Post()
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   async create(@Body() body: any, @Req() req: any) {
     // Ideally use a DTO class for body
     // req.user is populated by JwtStrategy, which returns { userId, email, role }
@@ -33,7 +33,7 @@ export class StudentsController {
   }
 
   @Get('parent')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   async findAllByParent(@Req() req: any) {
     const parentUserId = req.user?.userId;
     if (!parentUserId) throw new Error('User not authenticated');
@@ -54,7 +54,7 @@ export class StudentsController {
   }
 
   @Delete(':id')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   async delete(@Param('id') id: string, @Req() req: any) {
     const parentUserId = req.user?.userId;
     if (!parentUserId) throw new Error('User not authenticated');

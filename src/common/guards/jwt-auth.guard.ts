@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard.js';
+import { PrismaService } from '../../prisma/prisma.service.js';
 
 @Injectable()
-export class JwtAuthGuard extends AuthGuard('jwt') {}
+export class JwtAuthGuard extends ClerkAuthGuard {
+    constructor(prisma: PrismaService) {
+        super(prisma);
+    }
+}

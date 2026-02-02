@@ -214,6 +214,11 @@ model sessions {
   attention_status   String?
   attention_meta     Json?
   attention_events   AttentionEvent[]
+  
+  current_phase      SessionPhase         @default(WARM_CONNECT)
+  phase_history      Json?                // [{ phase, startedAt }]
+  pedagogy_status    String?
+
   bookings           bookings?            @relation(fields: [booking_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("app")
@@ -467,6 +472,17 @@ enum AttentionEventType {
   RESPONSE
   CORRECTION
   PRAISE
+
+  @@schema("app")
+}
+
+enum SessionPhase {
+  WARM_CONNECT
+  DIAGNOSE
+  MICRO_TEACH
+  ACTIVE_RESPONSE
+  REINFORCE
+  REFLECT
 
   @@schema("app")
 }
