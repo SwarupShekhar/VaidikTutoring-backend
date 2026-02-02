@@ -1,4 +1,4 @@
-import { Body, Controller, Post, BadRequestException, UseGuards, Req } from '@nestjs/common';
+import { Body, Controller, Post, Get, BadRequestException, UseGuards, Req } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { signupSchema } from './schemas/signup.schema.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
@@ -62,5 +62,10 @@ export class AuthController {
   changePassword(@Body() body: any, @Req() req: any) {
     if (!body.password) throw new BadRequestException('Password is required');
     return this.auth.changePassword(req.user.userId || req.user.sub, body.password);
+  }
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  getMe(@Req() req: any) {
+    return req.user;
   }
 }
