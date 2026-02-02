@@ -1,6 +1,6 @@
 
 import { CanActivate, ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import { verifyToken } from '@clerk/clerk-sdk-node';
+import { verifyToken, clerkClient } from '@clerk/clerk-sdk-node';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 @Injectable()
@@ -21,17 +21,29 @@ export class ClerkAuthGuard implements CanActivate {
         try {
             const verifiedToken = await verifyToken(token, {
                 secretKey: process.env.CLERK_SECRET_KEY,
+                clockSkewInMs: 60000, // 60s leeway
             } as any);
 
             // Accessing claims in a safer way
             const claims = verifiedToken as any;
 
             // Try to find email in token claims
-            const emailClaim =
+            let emailClaim =
                 claims.email ||
                 claims.primary_email_address ||
                 claims.email_address ||
                 (claims.emails && claims.emails[0]);
+
+            // Fallback: If email missing in token, fetch full user from Clerk
+            if (!emailClaim && claims.sub) {
+                try {
+                    const clerkUser = await clerkClient.users.getUser(claims.sub);
+                    emailClaim = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress || clerkUser.emailAddresses[0]?.emailAddress;
+                    this.logger.log(`Fetched email from Clerk API: ${emailClaim}`);
+                } catch (fetchErr) {
+                    this.logger.error(`Failed to fetch user ${claims.sub} from Clerk`, fetchErr);
+                }
+            }
 
             let dbUser: any = null;
 
