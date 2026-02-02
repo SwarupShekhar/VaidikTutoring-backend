@@ -27,13 +27,13 @@ export class ProgramsController {
 
     @Get()
     findAll(@Req() req: any) {
-        this.checkAdmin(req);
+        // Allow all authenticated users (students/parents need this for booking)
         return this.programsService.findAll();
     }
 
     @Get(':id')
     findOne(@Req() req: any, @Param('id') id: string) {
-        this.checkAdmin(req);
+        // Allow read access
         return this.programsService.findOne(id);
     }
 
