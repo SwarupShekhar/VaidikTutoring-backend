@@ -23,6 +23,8 @@
     "seed": "TS_NODE_TRANSPILE_ONLY=true ts-node prisma/seed.ts"
   },
   "dependencies": {
+    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@clerk/nextjs": "^6.37.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
