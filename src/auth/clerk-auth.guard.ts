@@ -59,6 +59,34 @@ export class ClerkAuthGuard implements CanActivate {
                             email_verified: true,
                         },
                     });
+                } else {
+                    // Sync Role if changed in Clerk
+                    const tokenRole = (claims.metadata?.role as string) || (claims.public_metadata?.role as string);
+                    // Also sync name if "New User"
+                    const firstName = claims.first_name || claims.given_name;
+                    const lastName = claims.last_name || claims.family_name;
+
+                    if (tokenRole && tokenRole !== dbUser.role) {
+                        // CRITICAL: Do not downgrade admins based on Clerk metadata
+                        // Admins must be managed manually in the database or via specific admin tools.
+                        if (dbUser.role === 'admin') {
+                            this.logger.warn(`Ignored role update for ADMIN ${emailClaim}. Clerk says: ${tokenRole}, DB says: admin`);
+                        } else {
+                            this.logger.log(`Syncing role for ${emailClaim}: ${dbUser.role} -> ${tokenRole}`);
+                            dbUser = await this.prisma.users.update({
+                                where: { id: dbUser.id },
+                                data: { role: tokenRole }
+                            });
+                        }
+                    }
+
+                    // Optional: Sync name if it was placeholder
+                    if (firstName && dbUser.first_name === 'New' && firstName !== 'New') {
+                        dbUser = await this.prisma.users.update({
+                            where: { id: dbUser.id },
+                            data: { first_name: firstName, last_name: lastName || dbUser.last_name }
+                        });
+                    }
                 }
             } else {
                 this.logger.warn('Token verified but no email found. Cannot map to DB user.');
