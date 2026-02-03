@@ -64,6 +64,62 @@ export class StudentsService {
     });
   }
 
+  async update(
+    studentId: string,
+    data: {
+      first_name?: string;
+      last_name?: string;
+      grade?: string;
+      school?: string;
+      interests?: string[];
+      recent_focus?: string;
+      struggle_areas?: string[];
+    },
+    userId: string,
+    userRole: string
+  ) {
+    // 1. Verify existence
+    const student = await this.prisma.students.findUnique({
+      where: { id: studentId },
+    });
+
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
+    // 2. Authorization: Parent owns student OR Student IS the student
+    const isParentOwner = student.parent_user_id === userId;
+    const isStudentSelf = student.user_id === userId;
+
+    if (!isParentOwner && !isStudentSelf && userRole !== 'admin') {
+      throw new BadRequestException('Not authorized to update this profile');
+    }
+
+    // 3. Update
+    return this.prisma.students.update({
+      where: { id: studentId },
+      data: {
+        ...(data.first_name && { first_name: data.first_name }),
+        ...(data.last_name && { last_name: data.last_name }),
+        ...(data.grade && { grade: data.grade }),
+        ...(data.school && { school: data.school }),
+        ...(data.interests && { interests: data.interests }),
+        ...(data.recent_focus && { recent_focus: data.recent_focus }),
+        ...(data.struggle_areas && { struggle_areas: data.struggle_areas }),
+      },
+    });
+  }
+
+  async findByUserId(userId: string) {
+    const student = await this.prisma.students.findFirst({
+      where: { user_id: userId },
+    });
+    // If no specific student record, maybe return null or 404. 
+    // But for "New User" issues, we might want to ensure one exists?
+    // For now, simple find.
+    return student;
+  }
+
   async findAllByParent(parentUserId: string) {
     return this.prisma.students.findMany({
       where: { parent_user_id: parentUserId },
