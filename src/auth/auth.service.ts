@@ -352,5 +352,18 @@ export class AuthService {
 
     return { message: 'Password changed successfully', token };
   }
+
+  async getUserProfile(userId: string) {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) return null;
+
+    // return safe user object (exclude password hash)
+    // We can use a mapper or just return what we need + spread
+    const { password_hash, email_verification_token, ...safeUser } = user;
+    return safeUser;
+  }
 }
 

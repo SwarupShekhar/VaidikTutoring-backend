@@ -234,6 +234,9 @@ model students {
   school                               String?
   birth_date                           DateTime?             @db.Date
   curriculum_preference                String?
+  interests                            Json?
+  recent_focus                         String?
+  struggle_areas                       Json?
   created_at                           DateTime?             @default(now()) @db.Timestamptz(6)
   assessment_attempts                  assessment_attempts[]
   attendance                           Attendance[]

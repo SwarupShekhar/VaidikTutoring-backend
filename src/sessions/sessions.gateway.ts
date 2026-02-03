@@ -26,7 +26,15 @@ import { AttentionEventType, SessionPhase } from '../../generated/prisma/enums.j
 @WebSocketGateway({
   namespace: 'sessions',
   cors: {
-    origin: process.env.FRONTEND_URL || '*',
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+      'https://k-12-backend-vnp4.vercel.app',
+      'https://k-12-vaidik.vercel.app',
+      'https://vaidiktutoring.vercel.app',
+      'https://k-12-backend.onrender.com'
+    ],
     credentials: true,
   },
 })

@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service.js';
 import { CreateBookingDto } from './create-booking.dto.js';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { Roles } from '../common/decorators/roles.decorators.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
 import { EmailVerifiedGuard } from '../auth/email-verified.guard.js';
@@ -23,7 +23,7 @@ export class BookingsController {
   constructor(private readonly svc: BookingsService) { }
 
   // Student/Parent creates a booking
-  @UseGuards(JwtAuthGuard, RolesGuard, EmailVerifiedGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard, EmailVerifiedGuard)
   @Roles('parent', 'student')
   @Post('create')
   async create(@Body() dto: CreateBookingDto, @Req() req) {
@@ -32,7 +32,7 @@ export class BookingsController {
   }
 
   // Explicit endpoint for student bookings
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard)
   @Roles('student')
   @Get('student')
   async studentBookings(@Req() req) {
@@ -40,7 +40,7 @@ export class BookingsController {
   }
 
   // Student fetch own bookings
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard)
   @Roles('student', 'parent')
   @Get('mine')
   async myBookings(@Req() req) {
@@ -51,7 +51,7 @@ export class BookingsController {
     return this.svc.forParent(req.user.userId);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard)
   @Roles('parent')
   @Get('parent')
   async parentBookings(@Req() req) {
@@ -59,7 +59,7 @@ export class BookingsController {
   }
 
   // Tutor fetch assigned bookings (Legacy /bookings/tutor)
-  @UseGuards(JwtAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
   @Roles('tutor')
   @Get('tutor')
   async tutorBookings(@Req() req) {
@@ -69,7 +69,7 @@ export class BookingsController {
   // NEW: Tutor Dashboard Endpoints (Match specific requirements)
   // Path: /bookings/tutor/bookings
   @Get('tutor/bookings')
-  @UseGuards(JwtAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
   @Roles('tutor')
   async getTutorBookings(@Req() req) {
     const bookings = await this.svc.forTutor(req.user.userId);
@@ -91,7 +91,7 @@ export class BookingsController {
 
   // Tutor: get available (unclaimed) bookings
   // Path: /bookings/available
-  @UseGuards(JwtAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
   @Roles('tutor')
   @Get('available')
   async availableBookings(@Req() req) {
@@ -109,7 +109,7 @@ export class BookingsController {
   }
 
   // Admin: reassign a booking to a tutor
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard)
   @Roles('admin')
   @Patch(':id/reassign/:tutorId')
   async reassign(@Param('id') id: string, @Param('tutorId') tutorId: string) {
@@ -117,7 +117,7 @@ export class BookingsController {
   }
 
   // Feature 6: Broadcast & Claim
-  @UseGuards(JwtAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
   @Roles('tutor')
   @Post(':id/claim')
   async claimBooking(@Param('id') id: string, @Req() req) {
@@ -125,7 +125,7 @@ export class BookingsController {
   }
 
   // Get single booking by ID (for session page)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   @Get(':id')
   async getBookingById(@Param('id') id: string, @Req() req) {
     return this.svc.getBookingById(id, req.user);
