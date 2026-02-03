@@ -7,6 +7,7 @@ import {
   Get,
   Delete,
   Param,
+  Patch,
 } from '@nestjs/common';
 import { StudentsService } from './students.service.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
@@ -30,6 +31,15 @@ export class StudentsController {
     }
 
     return this.studentsService.create(body, parentUserId);
+    return this.studentsService.create(body, parentUserId);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async getMyProfile(@Req() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) throw new Error('User not authenticated');
+    return this.studentsService.findByUserId(userId);
   }
 
   @Get('parent')
@@ -60,5 +70,15 @@ export class StudentsController {
     if (!parentUserId) throw new Error('User not authenticated');
     // Returns the updated parent object (with students)
     return this.studentsService.delete(id, parentUserId);
+  }
+
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard)
+  async update(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    const userId = req.user?.userId;
+    const role = req.user?.role;
+    if (!userId) throw new Error('User not authenticated');
+
+    return this.studentsService.update(id, body, userId, role);
   }
 }
