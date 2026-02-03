@@ -24,33 +24,54 @@ export class AdminService {
     ) { }
 
     async getStats() {
-        const [studentsCount, parentsCount, tutorsCount, upcomingSessionsCount] =
-            await Promise.all([
-                this.prisma.users.count({
-                    where: { role: 'student', is_active: true },
-                }),
-                this.prisma.users.count({
-                    where: { role: 'parent', is_active: true },
-                }),
-                this.prisma.users.count({
-                    where: { role: 'tutor', is_active: true },
-                }),
-                this.prisma.sessions.count({
-                    where: {
-                        start_time: {
-                            gt: new Date(),
-                        },
-                        status: 'scheduled',
-                    },
-                }),
-            ]);
+        console.log('[AdminService] 🟡 Fetching stats... checking connection and raw data');
 
-        return {
-            students: studentsCount,
-            parents: parentsCount,
-            tutors: tutorsCount,
-            upcomingSessions: upcomingSessionsCount,
-        };
+        try {
+            // DIAGNOSTICS: Check if we can see ANY users at all
+            const allUsers = await this.prisma.users.findMany({
+                select: { id: true, email: true, role: true, is_active: true },
+                take: 10
+            });
+            console.log(`[AdminService] 🔍 Raw User Samples (${allUsers.length} found):`, JSON.stringify(allUsers, null, 2));
+
+            const [studentsCount, parentsCount, tutorsCount, upcomingSessionsCount] =
+                await Promise.all([
+                    this.prisma.users.count({
+                        where: { role: 'student' },
+                    }),
+                    this.prisma.users.count({
+                        where: { role: 'parent' },
+                    }),
+                    this.prisma.users.count({
+                        where: { role: 'tutor' },
+                    }),
+                    this.prisma.sessions.count({
+                        where: {
+                            start_time: {
+                                gt: new Date(),
+                            },
+                            status: 'scheduled',
+                        },
+                    }),
+                ]);
+
+            console.log('[AdminService] ✅ Stats Calculated:', {
+                students: studentsCount,
+                parents: parentsCount,
+                tutors: tutorsCount,
+                upcomingSessions: upcomingSessionsCount,
+            });
+
+            return {
+                students: studentsCount,
+                parents: parentsCount,
+                tutors: tutorsCount,
+                upcomingSessions: upcomingSessionsCount,
+            };
+        } catch (error) {
+            console.error('[AdminService] ❌ Failed to fetch stats:', error);
+            throw error;
+        }
     }
 
     async getTutors(page: number = 1, limit: number = 50) {
@@ -367,14 +388,12 @@ export class AdminService {
                     id: b.students.id,
                     first_name:
                         b.students.first_name ||
-                        (b.students.users_students_user_idTousers
-                            ? b.students.users_students_user_idTousers.first_name
-                            : null),
+                        b.students.users_students_user_idTousers?.first_name ||
+                        'Student',
                     last_name:
                         b.students.last_name ||
-                        (b.students.users_students_user_idTousers
-                            ? b.students.users_students_user_idTousers.last_name
-                            : null),
+                        b.students.users_students_user_idTousers?.last_name ||
+                        (b.students.first_name || b.students.users_students_user_idTousers?.first_name ? '' : 'User'),
                     grade: b.students.grade,
                     school: b.students.school,
                     // Serialize dates properly
@@ -459,11 +478,20 @@ export class AdminService {
             throw new BadRequestException('Tutor not found or inactive');
         }
 
-        // Program Integrity Check
-        if (student.program_id !== tutor.program_id) {
+        // Program Integrity Check & Auto-Healing
+        if (tutor.program_id && student.program_id !== tutor.program_id) {
             throw new BadRequestException(
-                `Program mismatch: Student is in Program ${student.program_id} but Tutor is in ${tutor.program_id || 'None'}`
+                `Program mismatch: Student is in Program ${student.program_id} but Tutor is in ${tutor.program_id}`
             );
+        }
+
+        // If tutor has no program, assign them to the student's program upon allocation
+        if (!tutor.program_id && student.program_id) {
+            console.log(`[allocateTutor] Auto-assigning Tutor ${tutor.id} to Program ${student.program_id}`);
+            await this.prisma.tutors.update({
+                where: { id: tutor.id },
+                data: { program_id: student.program_id }
+            });
         }
 
         // Verify subject exists (by ID or name)
