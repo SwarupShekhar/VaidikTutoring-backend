@@ -2,6 +2,7 @@ import { Body, Controller, Post, Get, BadRequestException, UseGuards, Req } from
 import { AuthService } from './auth.service.js';
 import { signupSchema } from './schemas/signup.schema.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
+import { ClerkAuthGuard } from './clerk-auth.guard.js';
 
 @Controller('auth')
 export class AuthController {
@@ -64,8 +65,11 @@ export class AuthController {
     return this.auth.changePassword(req.user.userId || req.user.sub, body.password);
   }
   @Get('me')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   getMe(@Req() req: any) {
-    return req.user;
+    // req.user comes from Guard.
+    // Guard puts full user object in req.user
+    const userId = req.user.userId || req.user.sub || req.user.id;
+    return this.auth.getUserProfile(userId);
   }
 }

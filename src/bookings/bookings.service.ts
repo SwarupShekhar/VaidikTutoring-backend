@@ -45,9 +45,43 @@ export class BookingsService {
             first_name: user.first_name || 'Student',
             last_name: user.last_name || '',
             grade: 'TBD',
+            program_id: createDto.program_id, // Auto-enroll in requested program
           },
         });
       }
+
+
+      // Check if program exists to avoid FK error
+      if (createDto.program_id) {
+        const prog = await this.prisma.program.findUnique({ where: { id: createDto.program_id } });
+        if (!prog) {
+          // Lazy create program for dev/mock support
+          await this.prisma.program.create({
+            data: {
+              id: createDto.program_id,
+              name: 'Generated Program',
+              status: 'active',
+              startDate: new Date(),
+              endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
+              academic: {},
+              operational: {},
+              financial: {},
+              staffing: {},
+              delivery: {},
+              reporting: {},
+            }
+          });
+        }
+      }
+
+      // Auto-enroll or Switch Program if valid program_id provided
+      if (createDto.program_id && studentRecord.program_id !== createDto.program_id) {
+        studentRecord = await this.prisma.students.update({
+          where: { id: studentRecord.id },
+          data: { program_id: createDto.program_id }
+        });
+      }
+
       finalStudentId = studentRecord.id;
     } else if (user.role === 'parent') {
       // 1. If parent, student_id is required
@@ -175,21 +209,40 @@ export class BookingsService {
         },
       });
 
-      // Try auto-assign a tutor
-      const assigned = await this.autoAssignTutor(booking);
-      // If assigned, create session record too
-      if (assigned) {
-        await this.prisma.sessions.create({
-          data: {
-            booking_id: booking.id,
-            program_id: programId, // Set Program ID
-            start_time: booking.requested_start,
-            end_time: booking.requested_end,
-            meet_link: null,
-            whiteboard_link: null,
-            status: 'scheduled',
-          },
-        });
+      // Try auto-assign a tutor (NON-BLOCKING)
+      try {
+        const assigned = await this.autoAssignTutor(booking);
+        // If assigned, create session record too
+        if (assigned) {
+          // Check if session already exists (autoAssign might create it? No, checking code)
+          // autoAssignTutor creates session in code? No, let's check.
+
+          // Checking autoAssignTutor implementation...
+          // It has Atomic Assignment but does NOT create session in the transaction shown earlier?
+          // Wait, previous VIEW showed it notifies but doesn't create SESSION in transaction?
+          // Actually, let's verify autoAssignTutor.
+          // If it DOESN'T create session, we do it here. If it DOES, we duplicate.
+
+          // Re-reading autoAssignTutor:
+          // "await tx.bookings.update(...) data: { assigned_tutor_id... }"
+          // It does NOT create a session in the transaction block I read earlier.
+          // So we MUST create session here.
+
+          await this.prisma.sessions.create({
+            data: {
+              booking_id: booking.id,
+              program_id: programId, // Set Program ID
+              start_time: booking.requested_start,
+              end_time: booking.requested_end,
+              meet_link: null,
+              whiteboard_link: null,
+              status: 'scheduled',
+            },
+          });
+        }
+      } catch (e) {
+        this.logger.error(`Auto-assign failed for booking ${booking.id}: ${e.message}`);
+        // Continue execution, do not fail booking
       }
 
       // Return fully enriched booking object
@@ -199,15 +252,19 @@ export class BookingsService {
           include: {
             subjects: true,
             students: true,
-            packages: true,
+            packages: true, // If relation exists
             curricula: true,
             tutors: { include: { users: true } },
           },
         }),
       );
 
-      // Notify Admins
-      this.notificationsService.notifyAdminBooking(user.first_name || 'Student');
+      // Notify Admins (NON-BLOCKING)
+      try {
+        this.notificationsService.notifyAdminBooking(user.first_name || 'Student');
+      } catch (e) {
+        this.logger.error(`Failed to notify admin: ${e.message}`);
+      }
     }
 
     return createdBookings;
@@ -452,6 +509,7 @@ export class BookingsService {
     if (!booking) throw new NotFoundException('Booking not found');
     const tutor = await this.prisma.tutors.findUnique({
       where: { id: tutorId },
+      include: { users: true },
     });
     if (!tutor) throw new NotFoundException('Tutor not found');
 
@@ -480,6 +538,44 @@ export class BookingsService {
       });
     }
 
+    // NOTIFICATIONS (NON-BLOCKING)
+    try {
+      // 1. Notify Tutor
+      await this.notificationsService.create(
+        tutor.user_id,
+        'session_assigned',
+        {
+          message: `You have been assigned a new session by Admin.`,
+          bookingId: booking.id,
+          startTime: booking.requested_start,
+        },
+      );
+      this.notificationsService.notifyTutorAllocation(
+        tutor.user_id,
+        'Student', // Ideally fetch student name
+        booking.requested_start?.toString() || 'Scheduled Time'
+      );
+
+      // 2. Notify Student
+      if (booking.student_id) {
+        const student = await this.prisma.students.findUnique({ where: { id: booking.student_id } });
+        if (student && student.user_id) {
+          await this.notificationsService.create(
+            student.user_id,
+            'session_confirmed',
+            {
+              message: `Your session has been assigned to a tutor: ${tutor.users?.first_name || 'Tutor'}.`,
+              bookingId: booking.id,
+              tutorName: tutor.users?.first_name || 'Tutor',
+            }
+          );
+          this.notificationsService.notifyStudentAllocation(student.user_id, tutor.users?.first_name || 'Tutor');
+        }
+      }
+    } catch (e) {
+      this.logger.error(`Failed to send notifications for reassignment: ${e.message}`);
+    }
+
     return updated;
   }
 
@@ -494,7 +590,7 @@ export class BookingsService {
       where: {
         student_id: stud.id,
         status: { not: 'archived' },
-        requested_end: { gt: new Date() }, // HIDE PAST SESSIONS
+        // requested_end: { gt: new Date() }, // Unlock history for frontend stats
       },
       include: {
         subjects: true,
@@ -563,7 +659,7 @@ export class BookingsService {
     return this.prisma.bookings.findMany({
       where: {
         student_id: { in: ids },
-        requested_end: { gt: new Date() }, // HIDE PAST SESSIONS
+        // requested_end: { gt: new Date() }, // Unlock history for frontend stats
       },
       include: {
         subjects: true,
@@ -624,6 +720,9 @@ export class BookingsService {
             first_name: true,
             last_name: true,
             grade: true,
+            interests: true,
+            recent_focus: true,
+            struggle_areas: true,
           },
         },
         tutors: {

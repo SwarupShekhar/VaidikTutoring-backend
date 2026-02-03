@@ -8,7 +8,7 @@ import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class StudentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async create(
     data: {
@@ -17,6 +17,9 @@ export class StudentsService {
       grade: string;
       school: string;
       curriculum_preference?: string;
+      interests?: string[];
+      recent_focus?: string;
+      struggle_areas?: string[];
     },
     parentUserId: string,
   ) {
@@ -54,6 +57,9 @@ export class StudentsService {
         grade: data.grade,
         school: data.school,
         curriculum_preference: data.curriculum_preference,
+        interests: data.interests || [],
+        recent_focus: data.recent_focus || '',
+        struggle_areas: data.struggle_areas || [],
       },
     });
   }

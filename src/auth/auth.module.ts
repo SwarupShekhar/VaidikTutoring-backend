@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller.js';
 import { EmailModule } from '../email/email.module.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
 import { JwtStrategy } from './jwt.strategy.js';
+import { ClerkAuthGuard } from './clerk-auth.guard.js';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { JwtStrategy } from './jwt.strategy.js';
     EmailModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService],
+  providers: [AuthService, JwtStrategy, ClerkAuthGuard],
+  exports: [AuthService, JwtModule, ClerkAuthGuard],
 })
-export class AuthModule {}
+export class AuthModule { }

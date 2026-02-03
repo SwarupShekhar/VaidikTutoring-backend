@@ -66,7 +66,7 @@ export class BlogsService {
 
     async findAll() {
         // For Admin Dashboard - no pagination for now as per simple request
-        return this.prisma.blogs.findMany({
+        const blogs = await this.prisma.blogs.findMany({
             orderBy: { created_at: 'desc' },
             include: {
                 users: {
@@ -74,6 +74,12 @@ export class BlogsService {
                 }
             }
         });
+
+        return blogs.map(b => ({
+            ...b,
+            author: b.users,
+            users: undefined
+        }));
     }
 
     async findOne(idOrSlug: string) {
