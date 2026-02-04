@@ -226,7 +226,8 @@ model sessions {
 
 model students {
   id                                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id                              String?               @db.Uuid
+  user_id                              String?               @unique @db.Uuid
+  email                                String?               @unique
   first_name                           String?
   last_name                            String?
   parent_user_id                       String?               @db.Uuid
