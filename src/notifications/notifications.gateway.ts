@@ -1,7 +1,20 @@
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, OnGatewayConnection } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
-@WebSocketGateway({ cors: { origin: '*' } }) // Root namespace
+@WebSocketGateway({
+    cors: {
+        origin: [
+            'http://localhost:3000',
+            'http://localhost:3001',
+            'http://localhost:3002',
+            'https://k-12-backend-vnp4.vercel.app',
+            'https://k-12-vaidik.vercel.app',
+            'https://vaidiktutoring.vercel.app',
+            'https://k-12-backend.onrender.com'
+        ],
+        credentials: true
+    }
+}) // Root namespace
 export class NotificationsGateway implements OnGatewayConnection {
     @WebSocketServer()
     server: Server;
