@@ -31,7 +31,6 @@ export class StudentsController {
     }
 
     return this.studentsService.create(body, parentUserId);
-    return this.studentsService.create(body, parentUserId);
   }
 
   @Get('me')

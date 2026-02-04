@@ -585,7 +585,11 @@ export class BookingsService {
     const stud = await this.prisma.students.findFirst({
       where: { user_id: studentUserId },
     });
-    if (!stud) throw new NotFoundException('Student profile not found');
+    if (!stud) {
+      console.warn(`BookingsService: No student profile found for user_id: ${studentUserId}`);
+      throw new NotFoundException('Student profile not found');
+    }
+    console.log(`BookingsService: Found student profile ${stud.id} for user ${studentUserId}. Fetching bookings...`);
     return this.prisma.bookings.findMany({
       where: {
         student_id: stud.id,

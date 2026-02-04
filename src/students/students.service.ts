@@ -14,6 +14,7 @@ export class StudentsService {
     data: {
       first_name: string;
       last_name?: string;
+      email?: string;
       grade: string;
       school: string;
       curriculum_preference?: string;
@@ -29,11 +30,19 @@ export class StudentsService {
     });
 
     if (existingCount >= 10) {
-      // Increased limit or keep as per requirements
       throw new BadRequestException('You can only add up to 10 students.');
     }
 
-    // 0. Check for duplicates (by name and parent)
+    // 0. Check for duplicates (by email if provided, or name and parent)
+    if (data.email) {
+      const existingByEmail = await this.prisma.students.findUnique({
+        where: { email: data.email },
+      });
+      if (existingByEmail) {
+        throw new BadRequestException('A student with this email already exists.');
+      }
+    }
+
     const existingStudent = await this.prisma.students.findFirst({
       where: {
         parent_user_id: parentUserId,
@@ -54,6 +63,7 @@ export class StudentsService {
         parent_user_id: parentUserId,
         first_name: data.first_name,
         last_name: data.last_name,
+        email: data.email,
         grade: data.grade,
         school: data.school,
         curriculum_preference: data.curriculum_preference,
@@ -69,6 +79,7 @@ export class StudentsService {
     data: {
       first_name?: string;
       last_name?: string;
+      email?: string;
       grade?: string;
       school?: string;
       interests?: string[];
