@@ -1,0 +1,62 @@
+name: K12 Backend CI
+
+on:
+  push:
+    paths:
+      - 'k12-backend/**'
+  pull_request:
+    paths:
+      - 'k12-backend/**'
+
+jobs:
+  build:
+    name: Build & Test Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            k12-backend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('k12-backend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: k12-backend
+
+      - name: Lint
+        if: always()
+        run: npm run lint --if-present
+        working-directory: k12-backend
+
+      - name: Run tests
+        run: npm test --if-present
+        working-directory: k12-backend
+
+      - name: Build
+        run: npm run build --if-present
+        working-directory: k12-backend
+
+  deploy:
+    name: Deploy Backend (placeholder)
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy placeholder
+        run: |
+          echo "Deploy step for backend. Configure deployment steps and secrets (SSH keys, cloud credentials) before enabling."
