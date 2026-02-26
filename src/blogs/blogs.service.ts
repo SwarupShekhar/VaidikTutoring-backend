@@ -103,6 +103,16 @@ export class BlogsService {
         return { ...blog, author: blog.users, users: undefined };
     }
 
+    async findOneById(id: string) {
+        // Fetch blog by ID only (used for 301 redirects)
+        const blog = await this.prisma.blogs.findUnique({
+            where: { id },
+            include: { users: { select: { first_name: true, last_name: true } } }
+        });
+        if (!blog) return null;
+        return { ...blog, author: blog.users, users: undefined };
+    }
+
     async updateStatus(id: string, status: string) {
         if (!['PUBLISHED', 'PENDING', 'REJECTED'].includes(status)) {
             throw new BadRequestException('Invalid status');
