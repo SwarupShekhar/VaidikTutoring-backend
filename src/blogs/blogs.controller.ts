@@ -6,14 +6,18 @@ import {
     Patch,
     Param,
     UseGuards,
+    UseInterceptors,
     Req,
     Query,
     UnauthorizedException,
     NotFoundException,
+    Redirect,
+    BadRequestException,
 } from '@nestjs/common';
 import { BlogsService } from './blogs.service.js';
 import { CreateBlogDto } from './dto/create-blog.dto.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
+import { BlogRedirectInterceptor } from './blog-redirect.interceptor.js';
 
 @Controller()
 export class BlogsController {
@@ -31,9 +35,29 @@ export class BlogsController {
         return this.blogsService.findAllPublished(pageNum, limitNum, category); // Return only published
     }
 
-    // Public: Get single blog by ID or Slug
+    // Public: Get single blog by ID or Slug (with 301 redirect for UUIDs)
+    @UseInterceptors(BlogRedirectInterceptor)
     @Get('blogs/:idOrSlug')
     async findOne(@Param('idOrSlug') idOrSlug: string) {
+        // Check if input is a UUID
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
+
+        if (isUuid) {
+            // For UUID requests, fetch the blog to get its slug and redirect
+            const blog = await this.blogsService.findOneById(idOrSlug);
+            if (!blog || !blog.slug) {
+                throw new NotFoundException('Blog not found');
+            }
+            // Return redirect info for frontend to handle or middleware to process
+            return {
+                _redirect: true,
+                status: 301,
+                slug: blog.slug,
+                url: `/blogs/${blog.slug}`
+            };
+        }
+
+        // For slug requests, return the blog directly
         const blog = await this.blogsService.findOne(idOrSlug);
         if (!blog) {
             throw new NotFoundException('Blog not found');
