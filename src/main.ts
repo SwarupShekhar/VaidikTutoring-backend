@@ -29,9 +29,11 @@ async function bootstrap() {
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:3002',
-      'https://k-12-backend-vnp4.vercel.app', // <-- ADD YOUR VERCEL DOMAIN HERE
-      'https://k-12-vaidik.vercel.app', // <--- ADD THIS ONE!
-      'https://vaidiktutoring.vercel.app', // New Domain
+      'https://studyhours.com',           // Production frontend
+      'https://www.studyhours.com',       // Production with www
+      'https://k-12-backend-vnp4.vercel.app',
+      'https://k-12-vaidik.vercel.app',
+      'https://vaidiktutoring.vercel.app',
       'https://k-12-backend.onrender.com',
     ],
     credentials: true,
