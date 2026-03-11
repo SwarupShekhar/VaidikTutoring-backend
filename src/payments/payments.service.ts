@@ -24,7 +24,7 @@ export interface VerifyPaymentResponse {
 
 @Injectable()
 export class PaymentsService {
-  private razorpay: Razorpay;
+  private razorpay: Razorpay | null = null;
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
@@ -32,10 +32,35 @@ export class PaymentsService {
     private config: ConfigService,
     private creditsService: CreditsService,
   ) {
-    this.razorpay = new Razorpay({
-      key_id: this.config.get('RAZORPAY_KEY_ID') || '',
-      key_secret: this.config.get('RAZORPAY_KEY_SECRET') || '',
-    });
+    // Lazy initialization - only create Razorpay instance when credentials are available
+    this.initializeRazorpay();
+  }
+
+  private initializeRazorpay() {
+    const keyId = this.config.get('RAZORPAY_KEY_ID');
+    const keySecret = this.config.get('RAZORPAY_KEY_SECRET');
+
+    if (!keyId || !keySecret) {
+      this.logger.warn('Razorpay credentials not configured. Payment features will be disabled.');
+      return;
+    }
+
+    try {
+      this.razorpay = new Razorpay({
+        key_id: keyId,
+        key_secret: keySecret,
+      });
+      this.logger.log('Razorpay initialized successfully');
+    } catch (error) {
+      this.logger.error('Failed to initialize Razorpay:', error);
+      this.razorpay = null;
+    }
+  }
+
+  private ensureRazorpayInitialized() {
+    if (!this.razorpay) {
+      throw new BadRequestException('Payment service is not available. Please configure Razorpay credentials.');
+    }
   }
 
   /**
@@ -43,6 +68,8 @@ export class PaymentsService {
    * Adapated for Vaidik Tutoring architecture - uses existing packages table
    */
   async createOrder(userId: string, packageId: string, ip: string, userAgent?: string): Promise<CreateOrderResponse> {
+    this.ensureRazorpayInitialized();
+    
     // Get package from YOUR existing database
     const pkg = await this.prisma.packages.findUnique({
       where: { id: packageId },
@@ -75,7 +102,7 @@ export class PaymentsService {
     });
 
     // Create Razorpay order
-    const order = await this.razorpay.orders.create({
+    const order = await this.razorpay!.orders.create({
       amount: pkg.price_cents || 0, // Razorpay uses paise (smallest unit)
       currency: pkg.currency ?? 'USD',
       receipt: purchase.id, // Link back to our DB
@@ -114,6 +141,8 @@ export class PaymentsService {
     paymentId: string,
     signature: string,
   ): Promise<VerifyPaymentResponse> {
+    this.ensureRazorpayInitialized();
+    
     // CRITICAL: Verify HMAC-SHA256 signature
     const body = orderId + '|' + paymentId;
     const secret = this.config.get('RAZORPAY_KEY_SECRET') || '';
@@ -130,7 +159,7 @@ export class PaymentsService {
 
     // Fetch payment from Razorpay to verify amount
     try {
-      const payment = await this.razorpay.payments.fetch(paymentId);
+      const payment = await this.razorpay!.payments.fetch(paymentId);
 
       // Get purchase from database using the order_id from database (not frontend)
       const purchase = await this.prisma.purchases.findUnique({
