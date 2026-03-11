@@ -1,8 +1,10 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { RawBodyMiddleware } from './common/middleware/raw-body.middleware';
 
 import { AuthModule } from './auth/auth.module.js';
 import { StudentsModule } from './students/students.module.js';
@@ -23,11 +25,17 @@ import { SchoolsModule } from './schools/schools.module';
 import { AttentionEventsModule } from './attention-events/attention-events.module';
 import { SessionPhasesModule } from './session-phases/session-phases.module';
 import { SubjectsModule } from './subjects/subjects.module';
+import { PaymentsModule } from './payments/payments.module';
+import { CreditsModule } from './credits/credits.module';
 
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([{
+      ttl: 60000, // 1 minute
+      limit: 100, // 100 requests per minute
+    }]),
     PrismaModule, // <-- VERY IMPORTANT
     AuthModule, // <-- VERY IMPORTANT
     StudentsModule,
@@ -48,8 +56,16 @@ import { SubjectsModule } from './subjects/subjects.module';
     AttentionEventsModule,
     SessionPhasesModule,
     SubjectsModule,
+    PaymentsModule,
+    CreditsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(RawBodyMiddleware)
+      .forRoutes('payments');
+  }
+}

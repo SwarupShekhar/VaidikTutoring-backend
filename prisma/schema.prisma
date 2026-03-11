@@ -139,6 +139,7 @@ model packages {
   bookings      bookings[]
   package_items package_items[]
   purchases     purchases[]
+  user_credits  user_credits[]
 
   @@schema("app")
 }
@@ -159,20 +160,83 @@ model progress_points {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model purchases {
-  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id             String?   @db.Uuid
-  package_id          String?
-  amount_cents        Int?
-  currency            String?
-  status              String?
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id              String?   @db.Uuid
+  package_id           String?
+  amount_cents         Int?
+  currency             String?   @default("USD")
+  status               String?   @default("PENDING")
   payment_provider    String?
-  payment_provider_id String?
-  created_at          DateTime? @default(now()) @db.Timestamptz(6)
-  packages            packages? @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  program_id          String?   @db.Uuid
-  program             Program?  @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  users               users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_provider_id  String?
+  
+  // Razorpay-specific fields
+  razorpay_order_id    String?   @unique
+  razorpay_payment_id  String?   @unique
+  razorpay_signature   String?
+  payment_method       String?
+  payment_method_detail Json?
+  failure_reason       String?
+  refund_id            String?
+  refunded_at          DateTime? @db.Timestamptz(6)
+  verified_at          DateTime? @db.Timestamptz(6)
+  ip_address           String?
+  user_agent           String?
+  
+  created_at           DateTime? @default(now()) @db.Timestamptz(6)
+  
+  // Relations
+  packages             packages? @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  program_id           String?   @db.Uuid
+  program              Program?  @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@schema("app")
+}
+
+model webhook_events {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id     String    @unique
+  event_type   String
+  payload      Json
+  processed    Boolean   @default(false)
+  processed_at DateTime? @db.Timestamptz(6)
+  error        String?
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@map("webhook_events")
+  @@schema("app")
+}
+
+model user_credits {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String    @db.Uuid
+  package_id       String?   @db.Text
+  credits_total    Int       @default(0)
+  credits_used     Int       @default(0)
+  credits_remaining Int      @default(0)
+  reset_date       DateTime  @db.Timestamptz(6)
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime  @updatedAt @db.Timestamptz(6)
+
+  users    users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  packages packages?  @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("user_credits")
+  @@schema("app")
+}
+
+model credit_usage_logs {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String    @db.Uuid
+  session_id  String?   @db.Uuid
+  credits_used Int      @default(1)
+  used_at     DateTime  @default(now()) @db.Timestamptz(6)
+  notes       String?
+
+  users    users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sessions sessions? @relation(fields: [session_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("credit_usage_logs")
   @@schema("app")
 }
 
@@ -214,6 +278,7 @@ model sessions {
   attention_status   String?
   attention_meta     Json?
   attention_events   AttentionEvent[]
+  credit_usage_logs  credit_usage_logs[]
   
   current_phase      SessionPhase         @default(WARM_CONNECT)
   phase_history      Json?                // [{ phase, startedAt }]
@@ -332,6 +397,8 @@ model users {
   blogs                                   blogs[]
   student_attention_events               AttentionEvent[] @relation("StudentAttentionEvents")
   tutor_attention_events                 AttentionEvent[] @relation("TutorAttentionEvents")
+  user_credits                            user_credits[]
+  credit_usage_logs                       credit_usage_logs[]
   
   // Parent-Student Relationship
   parent_id                               String?         @db.Uuid
