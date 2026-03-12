@@ -360,10 +360,46 @@ export class AuthService {
 
     if (!user) return null;
 
+    // Debug logging for role issues
+    console.log('[AuthService] User profile requested:', userId);
+    console.log('[AuthService] User role from DB:', user.role);
+    console.log('[AuthService] User email:', user.email);
+
     // return safe user object (exclude password hash)
     // We can use a mapper or just return what we need + spread
     const { password_hash, email_verification_token, ...safeUser } = user;
     return safeUser;
+  }
+
+  // Emergency: Fix admin role for specific email
+  async fixAdminRole(email: string) {
+    console.log('[AuthService] Attempting to fix admin role for:', email);
+    
+    const user = await this.prisma.users.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    if (email === 'swarupshekhar.vaidikedu@gmail.com') {
+      // Force admin role for this specific email
+      const updatedUser = await this.prisma.users.update({
+        where: { id: user.id },
+        data: { role: 'admin' }
+      });
+
+      console.log('[AuthService] Fixed admin role for:', email);
+      await this.logAudit('ADMIN_ROLE_FIXED', user.id, { email, previousRole: user.role, newRole: 'admin' });
+
+      return {
+        message: 'Admin role fixed successfully',
+        user: updatedUser
+      };
+    }
+
+    throw new BadRequestException('Admin role fix not authorized for this email');
   }
 }
 
