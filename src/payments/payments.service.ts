@@ -216,6 +216,20 @@ export class PaymentsService {
       // Grant credits to user
       await this.creditsService.grantCredits(purchase.user_id!, purchase.package_id!);
 
+      // Track successful payment in audit logs
+      await this.prisma.audit_logs.create({
+        data: {
+          actor_user_id: purchase.user_id,
+          action: 'PAYMENT_SUCCESSFUL',
+          details: {
+            orderId,
+            paymentId,
+            amount: purchase.amount_cents,
+            packageId: purchase.package_id,
+          },
+        },
+      });
+
       this.logger.log(`Payment verified for order ${orderId}, purchase ${purchase.id}, credits granted`);
 
       return {

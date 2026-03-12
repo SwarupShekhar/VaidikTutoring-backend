@@ -86,40 +86,51 @@ async function main() {
         });
     }
 
-    // 3. Packages (Tiered Pricing)
+    // 3. Packages (Regional Tiered Pricing)
     const packagesList = [
-        { name: 'Starter', hours: 5, price: 150, description: 'Ideal for specific homework help or short-term skill boosts.' },
-        { name: 'Pro', hours: 10, price: 280, description: 'Our most popular option for consistent weekly support. (Saves $20)' },
-        { name: 'Master', hours: 20, price: 500, description: 'Best value for long-term academic development and comprehensive subject mastery. (Saves $100)' },
+        // US Region
+        { id: 'us-foundation-package-id', name: 'Foundation (US)', hours: 8, price: 199, currency: 'USD', region: 'US' },
+        { id: 'us-mastery-package-id', name: 'Mastery (US)', hours: 16, price: 349, currency: 'USD', region: 'US' },
+        { id: 'us-elite-package-id', name: 'Elite (US)', hours: 24, price: 499, currency: 'USD', region: 'US' },
+        
+        // UK Region
+        { id: 'uk-foundation-package-id', name: 'Foundation (UK)', hours: 8, price: 149, currency: 'GBP', region: 'UK' },
+        { id: 'uk-mastery-package-id', name: 'Mastery (UK)', hours: 16, price: 249, currency: 'GBP', region: 'UK' },
+        { id: 'uk-elite-package-id', name: 'Elite (UK)', hours: 24, price: 375, currency: 'GBP', region: 'UK' },
     ];
 
-    console.log(`Upserting ${packagesList.length} packages...`);
+    console.log(`Upserting ${packagesList.length} regional packages...`);
     for (const p of packagesList) {
-        const id = p.name.toLowerCase();
-        const price_cents = p.price * 100; // Convert dollars to cents
+        const price_cents = p.price * 100; // Convert to cents/pence
 
-        await prisma.packages.upsert({
-            where: { id },
+        const pkg = await prisma.packages.upsert({
+            where: { id: p.id },
             update: {
                 name: p.name,
                 price_cents: price_cents,
-                description: p.description,
-                active: true
+                currency: p.currency,
+                active: true,
+                description: `${p.hours} hours of private tutoring sessions.`
             },
             create: {
-                id,
+                id: p.id,
                 name: p.name,
                 price_cents: price_cents,
-                description: p.description,
-                currency: 'USD',
+                currency: p.currency,
+                description: `${p.hours} hours of private tutoring sessions.`,
                 active: true,
-                billing_type: 'prepaid'
+                billing_type: 'subscription'
             },
         });
 
-        // Also create related package items if needed (optional logic, keeping simple for now)
-        // Note: The original requirement didn't specify package items (relationships to subjects), 
-        // so we treat packages as generic credit bundles.
+        // Create a generic package item to represent the credits
+        await prisma.package_items.create({
+            data: {
+                package_id: pkg.id,
+                hours: p.hours,
+                note: 'Monthly credit allocation'
+            }
+        });
     }
 
     // 4. Admin Seeding (Super Admin)
@@ -139,8 +150,6 @@ async function main() {
             is_active: true
         },
     });
-    console.log('Admin seeded.');
-
     console.log('Admin seeded.');
 
     console.log('Seeding completed.');
