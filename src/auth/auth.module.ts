@@ -5,6 +5,7 @@ import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
 import { EmailModule } from '../email/email.module.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
+import { AdminModule } from '../admin/admin.module.js';
 import { JwtStrategy } from './jwt.strategy.js';
 import { ClerkAuthGuard } from './clerk-auth.guard.js';
 
@@ -17,6 +18,7 @@ import { ClerkAuthGuard } from './clerk-auth.guard.js';
       signOptions: { expiresIn: '1d' },
     }),
     EmailModule,
+    AdminModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, ClerkAuthGuard],
