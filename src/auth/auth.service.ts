@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../email/email.service';
+import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata.js';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwt: JwtService,
     private emailService: EmailService,
+    private syncClerkService: SyncClerkMetadataService,
   ) { }
 
   private async logAudit(action: string, userId: string | null, details: any = {}) {
@@ -390,11 +392,19 @@ export class AuthService {
         data: { role: 'admin' }
       });
 
+      // Also sync to Clerk permanently
+      try {
+        await this.syncClerkService.syncUserRoleToClerk(updatedUser.id, 'admin');
+        console.log('[AuthService] Permanently synced admin role to Clerk for:', email);
+      } catch (err) {
+        console.error('[AuthService] Clerk sync failed, but DB updated:', err);
+      }
+
       console.log('[AuthService] Fixed admin role for:', email);
       await this.logAudit('ADMIN_ROLE_FIXED', user.id, { email, previousRole: user.role, newRole: 'admin' });
 
       return {
-        message: 'Admin role fixed successfully',
+        message: 'Admin role fixed and permanently synced to Clerk',
         user: updatedUser
       };
     }
