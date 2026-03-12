@@ -46,6 +46,10 @@ export class BlogsService {
             whereClause.category = category;
         }
 
+        // Debug logging
+        console.log('[Blogs Service] Fetching blogs with where:', whereClause);
+        console.log('[Blogs Service] Skip:', skip, 'Limit:', limit);
+
         const [data, total] = await Promise.all([
             this.prisma.blogs.findMany({
                 where: whereClause,
@@ -60,6 +64,8 @@ export class BlogsService {
             }),
             this.prisma.blogs.count({ where: whereClause })
         ]);
+
+        console.log('[Blogs Service] Found blogs:', data.length, 'Total:', total);
 
         return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
     }
