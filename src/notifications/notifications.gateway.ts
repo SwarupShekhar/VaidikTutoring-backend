@@ -7,6 +7,8 @@ import { Server, Socket } from 'socket.io';
             'http://localhost:3000',
             'http://localhost:3001',
             'http://localhost:3002',
+            'https://studyhours.com',           // Production frontend
+            'https://www.studyhours.com',       // Production with www
             'https://k-12-backend-vnp4.vercel.app',
             'https://k-12-vaidik.vercel.app',
             'https://vaidiktutoring.vercel.app',
