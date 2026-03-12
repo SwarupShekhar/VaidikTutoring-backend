@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Get, BadRequestException, UseGuards, Req } from '@nestjs/common';
+import { Body, Controller, Post, Get, BadRequestException, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { signupSchema } from './schemas/signup.schema.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
@@ -64,12 +64,21 @@ export class AuthController {
     if (!body.password) throw new BadRequestException('Password is required');
     return this.auth.changePassword(req.user.userId || req.user.sub, body.password);
   }
-  @Get('me')
-  @UseGuards(ClerkAuthGuard)
-  getMe(@Req() req: any) {
-    // req.user comes from Guard.
-    // Guard puts full user object in req.user
-    const userId = req.user.userId || req.user.sub || req.user.id;
+  @Get('profile')
+  async getProfile(@Req() req: any) {
+    const userId = req.user?.sub || req.user?.userId;
+    if (!userId) throw new UnauthorizedException('User not authenticated');
     return this.auth.getUserProfile(userId);
+  }
+
+  @Post('fix-admin-role')
+  async fixAdminRole(@Req() req: any, @Body('email') email: string) {
+    // This should only be callable by admins or as emergency measure
+    const actor = req.user;
+    if (!actor || (actor.role !== 'admin' && actor.email !== 'swarupshekhar.vaidikedu@gmail.com')) {
+      throw new UnauthorizedException('Not authorized to fix admin roles');
+    }
+    
+    return this.auth.fixAdminRole(email);
   }
 }
