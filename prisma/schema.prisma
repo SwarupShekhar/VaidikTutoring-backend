@@ -64,13 +64,13 @@ model bookings {
   assigned_tutor_id String?    @db.Uuid
   note              String?
   created_at        DateTime?  @default(now()) @db.Timestamptz(6)
+  program_id        String?    @db.Uuid
   tutors            tutors?    @relation(fields: [assigned_tutor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   curricula         curricula? @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   packages          packages?  @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  program           Program?   @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   students          students?  @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   subjects          subjects?  @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  program_id        String?    @db.Uuid
-  program           Program?   @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sessions          sessions[]
 
   @@schema("app")
@@ -160,35 +160,30 @@ model progress_points {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model purchases {
-  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id              String?   @db.Uuid
-  package_id           String?
-  amount_cents         Int?
-  currency             String?   @default("USD")
-  status               String?   @default("PENDING")
-  payment_provider    String?
-  payment_provider_id  String?
-  
-  // Razorpay-specific fields
-  razorpay_order_id    String?   @unique
-  razorpay_payment_id  String?   @unique
-  razorpay_signature   String?
-  payment_method       String?
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id               String?   @db.Uuid
+  package_id            String?
+  amount_cents          Int?
+  currency              String?   @default("USD")
+  status                String?   @default("PENDING")
+  payment_provider      String?
+  payment_provider_id   String?
+  razorpay_order_id     String?   @unique
+  razorpay_payment_id   String?   @unique
+  razorpay_signature    String?
+  payment_method        String?
   payment_method_detail Json?
-  failure_reason       String?
-  refund_id            String?
-  refunded_at          DateTime? @db.Timestamptz(6)
-  verified_at          DateTime? @db.Timestamptz(6)
-  ip_address           String?
-  user_agent           String?
-  
-  created_at           DateTime? @default(now()) @db.Timestamptz(6)
-  
-  // Relations
-  packages             packages? @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  program_id           String?   @db.Uuid
-  program              Program?  @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  users                users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  failure_reason        String?
+  refund_id             String?
+  refunded_at           DateTime? @db.Timestamptz(6)
+  verified_at           DateTime? @db.Timestamptz(6)
+  ip_address            String?
+  user_agent            String?
+  created_at            DateTime? @default(now()) @db.Timestamptz(6)
+  program_id            String?   @db.Uuid
+  packages              packages? @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  program               Program?  @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                 users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("app")
 }
@@ -208,33 +203,31 @@ model webhook_events {
 }
 
 model user_credits {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id          String    @db.Uuid
-  package_id       String?   @db.Text
-  credits_total    Int       @default(0)
-  credits_used     Int       @default(0)
-  credits_remaining Int      @default(0)
-  reset_date       DateTime  @db.Timestamptz(6)
-  created_at       DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime  @updatedAt @db.Timestamptz(6)
-
-  users    users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  packages packages?  @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String    @db.Uuid
+  package_id        String?
+  credits_total     Int       @default(0)
+  credits_used      Int       @default(0)
+  credits_remaining Int       @default(0)
+  reset_date        DateTime  @db.Timestamptz(6)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @updatedAt @db.Timestamptz(6)
+  packages          packages? @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users             users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("user_credits")
   @@schema("app")
 }
 
 model credit_usage_logs {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id     String    @db.Uuid
-  session_id  String?   @db.Uuid
-  credits_used Int      @default(1)
-  used_at     DateTime  @default(now()) @db.Timestamptz(6)
-  notes       String?
-
-  users    users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  sessions sessions? @relation(fields: [session_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String    @db.Uuid
+  session_id   String?   @db.Uuid
+  credits_used Int       @default(1)
+  used_at      DateTime  @default(now()) @db.Timestamptz(6)
+  notes        String?
+  sessions     sessions? @relation(fields: [session_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users        users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("credit_usage_logs")
   @@schema("app")
@@ -270,21 +263,19 @@ model sessions {
   reviewedByAdmin    Boolean?             @default(false) @map("reviewed_by_admin")
   flagged            Boolean?             @default(false)
   created_at         DateTime?            @default(now()) @db.Timestamptz(6)
-  attendance         Attendance[]
   program_id         String?              @db.Uuid
-  program            Program?             @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  session_recordings session_recordings[]
-  session_messages   session_messages[]
   attention_status   String?
   attention_meta     Json?
+  current_phase      SessionPhase         @default(WARM_CONNECT)
+  phase_history      Json?
+  pedagogy_status    String?
+  attendance         Attendance[]
   attention_events   AttentionEvent[]
   credit_usage_logs  credit_usage_logs[]
-  
-  current_phase      SessionPhase         @default(WARM_CONNECT)
-  phase_history      Json?                // [{ phase, startedAt }]
-  pedagogy_status    String?
-
+  session_messages   session_messages[]
+  session_recordings session_recordings[]
   bookings           bookings?            @relation(fields: [booking_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  program            Program?             @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("app")
 }
@@ -304,14 +295,14 @@ model students {
   recent_focus                         String?
   struggle_areas                       Json?
   created_at                           DateTime?             @default(now()) @db.Timestamptz(6)
+  program_id                           String?               @db.Uuid
   assessment_attempts                  assessment_attempts[]
   attendance                           Attendance[]
   bookings                             bookings[]
   progress_points                      progress_points[]
   curricula                            curricula?            @relation(fields: [curriculum_preference], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  program_id                           String?               @db.Uuid
-  program                              Program?              @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users_students_parent_user_idTousers users?                @relation("students_parent_user_idTousers", fields: [parent_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  program                              Program?              @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users_students_user_idTousers        users?                @relation("students_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("app")
@@ -347,77 +338,64 @@ model tutor_shifts {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model tutors {
-  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id           String         @db.Uuid
-  bio               String?
-  qualifications    Json?
-  skills            Json?
-  hourly_rate_cents Int?
-  employment_type   String?
-  is_active         Boolean?       @default(true)
-  tutor_approved    Boolean        @default(false)
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String         @db.Uuid
+  bio                String?
+  qualifications     Json?
+  skills             Json?
+  hourly_rate_cents  Int?
+  employment_type    String?
+  is_active          Boolean?       @default(true)
+  tutor_approved     Boolean        @default(false)
   tutor_review_notes String?
-  created_at        DateTime?      @default(now()) @db.Timestamptz(6)
-  bookings          bookings[]
-  tutor_shifts      tutor_shifts[]
-  program_id        String?        @db.Uuid
-  program           Program?       @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  users             users          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  created_at         DateTime?      @default(now()) @db.Timestamptz(6)
+  program_id         String?        @db.Uuid
+  bookings           bookings[]
+  tutor_shifts       tutor_shifts[]
+  program            Program?       @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users              users          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("app")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model users {
-  id                                      String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email                                   String          @unique
+  id                                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                                   String               @unique
   password_hash                           String?
   role                                    String
   first_name                              String?
   last_name                               String?
   phone                                   String?
-  timezone                                String?         @default("UTC")
-  is_active                               Boolean?        @default(true)
-  email_verified                          Boolean         @default(false)
-  force_password_change                   Boolean         @default(false)
+  timezone                                String?              @default("UTC")
+  is_active                               Boolean?             @default(true)
+  email_verified                          Boolean              @default(false)
+  force_password_change                   Boolean              @default(false)
   email_verification_token                String?
-  email_verification_expires              DateTime?       @db.Timestamptz(6)
+  email_verification_expires              DateTime?            @db.Timestamptz(6)
   tutor_invite_token                      String?
-  tutor_invite_expires                    DateTime?       @db.Timestamptz(6)
-  created_at                              DateTime?       @default(now()) @db.Timestamptz(6)
+  tutor_invite_expires                    DateTime?            @db.Timestamptz(6)
+  created_at                              DateTime?            @default(now()) @db.Timestamptz(6)
+  parent_id                               String?              @db.Uuid
+  school_id                               String?              @db.Uuid
+  tutor_status                            TutorStatus          @default(ACTIVE)
   assessments                             assessments[]
+  student_attention_events                AttentionEvent[]     @relation("StudentAttentionEvents")
+  tutor_attention_events                  AttentionEvent[]     @relation("TutorAttentionEvents")
   audit_logs                              audit_logs[]
+  blogs                                   blogs[]
+  credit_usage_logs                       credit_usage_logs[]
   notifications                           notifications[]
   purchases                               purchases[]
-  students_students_parent_user_idTousers students[]      @relation("students_parent_user_idTousers")
-  students_students_user_idTousers        students[]      @relation("students_user_idTousers")
-  tutors                                  tutors[]
   session_messages                        session_messages[]
   session_recordings                      session_recordings[]
-  blogs                                   blogs[]
-  student_attention_events               AttentionEvent[] @relation("StudentAttentionEvents")
-  tutor_attention_events                 AttentionEvent[] @relation("TutorAttentionEvents")
+  students_students_parent_user_idTousers students[]           @relation("students_parent_user_idTousers")
+  students_students_user_idTousers        students?            @relation("students_user_idTousers")
+  tutors                                  tutors[]
   user_credits                            user_credits[]
-  credit_usage_logs                       credit_usage_logs[]
-  
-  // Parent-Student Relationship
-  parent_id                               String?         @db.Uuid
-  parent                                  users?          @relation("ParentChildren", fields: [parent_id], references: [id])
-  children                                users[]         @relation("ParentChildren")
-  
-  // School Relationship (For School Admins)
-  school_id                               String?         @db.Uuid
-  school                                  School?         @relation(fields: [school_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  // Tutor Status
-  tutor_status                            TutorStatus     @default(ACTIVE)
-
-  @@schema("app")
-}
-
-enum TutorStatus {
-  ACTIVE
-  SUSPENDED
+  parent                                  users?               @relation("ParentChildren", fields: [parent_id], references: [id])
+  children                                users[]              @relation("ParentChildren")
+  school                                  School?              @relation(fields: [school_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("app")
 }
@@ -435,55 +413,50 @@ model session_messages {
 }
 
 model blogs {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  title       String
-  slug        String   @unique
-  excerpt     String
-  content     String   @db.Text
-  image_url   String
-  category    String
-  status      String   @default("PENDING") // PENDING, PUBLISHED, REJECTED
-  author_id   String   @db.Uuid
-  created_at  DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at  DateTime? @updatedAt @db.Timestamptz(6)
-  users       users    @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title      String
+  slug       String    @unique
+  excerpt    String
+  content    String
+  image_url  String
+  category   String
+  status     String    @default("PENDING")
+  author_id  String    @db.Uuid
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @updatedAt @db.Timestamptz(6)
+  users      users     @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("app")
 }
 
 model Program {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String
-  status    String   // "draft" | "active" | "completed"
-
-  startDate DateTime @map("start_date") @db.Timestamptz(6)
-  endDate   DateTime @map("end_date") @db.Timestamptz(6)
-
-  academic  Json
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  status      String
+  startDate   DateTime    @map("start_date") @db.Timestamptz(6)
+  endDate     DateTime    @map("end_date") @db.Timestamptz(6)
+  academic    Json
   operational Json
-  financial Json
-  staffing  Json
-  delivery  Json
-  reporting Json
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  schoolId  String?    @map("school_id") @db.Uuid
-  school    School?    @relation(fields: [schoolId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  students  students[]
-  tutors    tutors[]
-  bookings  bookings[]
-  sessions  sessions[]
-  purchases purchases[]
+  financial   Json
+  staffing    Json
+  delivery    Json
+  reporting   Json
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  schoolId    String?     @map("school_id") @db.Uuid
+  bookings    bookings[]
+  school      School?     @relation(fields: [schoolId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchases   purchases[]
+  sessions    sessions[]
+  students    students[]
+  tutors      tutors[]
 
   @@map("programs")
   @@schema("app")
 }
 
 model District {
-  id   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name String
+  id      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name    String
   schools School[]
 
   @@map("districts")
@@ -494,8 +467,8 @@ model School {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name       String
   districtId String?   @map("district_id") @db.Uuid
-  district   District? @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   programs   Program[]
+  district   District? @relation(fields: [districtId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users      users[]
 
   @@map("schools")
@@ -510,7 +483,6 @@ model Attendance {
   minutesAttended Int?      @map("minutes_attended")
   joinedAt        DateTime? @map("joined_at") @db.Timestamptz(6)
   leftAt          DateTime? @map("left_at") @db.Timestamptz(6)
-
   sessions        sessions  @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   students        students  @relation(fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -519,21 +491,25 @@ model Attendance {
 }
 
 model AttentionEvent {
-  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  sessionId     String             @db.Uuid @map("session_id")
-  studentId     String             @db.Uuid @map("student_id")
-  tutorId       String             @db.Uuid @map("tutor_id")
-
-  type          AttentionEventType
-  timestamp     DateTime           @default(now()) @db.Timestamptz(6)
-
-  metadata      Json?
-
-  Session       sessions           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  Student       users              @relation("StudentAttentionEvents", fields: [studentId], references: [id], onDelete: Cascade)
-  Tutor         users              @relation("TutorAttentionEvents", fields: [tutorId], references: [id], onDelete: Cascade)
+  id        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId String             @map("session_id") @db.Uuid
+  studentId String             @map("student_id") @db.Uuid
+  tutorId   String             @map("tutor_id") @db.Uuid
+  type      AttentionEventType
+  timestamp DateTime           @default(now()) @db.Timestamptz(6)
+  metadata  Json?
+  Session   sessions           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  Student   users              @relation("StudentAttentionEvents", fields: [studentId], references: [id], onDelete: Cascade)
+  Tutor     users              @relation("TutorAttentionEvents", fields: [tutorId], references: [id], onDelete: Cascade)
 
   @@map("attention_events")
+  @@schema("app")
+}
+
+enum TutorStatus {
+  ACTIVE
+  SUSPENDED
+
   @@schema("app")
 }
 

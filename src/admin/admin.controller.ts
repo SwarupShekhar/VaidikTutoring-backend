@@ -11,12 +11,6 @@ import {
   HttpStatus,
   UnauthorizedException,
   Query,
-  IsEmail,
-  IsOptional,
-  IsString,
-  IsArray,
-  MinLength,
-  IsUUID,
 } from '@nestjs/common';
 import { AdminService } from './admin.service.js';
 import { SyncClerkMetadataService } from './sync-clerk-metadata.js';
@@ -27,6 +21,7 @@ import {
   IsString,
   IsArray,
   MinLength,
+  IsUUID,
 } from 'class-validator';
 import { Request } from 'express';
 
@@ -75,10 +70,8 @@ export class AdminController {
   @Get('stats')
   async getStats(@Req() req: any) {
     try {
-      // Log user to debug 500
-      console.log('GET /admin/stats - User:', req.user);
-
-      if (!req.user || req.user.role !== 'admin') {
+      const actor = req.user;
+      if (!actor || actor.role !== 'admin') {
         throw new UnauthorizedException('Only admins can access stats.');
       }
       return await this.adminService.getStats();
@@ -114,7 +107,7 @@ export class AdminController {
 
   @Post('tutors')
   @HttpCode(HttpStatus.CREATED)
-  async createTutor(@Req() req: Request, @Body() dto: CreateTutorDto) {
+  async createTutor(@Req() req: any, @Body() dto: CreateTutorDto) {
     try {
       const actor = (req as any).user;
       if (!actor || actor.role !== 'admin') {
@@ -176,7 +169,7 @@ export class AdminController {
 
   @Post('allocations')
   @HttpCode(HttpStatus.CREATED)
-  async allocateTutor(@Req() req: Request, @Body() dto: AllocateTutorDto) {
+  async allocateTutor(@Req() req: any, @Body() dto: AllocateTutorDto) {
     try {
       const actor = (req as any).user;
       if (!actor || actor.role !== 'admin') {
@@ -198,7 +191,7 @@ export class AdminController {
   }
 
   @Delete('tutors/:id')
-  async removeTutor(@Req() req: Request, @Param('id') id: string) {
+  async removeTutor(@Req() req: any, @Param('id') id: string) {
     try {
       const actor = (req as any).user;
       if (!actor || actor.role !== 'admin') {
@@ -212,14 +205,14 @@ export class AdminController {
   }
 
   @Post('tutors/:id/suspend')
-  async suspendTutor(@Req() req: Request, @Param('id') id: string, @Body('reason') reason?: string) {
+  async suspendTutor(@Req() req: any, @Param('id') id: string, @Body('reason') reason?: string) {
     const actor = (req as any).user;
     if (!actor || actor.role !== 'admin') throw new UnauthorizedException('Admin only');
     return this.adminService.suspendTutor(id, reason);
   }
 
   @Post('tutors/:id/activate')
-  async activateTutor(@Req() req: Request, @Param('id') id: string) {
+  async activateTutor(@Req() req: any, @Param('id') id: string) {
     const actor = req.user;
     if (!actor || actor.role !== 'admin') throw new UnauthorizedException('Admin only');
     return this.adminService.activateTutor(id);
