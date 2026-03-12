@@ -123,9 +123,35 @@ export class BlogsService {
         if (!['PUBLISHED', 'PENDING', 'REJECTED'].includes(status)) {
             throw new BadRequestException('Invalid status');
         }
+        
+        console.log(`[Blogs Service] Updating blog ${id} status to: ${status}`);
+        
         return this.prisma.blogs.update({
             where: { id },
             data: { status }
         });
+    }
+
+    // Emergency recovery method - check if any blogs exist
+    async emergencyCheck() {
+        console.log('[Blogs Service] Emergency check - counting all blogs...');
+        const totalBlogs = await this.prisma.blogs.count();
+        const publishedBlogs = await this.prisma.blogs.count({ where: { status: 'PUBLISHED' } });
+        const pendingBlogs = await this.prisma.blogs.count({ where: { status: 'PENDING' } });
+        const rejectedBlogs = await this.prisma.blogs.count({ where: { status: 'REJECTED' } });
+        
+        console.log(`[Blogs Service] Emergency check results:
+        - Total blogs: ${totalBlogs}
+        - Published: ${publishedBlogs}
+        - Pending: ${pendingBlogs}
+        - Rejected: ${rejectedBlogs}
+        `);
+        
+        return {
+            total: totalBlogs,
+            published: publishedBlogs,
+            pending: pendingBlogs,
+            rejected: rejectedBlogs
+        };
     }
 }

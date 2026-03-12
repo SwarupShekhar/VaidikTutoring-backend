@@ -5,6 +5,10 @@ import {
     Body,
     Patch,
     Param,
+    HttpCode,
+    HttpStatus,
+    Delete,
+    Put,
     UseGuards,
     UseInterceptors,
     Req,
@@ -12,7 +16,6 @@ import {
     UnauthorizedException,
     NotFoundException,
     Redirect,
-    BadRequestException,
 } from '@nestjs/common';
 import { BlogsService } from './blogs.service.js';
 import { CreateBlogDto } from './dto/create-blog.dto.js';
@@ -99,5 +102,15 @@ export class BlogsController {
             throw new UnauthorizedException('Only admins can update blog status');
         }
         return this.blogsService.updateStatus(id, status);
+    }
+
+    // Emergency: Check blog data status (Admin Only)
+    @UseGuards(JwtAuthGuard)
+    @Get('admin/blogs/emergency-check')
+    async emergencyCheck(@Req() req: any) {
+        if (req.user.role !== 'admin') {
+            throw new UnauthorizedException('Only admins can check blog status');
+        }
+        return this.blogsService.emergencyCheck();
     }
 }
