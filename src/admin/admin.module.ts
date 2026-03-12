@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { SeedPricingController } from './seed-pricing.controller';
+import { SyncClerkMetadataService } from './sync-clerk-metadata';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JwtModule } from '@nestjs/jwt';
 import { EmailModule } from '../email/email.module';
@@ -13,7 +14,7 @@ import { EmailModule } from '../email/email.module';
     EmailModule,
   ],
   controllers: [AdminController, SeedPricingController],
-  providers: [AdminService],
-  exports: [AdminService],
+  providers: [AdminService, SyncClerkMetadataService],
+  exports: [AdminService, SyncClerkMetadataService],
 })
 export class AdminModule {}

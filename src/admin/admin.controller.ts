@@ -11,16 +11,22 @@ import {
   HttpStatus,
   UnauthorizedException,
   Query,
-} from '@nestjs/common';
-import { AdminService } from './admin.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import {
   IsEmail,
   IsOptional,
   IsString,
   IsArray,
   MinLength,
   IsUUID,
+} from '@nestjs/common';
+import { AdminService } from './admin.service.js';
+import { SyncClerkMetadataService } from './sync-clerk-metadata.js';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  IsArray,
+  MinLength,
 } from 'class-validator';
 import { Request } from 'express';
 
@@ -61,7 +67,10 @@ class AllocateTutorDto {
 @Controller('admin')
 @UseGuards(JwtAuthGuard)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) { }
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly syncClerkService: SyncClerkMetadataService
+  ) { }
 
   @Get('stats')
   async getStats(@Req() req: any) {
@@ -211,8 +220,29 @@ export class AdminController {
 
   @Post('tutors/:id/activate')
   async activateTutor(@Req() req: Request, @Param('id') id: string) {
-    const actor = (req as any).user;
+    const actor = req.user;
     if (!actor || actor.role !== 'admin') throw new UnauthorizedException('Admin only');
     return this.adminService.activateTutor(id);
+  }
+
+  // Sync Clerk metadata endpoints
+  @Get('clerk/sync-role-mismatches')
+  async getRoleMismatches(@Req() req: any) {
+    if (req.user.role !== 'admin') {
+      throw new UnauthorizedException('Only admins can check role mismatches');
+    }
+    return this.syncClerkService.findRoleMismatches();
+  }
+
+  @Post('clerk/sync-user-role/:userId')
+  async syncUserRole(
+    @Req() req: any,
+    @Param('userId') userId: string,
+    @Body('role') role: string,
+  ) {
+    if (req.user.role !== 'admin') {
+      throw new UnauthorizedException('Only admins can sync user roles');
+    }
+    return this.syncClerkService.syncUserRoleToClerk(userId, role);
   }
 }
