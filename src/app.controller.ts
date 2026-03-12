@@ -5,6 +5,11 @@ import { PrismaService } from './prisma/prisma.service';
 export class AppController {
   constructor(private readonly prisma: PrismaService) {}
 
+  @Get('health')
+  simpleHealth() {
+    return { status: 'ok', timestamp: new Date().toISOString() };
+  }
+
   @Get('health/db')
   async health() {
     try {
