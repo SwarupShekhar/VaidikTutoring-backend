@@ -19,6 +19,7 @@ import {
 } from '@nestjs/common';
 import { BlogsService } from './blogs.service.js';
 import { CreateBlogDto } from './dto/create-blog.dto.js';
+import { UpdateBlogDto } from './dto/update-blog.dto.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 import { BlogRedirectInterceptor } from './blog-redirect.interceptor.js';
 
@@ -68,6 +69,17 @@ export class BlogsController {
         return blog;
     }
 
+    // Protected: Get single blog for editing
+    @UseGuards(JwtAuthGuard)
+    @Get('admin/blogs/:id')
+    async findOneForAdmin(@Param('id') id: string) {
+        const blog = await this.blogsService.findOneById(id);
+        if (!blog) {
+            throw new NotFoundException('Blog not found');
+        }
+        return blog;
+    }
+
     // Protected: Create new blog
     @UseGuards(JwtAuthGuard)
     @Post('admin/blogs')
@@ -82,12 +94,41 @@ export class BlogsController {
     // Protected: Get ALL blogs (Admin Dashboard)
     @UseGuards(JwtAuthGuard)
     @Get('admin/blogs')
-    async findAll(@Req() req: any) {
+    async findAll(
+        @Req() req: any,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+    ) {
         const user = req.user;
         if (user.role !== 'admin' && user.role !== 'tutor') {
             throw new UnauthorizedException('Only admins and tutors can view all blogs');
         }
-        return this.blogsService.findAll();
+        const pageNum = parseInt(page || '1', 10);
+        const limitNum = parseInt(limit || '10', 10);
+        return this.blogsService.findAll(pageNum, limitNum);
+    }
+    
+    // Protected: Update blog (Admin/Tutor)
+    @UseGuards(JwtAuthGuard)
+    @Patch('admin/blogs/:id')
+    async update(
+        @Req() req: any,
+        @Param('id') id: string,
+        @Body() updateBlogDto: UpdateBlogDto
+    ) {
+        const user = req.user;
+        const blog = await this.blogsService.findOneById(id);
+        
+        if (!blog) {
+            throw new NotFoundException('Blog not found');
+        }
+
+        // Tutors can only update their own blogs
+        if (user.role === 'tutor' && blog.author_id !== user.userId) {
+            throw new UnauthorizedException('You can only edit your own blogs');
+        }
+
+        return this.blogsService.update(id, updateBlogDto);
     }
 
     // Protected: Approve/Reject (Admin Only)

@@ -70,22 +70,30 @@ export class BlogsService {
         return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
     }
 
-    async findAll() {
-        // For Admin Dashboard - no pagination for now as per simple request
-        const blogs = await this.prisma.blogs.findMany({
-            orderBy: { created_at: 'desc' },
-            include: {
-                users: {
-                    select: { first_name: true, last_name: true, email: true, role: true }
+    async findAll(page: number, limit: number) {
+        const skip = (page - 1) * limit;
+        const [data, total] = await Promise.all([
+            this.prisma.blogs.findMany({
+                orderBy: { created_at: 'desc' },
+                skip,
+                take: limit,
+                include: {
+                    users: {
+                        select: { first_name: true, last_name: true, email: true, role: true }
+                    }
                 }
-            }
-        });
+            }),
+            this.prisma.blogs.count()
+        ]);
 
-        return blogs.map(b => ({
-            ...b,
-            author: b.users,
-            users: undefined
-        }));
+        return {
+            data: data.map(b => ({
+                ...b,
+                author: b.users,
+                users: undefined
+            })),
+            total
+        };
     }
 
     async findOne(idOrSlug: string) {
@@ -117,6 +125,41 @@ export class BlogsService {
         });
         if (!blog) return null;
         return { ...blog, author: blog.users, users: undefined };
+    }
+
+    async update(id: string, updateBlogDto: any) {
+        const data: any = {};
+        if (updateBlogDto.title) {
+            data.title = updateBlogDto.title;
+            // Optionally update slug if title changes
+            let slug = updateBlogDto.title
+                .toLowerCase()
+                .trim()
+                .replace(/[^\w\s-]/g, '')
+                .replace(/[\s_-]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+
+            const existing = await this.prisma.blogs.findFirst({ 
+                where: { 
+                    slug,
+                    id: { not: id }
+                } 
+            });
+            if (existing) {
+                slug = `${slug}-${Date.now()}`;
+            }
+            data.slug = slug;
+        }
+        if (updateBlogDto.excerpt) data.excerpt = updateBlogDto.excerpt;
+        if (updateBlogDto.content) data.content = updateBlogDto.content;
+        if (updateBlogDto.imageUrl) data.image_url = updateBlogDto.imageUrl;
+        if (updateBlogDto.category) data.category = updateBlogDto.category;
+        if (updateBlogDto.status) data.status = updateBlogDto.status;
+
+        return this.prisma.blogs.update({
+            where: { id },
+            data,
+        });
     }
 
     async updateStatus(id: string, status: string) {
