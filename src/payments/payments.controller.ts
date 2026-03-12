@@ -11,6 +11,7 @@ import { PaymentsService } from './payments.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 // Extend Request type to include user from Clerk auth
@@ -38,9 +39,9 @@ export class PaymentsController {
    * Protected by Clerk JWT auth
    */
   @Post('create-order')
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(ClerkAuthGuard, ThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 3600000 } }) // 10 requests per hour per user
-  async createOrder(@Body() dto: CreateOrderDto, @Req() req: Express.Request) {
+  async createOrder(@Body() dto: CreateOrderDto, @Req() req: any) {
     const userId = req.user?.id;
     
     if (!userId) {
@@ -60,9 +61,9 @@ export class PaymentsController {
    * Protected by Clerk JWT auth
    */
   @Post('verify')
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(ClerkAuthGuard, ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 300000 } }) // 5 requests per 5 minutes per user
-  async verifyPayment(@Body() dto: VerifyPaymentDto, @Req() req: Express.Request) {
+  async verifyPayment(@Body() dto: VerifyPaymentDto, @Req() req: any) {
     const userId = req.user?.id;
 
     if (!userId) {
