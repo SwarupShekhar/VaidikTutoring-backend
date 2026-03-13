@@ -128,7 +128,41 @@ export class BlogsController {
             throw new UnauthorizedException('You can only edit your own blogs');
         }
 
-        return this.blogsService.update(id, updateBlogDto);
+        return this.blogsService.update(id, updateBlogDto, user);
+    }
+
+    // Protected: Get version history (Admin/Tutor)
+    @UseGuards(JwtAuthGuard)
+    @Get('admin/blogs/:id/versions')
+    async getVersions(@Req() req: any, @Param('id') id: string) {
+        const user = req.user;
+        const blog = await this.blogsService.findOneById(id);
+        if (!blog) throw new NotFoundException('Blog not found');
+
+        if (user.role === 'tutor' && blog.author_id !== user.userId) {
+            throw new UnauthorizedException('You can only view versions of your own blogs');
+        }
+
+        return this.blogsService.getVersions(id);
+    }
+
+    // Protected: Restore version (Admin/Tutor)
+    @UseGuards(JwtAuthGuard)
+    @Post('admin/blogs/:id/versions/:versionId/restore')
+    async restoreVersion(
+        @Req() req: any,
+        @Param('id') id: string,
+        @Param('versionId') versionId: string
+    ) {
+        const user = req.user;
+        const blog = await this.blogsService.findOneById(id);
+        if (!blog) throw new NotFoundException('Blog not found');
+
+        if (user.role === 'tutor' && blog.author_id !== user.userId) {
+            throw new UnauthorizedException('You can only restore versions of your own blogs');
+        }
+
+        return this.blogsService.restoreVersion(id, versionId, user);
     }
 
     // Protected: Approve/Reject (Admin Only)

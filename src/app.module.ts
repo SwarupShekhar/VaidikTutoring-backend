@@ -1,7 +1,9 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerModule } from '@nestjs/throttler';
+import * as path from 'path';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { RawBodyMiddleware } from './common/middleware/raw-body.middleware';
@@ -27,6 +29,8 @@ import { SessionPhasesModule } from './session-phases/session-phases.module';
 import { SubjectsModule } from './subjects/subjects.module';
 import { PaymentsModule } from './payments/payments.module';
 import { CreditsModule } from './credits/credits.module';
+import { MediaModule } from './media/media.module';
+import { StorageModule } from './storage/storage.module';
 
 
 @Module({
@@ -58,6 +62,12 @@ import { CreditsModule } from './credits/credits.module';
     SubjectsModule,
     PaymentsModule,
     CreditsModule,
+    StorageModule,
+    MediaModule,
+    ServeStaticModule.forRoot({
+      rootPath: path.join(process.cwd(), 'public'),
+      serveRoot: '/',
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],
