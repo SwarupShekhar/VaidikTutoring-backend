@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
 import { SessionsController } from './sessions.controller';
+import { AuthModule } from '../auth/auth.module';
 import { SessionsService } from './sessions.service';
 import { SessionsGateway } from './sessions.gateway';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -15,7 +15,7 @@ import { SessionPhasesModule } from '../session-phases/session-phases.module.js'
     EmailModule,
     AttentionEventsModule,
     SessionPhasesModule,
-    JwtModule.register({ secret: process.env.JWT_SECRET || 'secret' }),
+    AuthModule,
   ],
   controllers: [SessionsController],
   providers: [SessionsService, SessionsGateway, DailyService],
