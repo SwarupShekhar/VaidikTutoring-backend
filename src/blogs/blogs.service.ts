@@ -124,7 +124,12 @@ export class BlogsService {
             include: { users: { select: { first_name: true, last_name: true } } }
         });
         if (!blog) return null;
-        return { ...blog, author: blog.users, users: undefined };
+        return { 
+            ...blog, 
+            author: blog.users, 
+            users: undefined,
+            author_id: blog.author_id 
+        };
     }
 
     async update(id: string, updateBlogDto: any) {
