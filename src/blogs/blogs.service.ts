@@ -315,4 +315,32 @@ export class BlogsService {
             rejected: rejectedBlogs
         };
     }
+
+    async remove(id: string) {
+        const blog = await this.prisma.blogs.findUnique({ where: { id } });
+        if (!blog) {
+            return { message: 'Blog already deleted or not found' };
+        }
+
+        // Delete versions first (required by DB constraint)
+        await this.prisma.blog_versions.deleteMany({
+            where: { blog_id: id }
+        });
+
+        // Delete the main blog
+        const result = await this.prisma.blogs.delete({
+            where: { id }
+        });
+
+        // Delete main image if it exists and is local
+        if (blog.image_url && blog.image_url.startsWith('/uploads/')) {
+            try {
+                await this.storage.deleteFile(blog.image_url);
+            } catch (error) {
+                console.error(`[Blogs Service] Failed to delete image file: ${blog.image_url}`, error);
+            }
+        }
+
+        return { message: 'Blog deleted successfully', id: result.id };
+    }
 }

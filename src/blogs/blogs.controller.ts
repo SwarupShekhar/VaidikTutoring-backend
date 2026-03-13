@@ -179,6 +179,16 @@ export class BlogsController {
         return this.blogsService.updateStatus(id, status);
     }
 
+    // Protected: Delete Blog (Admin Only)
+    @UseGuards(JwtAuthGuard)
+    @Delete('admin/blogs/:id')
+    async remove(@Req() req: any, @Param('id') id: string) {
+        if (req.user.role !== 'admin') {
+            throw new UnauthorizedException('Only admins can delete blogs');
+        }
+        return this.blogsService.remove(id);
+    }
+
     // Emergency: Check blog data status (Admin Only)
     @UseGuards(JwtAuthGuard)
     @Get('admin/blogs/emergency-check')
