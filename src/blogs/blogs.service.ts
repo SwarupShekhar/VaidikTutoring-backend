@@ -1,10 +1,14 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { CreateBlogDto } from './dto/create-blog.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { StorageService } from '../storage/storage.service.js';
 
 @Injectable()
 export class BlogsService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly storage: StorageService
+    ) { }
 
     async create(createBlogDto: CreateBlogDto, user: any) {
         // Admin gets PUBLISHED immediately, Tutor gets PENDING
@@ -24,23 +28,47 @@ export class BlogsService {
             slug = `${slug}-${Date.now()}`;
         }
 
-        return this.prisma.blogs.create({
+        const blog = await this.prisma.blogs.create({
             data: {
                 title: createBlogDto.title,
                 excerpt: createBlogDto.excerpt,
                 content: createBlogDto.content,
                 image_url: createBlogDto.imageUrl,
                 category: createBlogDto.category,
+                image_alt: createBlogDto.imageAlt,
                 slug,
                 status: initialStatus,
+                published_at: createBlogDto.publishedAt ? new Date(createBlogDto.publishedAt) : new Date(),
                 author_id: user.sub || user.userId,
             },
         });
+
+        // Create initial version
+        await this.prisma.blog_versions.create({
+            data: {
+                blog_id: blog.id,
+                title: blog.title,
+                excerpt: blog.excerpt,
+                content: blog.content,
+                image_url: blog.image_url,
+                category: blog.category,
+                image_alt: blog.image_alt,
+                summary: 'Initial version',
+                author_id: user.sub || user.userId,
+            }
+        });
+
+        return blog;
     }
 
     async findAllPublished(page: number, limit: number, category?: string) {
         const skip = (page - 1) * limit;
-        const whereClause: any = { status: 'PUBLISHED' };
+        const whereClause: any = { 
+            status: 'PUBLISHED',
+            published_at: {
+                lte: new Date()
+            }
+        };
 
         if (category) {
             whereClause.category = category;
@@ -132,7 +160,7 @@ export class BlogsService {
         };
     }
 
-    async update(id: string, updateBlogDto: any) {
+    async update(id: string, updateBlogDto: any, user: any) {
         const data: any = {};
         if (updateBlogDto.title) {
             data.title = updateBlogDto.title;
@@ -157,14 +185,99 @@ export class BlogsService {
         }
         if (updateBlogDto.excerpt) data.excerpt = updateBlogDto.excerpt;
         if (updateBlogDto.content) data.content = updateBlogDto.content;
-        if (updateBlogDto.imageUrl) data.image_url = updateBlogDto.imageUrl;
+        let oldImageUrlToDelete: string | null = null;
+        if (updateBlogDto.imageUrl) {
+            // Capture old image for deletion later if update succeeds
+            const oldBlog = await this.prisma.blogs.findUnique({ where: { id } });
+            if (oldBlog?.image_url && oldBlog.image_url.startsWith('/uploads/')) {
+                oldImageUrlToDelete = oldBlog.image_url;
+            }
+            data.image_url = updateBlogDto.imageUrl;
+        }
         if (updateBlogDto.category) data.category = updateBlogDto.category;
+        if (updateBlogDto.imageAlt !== undefined) data.image_alt = updateBlogDto.imageAlt;
+        if (updateBlogDto.publishedAt) data.published_at = new Date(updateBlogDto.publishedAt);
         if (updateBlogDto.status) data.status = updateBlogDto.status;
 
-        return this.prisma.blogs.update({
+        const blog = await this.prisma.blogs.update({
             where: { id },
             data,
         });
+
+        // Delete old image now that DB update is successful
+        if (oldImageUrlToDelete) {
+            try {
+                await this.storage.deleteFile(oldImageUrlToDelete);
+            } catch (e) {
+                console.error('Failed to delete old image after successful blog update:', e);
+            }
+        }
+
+        // Create new version
+        await this.prisma.blog_versions.create({
+            data: {
+                blog_id: id,
+                title: blog.title,
+                excerpt: blog.excerpt,
+                content: blog.content,
+                image_url: blog.image_url,
+                category: blog.category,
+                image_alt: blog.image_alt,
+                summary: updateBlogDto.summary || 'Content update',
+                author_id: user.sub || user.userId,
+            }
+        });
+
+        return blog;
+    }
+
+    async getVersions(blogId: string) {
+        return this.prisma.blog_versions.findMany({
+            where: { blog_id: blogId },
+            orderBy: { created_at: 'desc' },
+            include: {
+                author: {
+                    select: { first_name: true, last_name: true }
+                }
+            }
+        });
+    }
+
+    async restoreVersion(blogId: string, versionId: string, user: any) {
+        const version = await this.prisma.blog_versions.findUnique({
+            where: { id: versionId }
+        });
+
+        if (!version || version.blog_id !== blogId) {
+            throw new BadRequestException('Version not found');
+        }
+
+        const restoredBlog = await this.prisma.blogs.update({
+            where: { id: blogId },
+            data: {
+                title: version.title,
+                excerpt: version.excerpt,
+                content: version.content,
+                image_url: version.image_url,
+                category: version.category,
+            }
+        });
+
+        // Create a new version for the restoration itself
+        await this.prisma.blog_versions.create({
+            data: {
+                blog_id: blogId,
+                title: version.title,
+                excerpt: version.excerpt,
+                content: version.content,
+                image_url: version.image_url,
+                category: version.category,
+                summary: `Restored to version from ${new Date(version.created_at).toLocaleString()}`,
+                author_id: user.sub || user.userId,
+            }
+        });
+
+        return restoredBlog;
     }
 
     async updateStatus(id: string, status: string) {
