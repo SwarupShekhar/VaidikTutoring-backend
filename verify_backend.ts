@@ -8,8 +8,8 @@
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3000';
 // You might need to adjust credentials based on your seeded data
-const USER_EMAIL = process.env.VERIFY_USER_EMAIL ?? 'parent@example.com';
-const USER_PASS = process.env.VERIFY_USER_PASS ?? 'password123';
+const USER_EMAIL = process.env.VERIFY_USER_EMAIL ?? 'swarupshekhar.vaidikedu@gmail.com';
+const USER_PASS = process.env.VERIFY_USER_PASS ?? 'Vaidik@1234';
 
 type RequestOptions = Omit<RequestInit, 'headers'> & {
     headers?: Record<string, string>;
