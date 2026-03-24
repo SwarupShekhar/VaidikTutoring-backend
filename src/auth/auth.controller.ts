@@ -65,6 +65,7 @@ export class AuthController {
     return this.auth.changePassword(req.user.userId || req.user.sub, body.password);
   }
   @Get('profile')
+  @UseGuards(JwtAuthGuard)
   async getProfile(@Req() req: any) {
     const userId = req.user?.sub || req.user?.userId;
     if (!userId) throw new UnauthorizedException('User not authenticated');

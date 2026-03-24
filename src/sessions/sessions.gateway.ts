@@ -33,7 +33,9 @@ import { AttentionEventType, SessionPhase } from '../../generated/prisma/enums.j
       'https://k-12-backend-vnp4.vercel.app',
       'https://k-12-vaidik.vercel.app',
       'https://vaidiktutoring.vercel.app',
-      'https://k-12-backend.onrender.com'
+      'https://k-12-backend.onrender.com',
+      'https://studyhours.com',
+      'https://www.studyhours.com'
     ],
     credentials: true,
   },
