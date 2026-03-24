@@ -70,8 +70,8 @@ export class SessionsGateway
     @MessageBody() data: { sessionId: string; userId: string },
   ) {
     try {
-      // Verify user has access to this session
-      await this.sessionsService.verifySessionAccess(
+      // Verify user has access to this session or booking
+      await this.sessionsService.verifySessionOrBookingAccess(
         data.sessionId,
         data.userId,
       );
