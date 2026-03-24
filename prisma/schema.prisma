@@ -383,6 +383,7 @@ model users {
   student_attention_events                AttentionEvent[]     @relation("StudentAttentionEvents")
   tutor_attention_events                  AttentionEvent[]     @relation("TutorAttentionEvents")
   audit_logs                              audit_logs[]
+  blog_versions                           blog_versions[]
   blogs                                   blogs[]
   credit_usage_logs                       credit_usage_logs[]
   notifications                           notifications[]
@@ -393,7 +394,6 @@ model users {
   students_students_user_idTousers        students?            @relation("students_user_idTousers")
   tutors                                  tutors[]
   user_credits                            user_credits[]
-  blog_versions                           blog_versions[]
   parent                                  users?               @relation("ParentChildren", fields: [parent_id], references: [id])
   children                                users[]              @relation("ParentChildren")
   school                                  School?              @relation(fields: [school_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -414,39 +414,39 @@ model session_messages {
 }
 
 model blogs {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  title      String
-  slug       String    @unique
-  excerpt    String
-  content    String
-  image_url  String
-  category   String
-  image_alt  String?
-  status     String    @default("PENDING")
-  published_at DateTime? @db.Timestamptz(6)
-  author_id  String    @db.Uuid
-  created_at DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at DateTime? @updatedAt @db.Timestamptz(6)
-  users      users     @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  versions   blog_versions[]
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title        String
+  slug         String          @unique
+  excerpt      String
+  content      String
+  image_url    String
+  category     String
+  status       String          @default("PENDING")
+  author_id    String          @db.Uuid
+  created_at   DateTime?       @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime?       @updatedAt @db.Timestamptz(6)
+  image_alt    String?
+  published_at DateTime?       @db.Timestamptz(6)
+  versions     blog_versions[]
+  users        users           @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("app")
 }
 
 model blog_versions {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  blog_id     String   @db.Uuid
-  title       String
-  excerpt     String
-  content     String
-  image_url   String
-  category    String
-  image_alt   String?
-  summary     String?  // Summary of changes
-  author_id   String   @db.Uuid
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
-  blog        blogs    @relation(fields: [blog_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  author      users    @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  blog_id    String   @db.Uuid
+  title      String
+  excerpt    String
+  content    String
+  image_url  String
+  category   String
+  image_alt  String?
+  summary    String?
+  author_id  String   @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  author     users    @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  blog       blogs    @relation(fields: [blog_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@schema("app")
 }
