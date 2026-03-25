@@ -3,7 +3,6 @@ import { SessionsController } from './sessions.controller';
 import { AuthModule } from '../auth/auth.module';
 import { SessionsService } from './sessions.service';
 import { SessionsGateway } from './sessions.gateway';
-import { WhiteboardGateway } from './whiteboard.gateway';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { AttentionEventsModule } from '../attention-events/attention-events.module.js';
@@ -19,7 +18,7 @@ import { SessionPhasesModule } from '../session-phases/session-phases.module.js'
     AuthModule,
   ],
   controllers: [SessionsController],
-  providers: [SessionsService, SessionsGateway, DailyService, WhiteboardGateway],
-  exports: [SessionsService, SessionsGateway, WhiteboardGateway],
+  providers: [SessionsService, SessionsGateway, DailyService],
+  exports: [SessionsService, SessionsGateway],
 })
 export class SessionsModule { }

@@ -46,11 +46,12 @@ export class SessionsGateway
   server: Server;
 
   private readonly logger = new Logger(SessionsGateway.name);
+  private whiteboardState = new Map<string, any>(); // Cache for late joiners (SessionId -> Elements)
 
   constructor(
-    private sessionsService: SessionsService,
-    private attentionEventsService: AttentionEventsService,
-    private sessionPhasesService: SessionPhasesService,
+    private readonly sessionsService: SessionsService,
+    private readonly attentionEventsService: AttentionEventsService,
+    private readonly sessionPhasesService: SessionPhasesService,
   ) { }
 
   handleConnection(client: Socket) {
@@ -78,10 +79,16 @@ export class SessionsGateway
         finalSessionId = booking.sessions[0].id;
       }
 
-      client.join(`session-${finalSessionId}`);
-      this.logger.log(`Client ${client.id} joined canonical session-${finalSessionId} (via ${data.sessionId})`);
+      await client.join(`session-${finalSessionId}`);
+      this.logger.log(`User ${data.userId} joined session room: session-${finalSessionId}`);
 
-      return { success: true, message: 'Joined session successfully' };
+      // If we have cached whiteboard elements, send them immediately to the new joiner
+      const cachedWhiteboard = this.whiteboardState.get(finalSessionId);
+      if (cachedWhiteboard) {
+        client.emit('whiteboard.receiveUpdate', cachedWhiteboard);
+      }
+
+      return { success: true, sessionId: finalSessionId };
     } catch (error) {
       this.logger.error(`Failed to join session: ${error.message}`);
       // Security: Disconnect unauthorized client
@@ -145,6 +152,27 @@ export class SessionsGateway
     } catch (error) {
       this.logger.error(`Failed to send message: ${error.message}`);
       return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Sync Whiteboard data
+   */
+  @SubscribeMessage('whiteboard.update')
+  async handleWhiteboardUpdate(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; update: any },
+  ) {
+    try {
+        // Cache the latest state for late joiners
+        this.whiteboardState.set(payload.sessionId, payload.update);
+
+        // Broadcast DRAWING data to everyone else in the session room
+        client.broadcast.to(`session-${payload.sessionId}`).emit('whiteboard.receiveUpdate', payload.update);
+        return { success: true };
+    } catch (error) {
+        this.logger.error(`Whiteboard sync failed: ${error.message}`);
+        return { success: false };
     }
   }
 
