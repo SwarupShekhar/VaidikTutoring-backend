@@ -71,13 +71,15 @@ export class SessionsGateway
   ) {
     try {
       // Verify user has access to this session or booking
-      await this.sessionsService.verifySessionOrBookingAccess(
-        data.sessionId,
-        data.userId,
-      );
+      // Resolve canonical Session ID to ensure everyone is in the same room
+      let finalSessionId = data.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(data.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
 
-      client.join(`session-${data.sessionId}`);
-      this.logger.log(`Client ${client.id} joined session-${data.sessionId}`);
+      client.join(`session-${finalSessionId}`);
+      this.logger.log(`Client ${client.id} joined canonical session-${finalSessionId} (via ${data.sessionId})`);
 
       return { success: true, message: 'Joined session successfully' };
     } catch (error) {
@@ -96,8 +98,15 @@ export class SessionsGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sessionId: string },
   ) {
-    client.leave(`session-${data.sessionId}`);
-    this.logger.log(`Client ${client.id} left session-${data.sessionId}`);
+    let finalSessionId = data.sessionId;
+    // Resolve for consistency
+    this.sessionsService.resolveBookingToSession(data.sessionId).then(booking => {
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+      client.leave(`session-${finalSessionId}`);
+      this.logger.log(`Client ${client.id} left session-${finalSessionId}`);
+    });
     return { success: true };
   }
 
@@ -110,16 +119,22 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; text: string; senderName: string; senderId: string },
   ) {
     try {
-      // 1. Save message to Database (Optional but recommended for history)
-      // Note: postMessage expects userId, text. We use senderId from payload.
+      // 1. Resolve canonical ID
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+
+      // 2. Save message to Database (Optional but recommended for history)
       await this.sessionsService.postMessage(
-        payload.sessionId,
+        finalSessionId,
         payload.senderId,
         payload.text,
       );
 
-      // 2. Broadcast to everyone in the room EXCEPT sender (client side handles 'me')
-      client.broadcast.to(`session-${payload.sessionId}`).emit('receiveMessage', {
+      // 3. Broadcast to everyone in the room EXCEPT sender (client side handles 'me')
+      client.broadcast.to(`session-${finalSessionId}`).emit('receiveMessage', {
         text: payload.text,
         senderName: payload.senderName,
         senderId: payload.senderId,
