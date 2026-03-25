@@ -294,12 +294,24 @@ export class SessionsService {
     return icsLines.join('\r\n');
   }
 
-  async getMessages(sessionId: string, userId: string) {
-    // Verify user has access to this session
-    await this.verifySessionAccess(sessionId, userId);
+  async getMessages(id: string, userId: string) {
+    // 1. Resolve ID (could be Session ID or Booking ID)
+    let finalSessionId = id;
+    
+    const booking = await this.prisma.bookings.findUnique({
+      where: { id },
+      include: { sessions: { orderBy: { created_at: 'desc' }, take: 1 } }
+    });
+
+    if (booking && booking.sessions.length > 0) {
+      finalSessionId = booking.sessions[0].id;
+    }
+
+    // 2. Verify user has access
+    await this.verifySessionOrBookingAccess(id, userId);
 
     const messages = await this.prisma.session_messages.findMany({
-      where: { session_id: sessionId },
+      where: { session_id: finalSessionId },
       orderBy: { created_at: 'asc' },
       include: {
         users: {
@@ -321,13 +333,31 @@ export class SessionsService {
     }));
   }
 
-  async postMessage(sessionId: string, userId: string, text: string) {
-    // Verify user has access to this session
-    await this.verifySessionAccess(sessionId, userId);
+  async postMessage(id: string, userId: string, text: string) {
+    // 1. Resolve ID (could be Session ID or Booking ID)
+    let finalSessionId = id;
+    
+    const booking = await this.prisma.bookings.findUnique({
+      where: { id },
+      include: { sessions: { orderBy: { created_at: 'desc' }, take: 1 } }
+    });
+
+    if (booking) {
+      if (booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      } else {
+        // If no session exists for this booking, create one on the fly
+        const newSession = await this.create({ booking_id: id });
+        finalSessionId = newSession.id;
+      }
+    }
+
+    // 2. Verify user has access
+    await this.verifySessionOrBookingAccess(id, userId);
 
     const message = await this.prisma.session_messages.create({
       data: {
-        session_id: sessionId,
+        session_id: finalSessionId,
         user_id: userId,
         text,
       },
@@ -554,6 +584,21 @@ export class SessionsService {
 
     // 3. Neither found
     throw new NotFoundException('Session or Booking not found');
+  }
+
+  /**
+   * Helper to resolve a Booking ID to its latest Session.
+   */
+  public async resolveBookingToSession(id: string) {
+    return this.prisma.bookings.findUnique({
+      where: { id },
+      include: {
+        sessions: {
+          orderBy: { created_at: 'desc' },
+          take: 1,
+        },
+      },
+    });
   }
 
   private checkBookingAccess(booking: any, userId: string): boolean {
