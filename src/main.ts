@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import { AppModule } from './app.module.js';
+import { WsAdapter } from '@nestjs/platform-ws';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
 import { SentryFilter } from './common/filters/sentry.filter.js';
@@ -18,6 +19,7 @@ async function bootstrap() {
   });
 
   const app = await NestFactory.create(AppModule);
+  app.useWebSocketAdapter(new WsAdapter(app));
 
   // Increase body limit to 50mb for large blog posts
   app.use(json({ limit: '50mb' }));
