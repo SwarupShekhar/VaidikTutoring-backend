@@ -29,8 +29,10 @@ async function bootstrap() {
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:3002',
-      'https://studyhours.com',           // Production frontend
-      'https://www.studyhours.com',       // Production with www
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'https://studyhours.com',
+      'https://www.studyhours.com',
       'https://k-12-backend-vnp4.vercel.app',
       'https://k-12-vaidik.vercel.app',
       'https://vaidiktutoring.vercel.app',

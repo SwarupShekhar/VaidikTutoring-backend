@@ -11,13 +11,17 @@ import {
 } from '@nestjs/common';
 import { StudentsService } from './students.service.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
+import { CreditsService } from '../credits/credits.service';
 
 // Assuming you have an AuthGuard or similar to get the user
 // If not, you might need to extract userId differently.
 // Standard pattern: @UseGuards(JwtAuthGuard)
 @Controller('students')
 export class StudentsController {
-  constructor(private readonly studentsService: StudentsService) { }
+  constructor(
+    private readonly studentsService: StudentsService,
+    private readonly creditsService: CreditsService,
+  ) { }
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -38,7 +42,14 @@ export class StudentsController {
   async getMyProfile(@Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
-    return this.studentsService.findByUserId(userId);
+    const student = await this.studentsService.findByUserId(userId);
+    
+    // Enrich with credit status
+    if (student) {
+      const creditStatus = this.creditsService.getCreditStatus(student);
+      return { ...student, creditStatus };
+    }
+    return student;
   }
 
   @Get('parent')

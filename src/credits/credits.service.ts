@@ -1,5 +1,22 @@
 import { Injectable, BadRequestException, Logger, ForbiddenException } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+
+export interface CreditStatus {
+  mode: 'trial_active' | 'trial_exhausted' | 'trial_expired' | 'paid' | 'no_access';
+  creditsRemaining: number;
+  trialExpiresAt: string | null;
+  daysLeft: number | null;
+  sessionsUsed: number;
+  canBook: boolean;
+  plan: 'foundation' | 'mastery' | 'elite' | null;
+}
+
+export interface BookingCreditCost {
+  cost: number;
+  isFree: boolean;
+  isTrialSession: boolean;
+}
 
 @Injectable()
 export class CreditsService {
@@ -7,12 +24,304 @@ export class CreditsService {
 
   constructor(private prisma: PrismaService) {}
 
+  // ─── TRIAL CREDIT SYSTEM ───────────────────────────────────────────
+
+  /**
+   * Initialize trial credits for a newly created student.
+   * Call this immediately after a student record is created during signup.
+   */
+  async initTrialCredits(studentId: string): Promise<void> {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    await this.prisma.students.update({
+      where: { id: studentId },
+      data: {
+        trial_credits: 10,
+        trial_started_at: now,
+        trial_expires_at: expiresAt,
+        trial_sessions_used: 0,
+        is_trial_active: true,
+      },
+    });
+
+    this.logger.log(`Initialized trial credits for student ${studentId}, expires ${expiresAt.toISOString()}`);
+  }
+
+  /**
+   * Get the credit status for a student.
+   */
+  getCreditStatus(student: any): CreditStatus {
+    const now = new Date();
+
+    // 1. Check for paid subscription
+    if (
+      student.subscription_plan &&
+      student.subscription_ends &&
+      new Date(student.subscription_ends) > now
+    ) {
+      return {
+        mode: 'paid',
+        creditsRemaining: student.subscription_credits || 0,
+        trialExpiresAt: null,
+        daysLeft: null,
+        sessionsUsed: student.trial_sessions_used || 0,
+        canBook: (student.subscription_credits || 0) > 0,
+        plan: student.subscription_plan as any,
+      };
+    }
+
+    // 2. Check if trial is expired
+    if (
+      !student.is_trial_active ||
+      (student.trial_expires_at && new Date(student.trial_expires_at) < now)
+    ) {
+      return {
+        mode: 'trial_expired',
+        creditsRemaining: 0,
+        trialExpiresAt: student.trial_expires_at?.toISOString() || null,
+        daysLeft: 0,
+        sessionsUsed: student.trial_sessions_used || 0,
+        canBook: false,
+        plan: null,
+      };
+    }
+
+    // 3. Check if trial credits are exhausted
+    if ((student.trial_credits || 0) <= 0) {
+      return {
+        mode: 'trial_exhausted',
+        creditsRemaining: 0,
+        trialExpiresAt: student.trial_expires_at?.toISOString() || null,
+        daysLeft: student.trial_expires_at
+          ? Math.max(0, Math.ceil((new Date(student.trial_expires_at).getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
+          : null,
+        sessionsUsed: student.trial_sessions_used || 0,
+        canBook: false,
+        plan: null,
+      };
+    }
+
+    // 4. Trial is active
+    const daysLeft = student.trial_expires_at
+      ? Math.max(0, Math.ceil((new Date(student.trial_expires_at).getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
+      : null;
+
+    return {
+      mode: 'trial_active',
+      creditsRemaining: student.trial_credits || 0,
+      trialExpiresAt: student.trial_expires_at?.toISOString() || null,
+      daysLeft,
+      sessionsUsed: student.trial_sessions_used || 0,
+      canBook: true,
+      plan: null,
+    };
+  }
+
+  /**
+   * Compute the credit cost for a booking.
+   */
+  computeBookingCreditCost(student: any): BookingCreditCost {
+    const now = new Date();
+
+    // Paid plan
+    if (
+      student.subscription_plan &&
+      student.subscription_ends &&
+      new Date(student.subscription_ends) > now
+    ) {
+      return { cost: 1, isFree: false, isTrialSession: false };
+    }
+
+    // Trial: first session is free
+    if ((student.trial_sessions_used || 0) === 0) {
+      return { cost: 0, isFree: true, isTrialSession: true };
+    }
+
+    // Trial: subsequent sessions cost 5 credits
+    return { cost: 5, isFree: false, isTrialSession: true };
+  }
+
+  /**
+   * Deduct credits from a student. Uses row-level locking to prevent race conditions.
+   */
+  async deductCredits(studentId: string, cost: number, isTrial: boolean): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      // Row-level lock via SELECT ... FOR UPDATE (raw query)
+      const rows: any[] = await tx.$queryRawUnsafe(
+        `SELECT * FROM app.students WHERE id = $1 FOR UPDATE`,
+        studentId,
+      );
+
+      if (!rows || rows.length === 0) {
+        throw new BadRequestException('Student not found');
+      }
+
+      const student = rows[0];
+
+      if (isTrial) {
+        const newCredits = (student.trial_credits || 0) - cost;
+        if (newCredits < 0) {
+          throw new ForbiddenException('Insufficient trial credits');
+        }
+
+        const newSessionsUsed = (student.trial_sessions_used || 0) + 1;
+        const shouldDeactivate = newCredits <= 0 || newSessionsUsed >= 3;
+
+        await tx.students.update({
+          where: { id: studentId },
+          data: {
+            trial_credits: newCredits,
+            trial_sessions_used: newSessionsUsed,
+            is_trial_active: !shouldDeactivate,
+          },
+        });
+      } else {
+        const newCredits = (student.subscription_credits || 0) - cost;
+        if (newCredits < 0) {
+          throw new ForbiddenException('Insufficient subscription credits');
+        }
+
+        await tx.students.update({
+          where: { id: studentId },
+          data: {
+            subscription_credits: newCredits,
+          },
+        });
+      }
+    });
+
+    this.logger.log(`Deducted ${cost} credits from student ${studentId} (isTrial: ${isTrial})`);
+  }
+
+  /**
+   * Refund credits on cancellation. Only refunds if trial has not expired.
+   */
+  async refundCredits(studentId: string, cost: number, isTrialSession: boolean): Promise<void> {
+    if (!isTrialSession || cost === 0) return;
+
+    const student = await this.prisma.students.findUnique({
+      where: { id: studentId },
+    });
+
+    if (!student) return;
+
+    // Only refund if trial hasn't expired
+    if (student.trial_expires_at && new Date(student.trial_expires_at) < new Date()) {
+      this.logger.log(`Skipping refund for student ${studentId}: trial already expired`);
+      return;
+    }
+
+    await this.prisma.students.update({
+      where: { id: studentId },
+      data: {
+        trial_credits: (student.trial_credits || 0) + cost,
+        trial_sessions_used: Math.max(0, (student.trial_sessions_used || 0) - 1),
+        is_trial_active: true,
+      },
+    });
+
+    this.logger.log(`Refunded ${cost} credits to student ${studentId}`);
+  }
+
+  /**
+   * Subscribe a student to a plan (stub — real payment integration later).
+   */
+  async subscribe(studentId: string, plan: 'foundation' | 'mastery' | 'elite'): Promise<CreditStatus> {
+    const creditMap = { foundation: 8, mastery: 16, elite: 24 };
+    const credits = creditMap[plan];
+
+    if (!credits) {
+      throw new BadRequestException('Invalid plan');
+    }
+
+    const now = new Date();
+    const ends = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+    // TODO: payment gate here — integrate Stripe/Razorpay before DB write
+
+    const updated = await this.prisma.students.update({
+      where: { id: studentId },
+      data: {
+        subscription_plan: plan,
+        subscription_credits: credits,
+        subscription_starts: now,
+        subscription_ends: ends,
+        is_trial_active: false, // trial ends when subscription starts
+      },
+    });
+
+    this.logger.log(`Student ${studentId} subscribed to ${plan} plan with ${credits} credits`);
+
+    return this.getCreditStatus(updated);
+  }
+
+  /**
+   * Admin: Grant credits to a student with an audit note.
+   */
+  async adminGrantCredits(
+    studentId: string,
+    credits: number,
+    note: string,
+    grantedByUserId: string,
+  ): Promise<void> {
+    const student = await this.prisma.students.findUnique({
+      where: { id: studentId },
+    });
+
+    if (!student) {
+      throw new BadRequestException('Student not found');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Add credits to trial balance
+      await tx.students.update({
+        where: { id: studentId },
+        data: {
+          trial_credits: (student.trial_credits || 0) + credits,
+          is_trial_active: true,
+        },
+      });
+
+      // Log in credit_adjustments
+      await tx.credit_adjustments.create({
+        data: {
+          student_id: studentId,
+          amount: credits,
+          note,
+          granted_by: grantedByUserId,
+        },
+      });
+    });
+
+    this.logger.log(`Admin ${grantedByUserId} granted ${credits} credits to student ${studentId}: ${note}`);
+  }
+
+  /**
+   * Cron: Expire stale trials (run naturally at midnight).
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async expireStaleTrials(): Promise<number> {
+    const result = await this.prisma.students.updateMany({
+      where: {
+        is_trial_active: true,
+        trial_expires_at: { lt: new Date() },
+      },
+      data: {
+        is_trial_active: false,
+      },
+    });
+
+    this.logger.log(`Expired ${result.count} stale trial(s)`);
+    return result.count;
+  }
+
+  // ─── EXISTING CREDIT SYSTEM (subscription-based) ─────────────────
+
   /**
    * Grant credits to user after successful payment
-   * Implements: Credit Reset every 30 days, No roll-over
    */
   async grantCredits(userId: string, packageId: string): Promise<void> {
-    // Get package details
     const pkg = await this.prisma.packages.findUnique({
       where: { id: packageId },
     });
@@ -21,19 +330,16 @@ export class CreditsService {
       throw new BadRequestException('Package not found or inactive');
     }
 
-    // Calculate credits based on package (1 credit = 1 session = 30 mins)
     const creditsTotal = this.calculateCreditsFromPackage(pkg);
 
-    // Create or update user credits
     const existingCredits = await this.prisma.user_credits.findFirst({
       where: { 
         user_id: userId,
-        reset_date: new Date() // Current period
+        reset_date: new Date(),
       },
     });
 
     if (existingCredits) {
-      // Add to existing credits (shouldn't happen normally but handle edge case)
       await this.prisma.user_credits.update({
         where: { id: existingCredits.id },
         data: {
@@ -42,13 +348,12 @@ export class CreditsService {
         },
       });
     } else {
-      // Create new credit entry
       await this.prisma.user_credits.create({
         data: {
           user_id: userId,
           package_id: packageId,
           credits_total: creditsTotal,
-          reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+          reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
       });
     }
@@ -56,15 +361,11 @@ export class CreditsService {
     this.logger.log(`Granted ${creditsTotal} credits to user ${userId} for package ${packageId}`);
   }
 
-  /**
-   * Check if user has sufficient credits for a session
-   * Implements: Access Control - User.sessions_left > 0 required
-   */
   async checkCredits(userId: string): Promise<{ hasCredits: boolean; creditsRemaining: number }> {
     const userCredits = await this.prisma.user_credits.findFirst({
       where: { 
         user_id: userId,
-        reset_date: { gt: new Date() }, // Current period only
+        reset_date: { gt: new Date() },
       },
       orderBy: { created_at: 'desc' },
     });
@@ -80,19 +381,13 @@ export class CreditsService {
     };
   }
 
-  /**
-   * Consume credits for a session
-   * Implements: Post-Session Hook - Trigger AI Transcription
-   */
   async consumeCredits(userId: string, sessionId: string, credits: number = 1): Promise<void> {
-    // Check credits first
-    const { hasCredits, creditsRemaining } = await this.checkCredits(userId);
+    const { hasCredits } = await this.checkCredits(userId);
     
     if (!hasCredits) {
       throw new ForbiddenException('Insufficient credits for session');
     }
 
-    // Get current credit record
     const userCredits = await this.prisma.user_credits.findFirst({
       where: { 
         user_id: userId,
@@ -105,7 +400,6 @@ export class CreditsService {
       throw new BadRequestException('No active credit subscription found');
     }
 
-    // Update credits used
     await this.prisma.user_credits.update({
       where: { id: userCredits.id },
       data: {
@@ -114,7 +408,6 @@ export class CreditsService {
       },
     });
 
-    // Log usage
     await this.prisma.credit_usage_logs.create({
       data: {
         user_id: userId,
@@ -125,16 +418,8 @@ export class CreditsService {
     });
 
     this.logger.log(`Consumed ${credits} credits from user ${userId} for session ${sessionId}`);
-
-    // TODO: Trigger AI Transcription service
-    // This would call your AI service to generate transcript + summary
-    // await this.aiService.generateTranscript(sessionId);
   }
 
-  /**
-   * Reset credits monthly (cron job)
-   * Implements: Credit Reset every 30 days. No roll-over
-   */
   async resetExpiredCredits(): Promise<void> {
     const expiredCredits = await this.prisma.user_credits.findMany({
       where: {
@@ -143,12 +428,11 @@ export class CreditsService {
     });
 
     for (const credit of expiredCredits) {
-      // Archive old credits (keep for history)
       await this.prisma.user_credits.update({
         where: { id: credit.id },
         data: {
-          reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // New period
-          credits_total: 0, // Reset to 0 (no roll-over)
+          reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          credits_total: 0,
           credits_used: 0,
           updated_at: new Date(),
         },
@@ -158,9 +442,6 @@ export class CreditsService {
     }
   }
 
-  /**
-   * Get user's credit status
-   */
   async getUserCreditStatus(userId: string) {
     const userCredits = await this.prisma.user_credits.findFirst({
       where: { 
@@ -196,13 +477,6 @@ export class CreditsService {
     };
   }
 
-  /**
-   * Calculate credits from package
-   * Based on pricing structure:
-   * - Foundation: 8 credits (2 sessions/week)
-   * - Mastery: 16 credits (4 sessions/week) 
-   * - Elite: 24 credits (6 sessions/week)
-   */
   private calculateCreditsFromPackage(pkg: any): number {
     const name = pkg.name.toLowerCase();
     
@@ -210,7 +484,6 @@ export class CreditsService {
     if (name.includes('mastery')) return 16;
     if (name.includes('elite')) return 24;
     
-    // Default fallback
     return 8;
   }
 }

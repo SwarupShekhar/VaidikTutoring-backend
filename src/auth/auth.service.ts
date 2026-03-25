@@ -9,6 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../email/email.service';
 import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata.js';
+import { CreditsService } from '../credits/credits.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -18,6 +19,7 @@ export class AuthService {
     private jwt: JwtService,
     private emailService: EmailService,
     private syncClerkService: SyncClerkMetadataService,
+    private creditsService: CreditsService,
   ) { }
 
   private async logAudit(action: string, userId: string | null, details: any = {}) {
@@ -130,7 +132,7 @@ export class AuthService {
     // Let's check if 'students' table is used. Yes.
 
     if (data.role === 'student' && data.grade) {
-      await this.prisma.students.create({
+      const studentRecord = await this.prisma.students.create({
         data: {
           user_id: user.id,
           grade: data.grade.toString(),
@@ -138,6 +140,13 @@ export class AuthService {
           last_name: data.last_name,
         }
       });
+
+      // Initialize trial credits for the new student
+      try {
+        await this.creditsService.initTrialCredits(studentRecord.id);
+      } catch (e) {
+        console.error('Failed to initialize trial credits:', e);
+      }
     }
 
     // For tutor, we might need 'tutors' record.

@@ -65,6 +65,9 @@ model bookings {
   note              String?
   created_at        DateTime?  @default(now()) @db.Timestamptz(6)
   program_id        String?    @db.Uuid
+  credit_cost       Int        @default(0)
+  is_trial_session  Boolean    @default(false)
+  is_free_session   Boolean    @default(false)
   tutors            tutors?    @relation(fields: [assigned_tutor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   curricula         curricula? @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   packages          packages?  @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -296,9 +299,19 @@ model students {
   struggle_areas                       Json?
   created_at                           DateTime?             @default(now()) @db.Timestamptz(6)
   program_id                           String?               @db.Uuid
+  trial_credits                        Int                   @default(10)
+  trial_started_at                     DateTime?             @db.Timestamptz(6)
+  trial_expires_at                     DateTime?             @db.Timestamptz(6)
+  trial_sessions_used                  Int                   @default(0)
+  is_trial_active                      Boolean               @default(true)
+  subscription_plan                    String?               @db.VarChar(20)
+  subscription_credits                 Int                   @default(0)
+  subscription_starts                  DateTime?             @db.Timestamptz(6)
+  subscription_ends                    DateTime?             @db.Timestamptz(6)
   assessment_attempts                  assessment_attempts[]
   attendance                           Attendance[]
   bookings                             bookings[]
+  credit_adjustments                   credit_adjustments[]
   progress_points                      progress_points[]
   curricula                            curricula?            @relation(fields: [curriculum_preference], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users_students_parent_user_idTousers users?                @relation("students_parent_user_idTousers", fields: [parent_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -385,6 +398,7 @@ model users {
   audit_logs                              audit_logs[]
   blog_versions                           blog_versions[]
   blogs                                   blogs[]
+  credit_adjustments                      credit_adjustments[]
   credit_usage_logs                       credit_usage_logs[]
   notifications                           notifications[]
   purchases                               purchases[]
@@ -397,6 +411,19 @@ model users {
   parent                                  users?               @relation("ParentChildren", fields: [parent_id], references: [id])
   children                                users[]              @relation("ParentChildren")
   school                                  School?              @relation(fields: [school_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("app")
+}
+
+model credit_adjustments {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  student_id String    @db.Uuid
+  amount     Int
+  note       String?
+  granted_by String?   @db.Uuid
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  students   students  @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      users?    @relation(fields: [granted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@schema("app")
 }

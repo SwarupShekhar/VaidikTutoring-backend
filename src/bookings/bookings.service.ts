@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateBookingDto } from './create-booking.dto.js';
 import { EmailService } from '../email/email.service';
 import { subMinutes } from 'date-fns';
+import { CreditsService } from '../credits/credits.service';
 
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -22,6 +23,7 @@ export class BookingsService {
     private prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly notificationsService: NotificationsService,
+    private readonly creditsService: CreditsService,
   ) { }
 
   // Create booking and attempt auto-assign tutor
@@ -187,6 +189,25 @@ export class BookingsService {
 
     const createdBookings: any[] = [];
 
+    // ─── CREDIT CHECK ───────────────────────────────────────────────
+    // Only check credits for student bookings (not admin)
+    let creditCostInfo: any = null;
+    if (studentRecord && user.role !== 'admin') {
+      const creditStatus = this.creditsService.getCreditStatus(studentRecord);
+      if (!creditStatus.canBook) {
+        throw new ForbiddenException(
+          JSON.stringify({
+            error: 'insufficient_credits',
+            mode: creditStatus.mode,
+            message: creditStatus.mode === 'trial_expired'
+              ? 'Your trial has expired. Please subscribe to book more sessions.'
+              : 'Your trial credits are used up. Please subscribe to book more sessions.',
+          }),
+        );
+      }
+      creditCostInfo = this.creditsService.computeBookingCreditCost(studentRecord);
+    }
+
     // Loop through each subject and create a separate booking
     for (const subjectId of createDto.subject_ids) {
       const subject = await this.prisma.subjects.findUnique({
@@ -201,13 +222,31 @@ export class BookingsService {
           package_id: createDto.package_id,
           subject_id: subjectId,
           curriculum_id: createDto.curriculum_id,
-          program_id: programId, // Set Program ID
+          program_id: programId,
           requested_start: start,
           requested_end: end,
           note: createDto.note,
           status: 'requested',
+          credit_cost: creditCostInfo?.cost || 0,
+          is_trial_session: creditCostInfo?.isTrialSession || false,
+          is_free_session: creditCostInfo?.isFree || false,
         },
       });
+
+      // Deduct credits after booking is created
+      if (creditCostInfo && finalStudentId) {
+        try {
+          await this.creditsService.deductCredits(
+            finalStudentId,
+            creditCostInfo.cost,
+            creditCostInfo.isTrialSession,
+          );
+        } catch (e) {
+          // If credit deduction fails, delete the booking and re-throw
+          await this.prisma.bookings.delete({ where: { id: booking.id } });
+          throw e;
+        }
+      }
 
       // Try auto-assign a tutor (NON-BLOCKING)
       try {
