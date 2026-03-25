@@ -164,15 +164,22 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; update: any },
   ) {
     try {
-        // Cache the latest state for late joiners
-        this.whiteboardState.set(payload.sessionId, payload.update);
+      // 1. Resolve canonical ID (just like joinSession)
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
 
-        // Broadcast DRAWING data to everyone else in the session room
-        client.broadcast.to(`session-${payload.sessionId}`).emit('whiteboard.receiveUpdate', payload.update);
-        return { success: true };
+      // 2. Cache the latest state in the canonical room
+      this.whiteboardState.set(finalSessionId, payload.update);
+
+      // 3. Broadcast to everyone in the canonical room room
+      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.receiveUpdate', payload.update);
+      return { success: true };
     } catch (error) {
-        this.logger.error(`Whiteboard sync failed: ${error.message}`);
-        return { success: false };
+      this.logger.error(`Whiteboard sync failed: ${error.message}`);
+      return { success: false };
     }
   }
 
