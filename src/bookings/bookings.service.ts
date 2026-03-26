@@ -628,19 +628,32 @@ export class BookingsService {
       console.warn(`BookingsService: No student profile found for user_id: ${studentUserId}`);
       throw new NotFoundException('Student profile not found');
     }
-    console.log(`BookingsService: Found student profile ${stud.id} for user ${studentUserId}. Fetching bookings...`);
-    return this.prisma.bookings.findMany({
+    console.log(`[forStudent] Found student profile ${stud.id} for user ${studentUserId}. Fetching all bookings...`);
+    const bookings = await this.prisma.bookings.findMany({
       where: {
         student_id: stud.id,
         status: { not: 'archived' },
-        // requested_end: { gt: new Date() }, // Unlock history for frontend stats
       },
       include: {
         subjects: true,
         tutors: { include: { users: true } },
+        sessions: {
+          orderBy: { start_time: 'desc' },
+          take: 1
+        }
       },
       orderBy: { requested_start: 'asc' },
     });
+
+    // TRANSFORM: Flatten session data for frontend consumption
+    return bookings.map(b => ({
+      ...b,
+      start_time: b.sessions?.[0]?.start_time || b.requested_start,
+      end_time: b.sessions?.[0]?.end_time || b.requested_end,
+      meet_link: b.sessions?.[0]?.meet_link,
+      subject: b.subjects,
+      tutor: b.tutors?.users, // Alias singular for frontend hook
+    }));
   }
 
   // get bookings for tutor
