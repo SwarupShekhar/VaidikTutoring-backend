@@ -30,10 +30,22 @@ export class NotificationsService {
 
 
   async findAll(userId: string) {
-    return this.prisma.notifications.findMany({
+    const list = await this.prisma.notifications.findMany({
       where: { user_id: userId },
       orderBy: { created_at: 'desc' },
       take: 50,
+    });
+    return list.map(n => ({
+      ...n,
+      message: (n.payload as any)?.message || 'New notification',
+      read: n.is_read
+    }));
+  }
+
+  async markAllRead(userId: string) {
+    return this.prisma.notifications.updateMany({
+      where: { user_id: userId, is_read: false },
+      data: { is_read: true },
     });
   }
 
@@ -50,8 +62,24 @@ export class NotificationsService {
     });
   }
   async notifyAdminBooking(studentName: string) {
-    // Wrapper for gateway method
+    // 1. Websocket alert (real-time)
     this.gateway.notifyAdminBooking(studentName);
+
+    // 2. Persist to DB for all admins (so it shows in bell icon history)
+    try {
+      const admins = await this.prisma.users.findMany({
+        where: { role: 'admin', is_active: true }
+      });
+
+      for (const admin of admins) {
+        await this.create(admin.id, 'booking_created', {
+          message: `Student ${studentName} just booked a new session!`,
+          studentName
+        });
+      }
+    } catch (e) {
+      this.logger.error(`Failed to persist admin notifications: ${e.message}`);
+    }
   }
 
   async notifyStudentAllocation(userId: string, tutorName: string) {
