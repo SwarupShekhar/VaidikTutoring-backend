@@ -631,15 +631,17 @@ export class BookingsService {
     console.log(`[forStudent] Found student profile ${stud.id} for user ${studentUserId}. Fetching all bookings...`);
     const bookings = await this.prisma.bookings.findMany({
       where: {
-        student_id: stud.id,
-        status: { not: 'archived' },
+        OR: [
+          { student_id: stud.id },
+          { students: { user_id: studentUserId } }, 
+          { students: { email: stud.email } }
+        ]
       },
       include: {
         subjects: true,
         tutors: { include: { users: true } },
         sessions: {
           orderBy: { start_time: 'desc' },
-          take: 1
         }
       },
       orderBy: { requested_start: 'asc' },
