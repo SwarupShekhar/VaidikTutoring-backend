@@ -869,7 +869,11 @@ export class BookingsService {
     const session = booking.sessions?.[0]; // Get the latest session
     return {
       ...booking,
-      // Removed jitsi_token
+      subject_name: booking.subjects?.name,
+      subject: booking.subjects, // For SessionPage compatibility
+      start_time: session?.start_time || booking.requested_start,
+      end_time: session?.end_time || booking.requested_end,
+      tutor: booking.tutors?.users, // For UI alias consistency
     };
   }
 }
