@@ -12,6 +12,7 @@ import { CreateBookingDto } from './create-booking.dto.js';
 import { EmailService } from '../email/email.service';
 import { subMinutes } from 'date-fns';
 import { CreditsService } from '../credits/credits.service';
+import { Cron } from '@nestjs/schedule';
 
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -446,18 +447,31 @@ export class BookingsService {
     return true;
   }
 
-  async broadcastToTutors(booking, tutors) {
-    // Filter tutors who technically COULD take it (ignoring overlaps for now, or maybe check them)
-    // For MVP, just blast everyone or filter by subject match if possible.
+  async broadcastToTutors(booking: any) {
+    const tutors = await this.prisma.tutors.findMany({
+      where: {
+        is_active: true,
+        tutor_approved: true,
+        program_id: booking.program_id,
+      },
+      include: { users: true },
+    });
 
-    // We assume tutors list is passed or we fetch it.
+    const candidates = tutors.filter((t) => {
+      const skills = t.skills as any;
+      return (
+        Array.isArray(skills?.subjects) &&
+        skills.subjects.includes(booking.subject_id) &&
+        t.users?.email
+      );
+    });
 
-    const candidates = tutors.filter((t) => t.users && t.users.email); // Ensure email exists
+    if (candidates.length === 0) {
+      this.logger.warn(`No eligible tutors for claim broadcast on booking ${booking.id}`);
+      return;
+    }
 
     for (const t of candidates) {
-      // In real app: check t.skills for booking.subject_id match
-      // and check overlaps again? Or just let them race.
-
       try {
         await this.emailService.sendMail({
           to: t.users.email,
@@ -465,14 +479,50 @@ export class BookingsService {
           text: `A new session is available for claim.\n\nTime: ${booking.requested_start}\nLink: ${process.env.FRONTEND_URL}/tutor/claim-session/${booking.id}\n\nClick fast to claim!`,
         });
       } catch (e) {
-        this.logger.error(
-          `Failed to email tutor ${t.users.email}: ${e.message}`,
-        );
+        this.logger.error(`Failed to email tutor ${t.users.email}: ${e.message}`);
       }
     }
-    this.logger.log(
-      `Broadcasted booking ${booking.id} to ${candidates.length} tutors.`,
-    );
+
+    this.logger.log(`Broadcasted booking ${booking.id} to ${candidates.length} tutors.`);
+  }
+
+  @Cron('0 */5 * * * *')
+  async handleClaimBroadcast() {
+    this.logger.debug('Checking for bookings to broadcast for claim...');
+
+    const fifteenMinutesAgo = subMinutes(new Date(), 15);
+
+    const unassignedBookings = await this.prisma.bookings.findMany({
+      where: {
+        status: 'requested',
+        assigned_tutor_id: null,
+        created_at: { lt: fifteenMinutesAgo },
+      },
+    });
+
+    for (const booking of unassignedBookings) {
+      const alreadyBroadcasted = await this.prisma.notifications.findFirst({
+        where: {
+          type: 'claim_broadcast',
+          payload: { path: ['booking_id'], equals: booking.id },
+        },
+      });
+
+      if (alreadyBroadcasted) continue;
+
+      await this.broadcastToTutors(booking);
+
+      await this.prisma.notifications.create({
+        data: {
+          type: 'claim_broadcast',
+          payload: { booking_id: booking.id },
+          user_id: null,
+          is_read: true,
+        },
+      });
+
+      this.logger.log(`Marked booking ${booking.id} as broadcasted for claim.`);
+    }
   }
 
   // Claim a booking (Tutor Race)
