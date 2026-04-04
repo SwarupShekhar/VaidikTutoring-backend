@@ -184,6 +184,126 @@ export class SessionsGateway
   }
 
   /**
+   * Toggle student pen access
+   */
+  @SubscribeMessage('whiteboard.togglePenAccess')
+  async handleTogglePenAccess(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; studentId: string; hasAccess: boolean },
+  ) {
+    try {
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+
+      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.penAccessUpdated', {
+        studentId: payload.studentId,
+        hasAccess: payload.hasAccess
+      });
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Failed to toggle pen access: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Trigger Confetti
+   */
+  @SubscribeMessage('whiteboard.triggerConfetti')
+  async handleTriggerConfetti(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string },
+  ) {
+    try {
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+
+      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.confettiFired');
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Failed to trigger confetti: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Collaborative Cursor Update
+   */
+  @SubscribeMessage('whiteboard.pointerUpdate')
+  async handleWhiteboardPointerUpdate(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; userId: string; username: string; pointer: any; button: string; selectedElementIds: any[] },
+  ) {
+    try {
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+
+      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.pointerUpdate', payload);
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Whiteboard pointer update failed: ${error.message}`);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Whiteboard Slide Change
+   */
+  @SubscribeMessage('whiteboard.slideChange')
+  async handleWhiteboardSlideChange(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; index: number },
+  ) {
+    try {
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+
+      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.slideChanged', { index: payload.index });
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Slide change sync failed: ${error.message}`);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Trigger reaction emojis
+   */
+  @SubscribeMessage('session.reaction')
+  async handleReaction(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; emoji: string },
+  ) {
+    try {
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+
+      client.broadcast.to(`session-${finalSessionId}`).emit('session.reaction', {
+        emoji: payload.emoji
+      });
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Failed to trigger reaction: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * Log an attention event in real-time
    */
   @SubscribeMessage('session.attentionEvent.create')

@@ -632,4 +632,55 @@ export class SessionsService {
     return true;
   }
 
+  async getAdminSummary(sessionId: string) {
+    const session = await this.prisma.sessions.findUnique({
+      where: { id: sessionId },
+      include: {
+        session_recordings: true,
+        session_messages: true,
+        attendance: {
+          include: { students: true }
+        },
+        bookings: {
+          include: {
+            students: true,
+            tutors: { include: { users: true } }
+          }
+        }
+      }
+    });
+
+    if (!session) throw new NotFoundException('Session not found');
+
+    const participants: any[] = [];
+    if (session.bookings?.students) {
+      participants.push({
+        role: 'student',
+        name: `${session.bookings.students.first_name || ''} ${session.bookings.students.last_name || ''}`.trim(),
+      });
+    }
+    
+    if (session.bookings?.tutors?.users) {
+      const t = session.bookings.tutors.users;
+      participants.push({
+        role: 'tutor',
+        name: `${t.first_name || ''} ${t.last_name || ''}`.trim()
+      });
+    }
+
+    let durationMinutes = 0;
+    if (session.start_time && session.end_time) {
+      durationMinutes = Math.floor((new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 60000);
+    } else if (session.start_time) {
+      durationMinutes = Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000);
+    }
+
+    return {
+      participants,
+      duration: durationMinutes > 0 ? durationMinutes : 0,
+      recordingLinks: session.session_recordings.map(r => r.file_url),
+      chatLogCount: session.session_messages.length,
+      whiteboardActivity: session.whiteboard_link !== null,
+    };
+  }
 }
