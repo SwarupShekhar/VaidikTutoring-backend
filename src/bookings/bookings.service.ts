@@ -755,7 +755,8 @@ export class BookingsService {
       },
       include: {
         subjects: true,
-        students: { select: { first_name: true, last_name: true } },
+        curricula: true,
+        students: { select: { first_name: true, last_name: true, grade: true } },
         tutors: {
           include: { users: { select: { first_name: true, last_name: true } } },
         },
@@ -827,7 +828,8 @@ export class BookingsService {
       },
       include: {
         subjects: true,
-        students: { select: { first_name: true, last_name: true } },
+        curricula: true,
+        students: { select: { first_name: true, last_name: true, grade: true } },
         packages: true,
       },
       orderBy: { requested_start: 'asc' },

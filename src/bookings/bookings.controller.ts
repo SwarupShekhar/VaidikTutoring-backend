@@ -85,6 +85,8 @@ export class BookingsController {
       subject_name: b.subjects?.name || 'Unknown Subject',
       child_name: b.students ? `${b.students.first_name} ${b.students.last_name || ''}`.trim() : 'Unknown Student',
       student_id: b.student_id,
+      grade: b.students?.grade,
+      curriculum_name: b.curricula?.name || 'Standard',
       note: b.note,
       meet_link: b.sessions?.[0]?.meet_link
     }));
@@ -105,6 +107,8 @@ export class BookingsController {
       subject_name: b.subjects?.name,
       requested_start: b.requested_start,
       student_name: b.students ? `${b.students.first_name} ${b.students.last_name || ''}`.trim() : 'Unknown Student',
+      grade: b.students?.grade,
+      curriculum_name: b.curricula?.name || 'Standard',
       note: b.note
     }));
   }
