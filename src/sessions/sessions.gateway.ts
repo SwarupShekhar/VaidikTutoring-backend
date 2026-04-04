@@ -156,7 +156,7 @@ export class SessionsGateway
   }
 
   /**
-   * Sync Whiteboard data
+   * Sync Whiteboard data (Elements only for performance)
    */
   @SubscribeMessage('whiteboard.update')
   async handleWhiteboardUpdate(
@@ -164,21 +164,49 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; update: any },
   ) {
     try {
-      // 1. Resolve canonical ID (just like joinSession)
       let finalSessionId = payload.sessionId;
       const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
       if (booking && booking.sessions.length > 0) {
         finalSessionId = booking.sessions[0].id;
       }
 
-      // 2. Cache the latest state in the canonical room
-      this.whiteboardState.set(finalSessionId, payload.update);
+      // Strip files from regular updates to reduce payload size
+      // Only elements are needed for real-time stroke sync
+      const strippedUpdate = { ...payload.update };
+      if (strippedUpdate.files) {
+        delete strippedUpdate.files;
+      }
 
-      // 3. Broadcast to everyone in the canonical room room
-      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.receiveUpdate', payload.update);
+      this.whiteboardState.set(finalSessionId, strippedUpdate);
+      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.receiveUpdate', strippedUpdate);
       return { success: true };
     } catch (error) {
       this.logger.error(`Whiteboard sync failed: ${error.message}`);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Specialized sync for large binary files (Images/PDFs)
+   */
+  @SubscribeMessage('whiteboard.syncFiles')
+  async handleWhiteboardSyncFiles(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; files: any },
+  ) {
+    try {
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+
+      // Broadcast heavy binary data
+      this.logger.log(`Syncing ${Object.keys(payload.files || {}).length} files for session ${finalSessionId}`);
+      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.receiveFiles', payload.files);
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Whiteboard file sync failed: ${error.message}`);
       return { success: false };
     }
   }

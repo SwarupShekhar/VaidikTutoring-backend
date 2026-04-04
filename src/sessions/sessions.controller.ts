@@ -25,6 +25,7 @@ import { Response } from 'express';
 import { EmailVerifiedGuard } from '../auth/email-verified.guard';
 import { PasswordChangeGuard } from '../auth/password-change.guard';
 import { TutorStatusGuard } from '../auth/tutor-status.guard';
+import { memoryStorage } from 'multer';
 
 @Controller('sessions')
 export class SessionsController {
@@ -191,7 +192,7 @@ export class SessionsController {
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/slides')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   async uploadSlides(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
@@ -200,15 +201,16 @@ export class SessionsController {
       throw new BadRequestException('No file uploaded');
     }
 
-    // In a real app, we would process PPT/PDF here (e.g. using CloudConvert API)
-    // and extract images. For now we save it to public/uploads
-    // For PDF, the client can use pdfjs-dist to render each page.
-    // For PPT, simulate return of slide images.
-    const fileUrl = `/uploads/slides/${Date.now()}-${file.originalname}`;
-    
-    // Example: if it was converted to an array of images:
-    // return { slides: ['slide1.png', 'slide2.png'] };
-    return { success: true, url: fileUrl, originalName: file.originalname };
+    // Return the file as base64 instead of saving to disk
+    const base64 = file.buffer.toString('base64');
+    const dataUrl = `data:${file.mimetype};base64,${base64}`;
+
+    return { 
+        success: true, 
+        base64: dataUrl, 
+        mimeType: file.mimetype,
+        originalName: file.originalname 
+    };
   }
 
   @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
