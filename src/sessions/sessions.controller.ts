@@ -192,7 +192,10 @@ export class SessionsController {
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/slides')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor('file', { 
+    storage: memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 } // Increase limit to 50MB for large PDFs
+  }))
   async uploadSlides(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
