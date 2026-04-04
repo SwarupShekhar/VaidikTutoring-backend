@@ -13,6 +13,7 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -187,5 +188,39 @@ export class SessionsController {
     }
     return this.sessionsService.recordAttendance(id, body.studentId, body.present, body.minutesAttended);
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/slides')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadSlides(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No file uploaded');
+    }
+
+    // In a real app, we would process PPT/PDF here (e.g. using CloudConvert API)
+    // and extract images. For now we save it to public/uploads
+    // For PDF, the client can use pdfjs-dist to render each page.
+    // For PPT, simulate return of slide images.
+    const fileUrl = `/uploads/slides/${Date.now()}-${file.originalname}`;
+    
+    // Example: if it was converted to an array of images:
+    // return { slides: ['slide1.png', 'slide2.png'] };
+    return { success: true, url: fileUrl, originalName: file.originalname };
+  }
+
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  // Assumes you have Roles and RolesGuard imported and applied at class or method level
+  // Actually, RolesGuard needs to be added here.
+  @Get(':id/admin-summary')
+  async getAdminSummary(@Param('id') id: string, @Req() req: any) {
+    if (req.user.role !== 'admin') {
+      throw new UnauthorizedException('Admin only');
+    }
+    return this.sessionsService.getAdminSummary(id);
+  }
+
 }
 

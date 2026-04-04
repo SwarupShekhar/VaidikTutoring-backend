@@ -8,6 +8,7 @@ import {
   Get,
   Param,
   Patch,
+  BadRequestException,
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service.js';
 import { CreateBookingDto } from './create-booking.dto.js';
@@ -106,6 +107,15 @@ export class BookingsController {
       student_name: b.students ? `${b.students.first_name} ${b.students.last_name || ''}`.trim() : 'Unknown Student',
       note: b.note
     }));
+  }
+
+  // Admin: assign/reassign a booking to a tutor
+  @UseGuards(ClerkAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Patch(':id/assign-tutor')
+  async assignTutor(@Param('id') id: string, @Body('tutorId') tutorId: string) {
+    if (!tutorId) throw new BadRequestException('tutorId is required in body');
+    return this.svc.reassign(id, tutorId);
   }
 
   // Admin: reassign a booking to a tutor

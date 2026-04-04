@@ -601,6 +601,14 @@ export class BookingsService {
       include: { users: true },
     });
     if (!tutor) throw new NotFoundException('Tutor not found');
+    // Capture old tutor before reassignment to notify them
+    let oldTutorUserId: string | null = null;
+    if (booking.assigned_tutor_id && booking.assigned_tutor_id !== tutorId) {
+      const oldTutor = await this.prisma.tutors.findUnique({
+        where: { id: booking.assigned_tutor_id },
+      });
+      oldTutorUserId = oldTutor?.user_id || null;
+    }
 
     const updated = await this.prisma.bookings.update({
       where: { id: bookingId },
@@ -629,7 +637,7 @@ export class BookingsService {
 
     // NOTIFICATIONS (NON-BLOCKING)
     try {
-      // 1. Notify Tutor
+      // 1. Notify New Tutor
       await this.notificationsService.create(
         tutor.user_id,
         'session_assigned',
@@ -660,6 +668,18 @@ export class BookingsService {
           );
           this.notificationsService.notifyStudentAllocation(student.user_id, tutor.users?.first_name || 'Tutor');
         }
+      }
+
+      // 3. Notify Old Tutor (on tutor switch only)
+      if (oldTutorUserId) {
+        await this.notificationsService.create(
+          oldTutorUserId,
+          'session_reassigned',
+          {
+            message: `You have been removed from a session. It has been reassigned to another tutor.`,
+            bookingId: booking.id,
+          },
+        );
       }
     } catch (e) {
       this.logger.error(`Failed to send notifications for reassignment: ${e.message}`);
