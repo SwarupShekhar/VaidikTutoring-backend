@@ -802,7 +802,8 @@ export class BookingsService {
             session_recordings: {
               take: 1,
               orderBy: { created_at: 'desc' }
-            }
+            },
+            sticker_rewards: true
           }
         },
       },

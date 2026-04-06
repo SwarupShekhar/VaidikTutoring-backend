@@ -339,7 +339,7 @@ export class SessionsGateway
   @SubscribeMessage('whiteboard.pointerUpdate')
   async handleWhiteboardPointerUpdate(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { sessionId: string; userId: string; username: string; pointer: any; button: string; selectedElementIds: any[] },
+    @MessageBody() payload: { sessionId: string; userId: string; username: string; pointer: any; button: string; selectedElementIds: any[]; isLaserActive?: boolean },
   ) {
     try {
       let finalSessionId = payload.sessionId;
@@ -352,6 +352,64 @@ export class SessionsGateway
       return { success: true };
     } catch (error) {
       this.logger.error(`Whiteboard pointer update failed: ${error.message}`);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Give Sticker Reward
+   */
+  @SubscribeMessage('sticker:give')
+  async handleStickerGive(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; studentId: string; stickerType: string; studentName: string },
+  ) {
+    try {
+      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+
+      // Persist to DB
+      await this.prisma.sticker_rewards.create({
+        data: {
+          session_id: finalSessionId,
+          student_id: payload.studentId,
+          sticker: payload.stickerType,
+        }
+      });
+
+      // Broadcast to room
+      this.server.to(`session:${finalSessionId}`).emit('sticker:received', {
+        stickerType: payload.stickerType,
+        studentName: payload.studentName
+      });
+
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Failed to give sticker: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Sync Viewport (Tutor to Students)
+   */
+  @SubscribeMessage('viewport:sync')
+  async handleViewportSync(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; scrollX: number; scrollY: number; zoom: number },
+  ) {
+    try {
+      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      
+      // Broadcast to everyone ELSE in the room (the students)
+      client.broadcast.to(`session:${finalSessionId}`).emit('viewport:update', {
+        scrollX: payload.scrollX,
+        scrollY: payload.scrollY,
+        zoom: payload.zoom
+      });
+
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Viewport sync failed: ${error.message}`);
       return { success: false };
     }
   }

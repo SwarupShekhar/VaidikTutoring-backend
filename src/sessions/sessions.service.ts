@@ -749,4 +749,60 @@ export class SessionsService {
 
     return updated;
   }
+
+  async getStickers(studentId: string) {
+    return this.prisma.sticker_rewards.findMany({
+      where: { student_id: studentId },
+      orderBy: { given_at: 'desc' },
+      include: {
+        sessions: {
+          select: {
+            start_time: true,
+            bookings: {
+              select: {
+                subjects: { select: { name: true } }
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  async saveWhiteboardSnapshot(sessionId: string, userId: string, snapshotUrl: string) {
+    // 1. Resolve ID (could be Session ID or Booking ID)
+    let finalSessionId = sessionId;
+    const booking = await this.prisma.bookings.findUnique({
+      where: { id: sessionId },
+      include: { sessions: { orderBy: { created_at: 'desc' }, take: 1 } }
+    });
+    if (booking && booking.sessions.length > 0) {
+      finalSessionId = booking.sessions[0].id;
+    }
+
+    // 2. Verify user has access (only tutor/admin)
+    // Implicitly checked by role in controller, but check ownership here too
+    const session = await this.prisma.sessions.findUnique({
+      where: { id: finalSessionId },
+      include: { bookings: true }
+    });
+    if (!session) throw new NotFoundException('Session not found');
+
+    // Simple access check for tutor
+    const tutorId = session.bookings?.assigned_tutor_id;
+    const tutor = await this.prisma.tutors.findUnique({ where: { id: tutorId || undefined } });
+    if (!tutor || (tutor.user_id !== userId)) {
+        // Allow admin
+        const user = await this.prisma.users.findUnique({ where: { id: userId } });
+        if (user?.role !== 'admin') {
+            throw new ForbiddenException('Only the assigned tutor can save snapshots');
+        }
+    }
+
+    // 3. Save directly in DB for now (TODO: Move to Cloudinary/S3)
+    return this.prisma.sessions.update({
+      where: { id: finalSessionId },
+      data: { whiteboard_snapshot_url: snapshotUrl }
+    });
+  }
 }
