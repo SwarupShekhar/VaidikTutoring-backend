@@ -798,6 +798,12 @@ export class BookingsService {
         },
         sessions: {
           orderBy: { start_time: 'desc' },
+          include: {
+            session_recordings: {
+              take: 1,
+              orderBy: { created_at: 'desc' }
+            }
+          }
         },
       },
       orderBy: { requested_start: 'desc' },
@@ -873,6 +879,12 @@ export class BookingsService {
         sessions: {
           orderBy: { start_time: 'desc' },
           take: 1,
+          include: {
+            session_recordings: {
+              take: 1,
+              orderBy: { created_at: 'desc' }
+            }
+          }
         },
       },
     });
