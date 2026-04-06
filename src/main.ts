@@ -10,6 +10,17 @@ import { SentryFilter } from './common/filters/sentry.filter.js';
 import * as Sentry from '@sentry/node';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
+// Custom Socket adapter to increase max payload size for drawings with images
+class ExtendedIoAdapter extends IoAdapter {
+  createIOServer(port: number, options?: any): any {
+    const server = super.createIOServer(port, {
+      ...options,
+      maxHttpBufferSize: 1e8, // 100MB limit for binary whiteboard data
+    });
+    return server;
+  }
+}
+
 async function bootstrap() {
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
@@ -20,8 +31,8 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
-  // Use Socket.IO adapter for WebSocket support with namespaces
-  app.useWebSocketAdapter(new IoAdapter(app));
+  // Use Custom Socket.IO adapter for high-bandwidth whiteboard sync
+  app.useWebSocketAdapter(new ExtendedIoAdapter(app));
 
   // Increase body limit to 50mb for large blog posts
   app.use(json({ limit: '50mb' }));
