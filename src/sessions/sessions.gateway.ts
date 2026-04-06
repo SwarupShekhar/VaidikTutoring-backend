@@ -120,7 +120,27 @@ export class SessionsGateway
         }
       }
 
-      return { success: true, sessionId: finalSessionId };
+      // 3. Resolve session and booking to get start time and duration
+      const session = await this.prisma.sessions.findUnique({
+        where: { id: finalSessionId },
+        include: { bookings: true }
+      });
+
+      const sessionStartTime = (session?.start_time || session?.created_at || new Date()).getTime();
+      
+      let sessionDuration = 60; // Default
+      if (session?.bookings?.requested_start && session?.bookings?.requested_end) {
+        const start = new Date(session.bookings.requested_start).getTime();
+        const end = new Date(session.bookings.requested_end).getTime();
+        sessionDuration = Math.round((end - start) / (1000 * 60));
+      }
+
+      return { 
+        success: true, 
+        sessionId: finalSessionId,
+        sessionStartTime,
+        sessionDuration
+      };
     } catch (error) {
       this.logger.error(`Failed to join session: ${error.message}`);
       // Security: Disconnect unauthorized client
