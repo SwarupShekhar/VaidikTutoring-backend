@@ -49,6 +49,7 @@ export class SessionsGateway
   private readonly logger = new Logger(SessionsGateway.name);
   private whiteboardState = new Map<string, any>(); // Cache for late joiners (SessionId -> Elements)
   private pollState = new Map<string, any>(); // Cache for active polls { question, options, responses: {}, active: true }
+  private sessionMap = new Map<string, string>(); // Performance cache to avoid DB lookups on every draw stroke
 
   constructor(
     private readonly sessionsService: SessionsService,
@@ -75,11 +76,16 @@ export class SessionsGateway
   ) {
     try {
       // Verify user has access to this session or booking
-      // Resolve canonical Session ID to ensure everyone is in the same room
-      let finalSessionId = data.sessionId;
-      const booking = await this.sessionsService.resolveBookingToSession(data.sessionId);
-      if (booking && booking.sessions.length > 0) {
-        finalSessionId = booking.sessions[0].id;
+      // 1. Resolve canonical Session ID or Booking ID to ensure everyone is in the same room
+      let finalSessionId = this.sessionMap.get(data.sessionId);
+      if (!finalSessionId) {
+          const booking = await this.sessionsService.resolveBookingToSession(data.sessionId);
+          if (booking && booking.sessions.length > 0) {
+            finalSessionId = booking.sessions[0].id;
+          } else {
+            finalSessionId = data.sessionId;
+          }
+          this.sessionMap.set(data.sessionId, finalSessionId);
       }
 
       await client.join(`session:${finalSessionId}`);
@@ -216,11 +222,7 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; update: any },
   ) {
     try {
-      let finalSessionId = payload.sessionId;
-      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
-      if (booking && booking.sessions.length > 0) {
-        finalSessionId = booking.sessions[0].id;
-      }
+      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
 
       // Strip files from regular updates to reduce payload size
       // Only elements are needed for real-time stroke sync
@@ -247,18 +249,37 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; files: any },
   ) {
     try {
-      let finalSessionId = payload.sessionId;
-      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
-      if (booking && booking.sessions.length > 0) {
-        finalSessionId = booking.sessions[0].id;
-      }
+      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
 
       // Broadcast heavy binary data
       this.logger.log(`Syncing ${Object.keys(payload.files || {}).length} files for session ${finalSessionId}`);
       client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.receiveFiles', payload.files);
       return { success: true };
     } catch (error) {
-      this.logger.error(`Whiteboard file sync failed: ${error.message}`);
+      this.logger.error(`File sync failed: ${error.message}`);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Sync complete slide library (PNG arrays)
+   */
+  @SubscribeMessage('whiteboard.syncSlides')
+  async handleWhiteboardSyncSlides(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; slides: string[] },
+  ) {
+    try {
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+
+      client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.receiveSlides', payload.slides);
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Whiteboard slide sync failed: ${error.message}`);
       return { success: false };
     }
   }
