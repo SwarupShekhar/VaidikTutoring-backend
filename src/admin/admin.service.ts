@@ -22,6 +22,102 @@ export class AdminService {
         private readonly jwt: JwtService,
         private readonly email: EmailService,
     ) { }
+    
+    async getAllocationQueue() {
+        const queue = await this.prisma.bookings.findMany({
+            where: {
+                assigned_tutor_id: null,
+                status: { in: ['requested', 'pending', 'open'] },
+            },
+            include: {
+                students: {
+                    select: {
+                        id: true,
+                        first_name: true,
+                        last_name: true,
+                        grade: true,
+                        users_students_user_idTousers: {
+                            select: { first_name: true, last_name: true }
+                        }
+                    }
+                },
+                curricula: { select: { id: true, name: true } },
+                subjects: { select: { id: true, name: true } },
+            },
+            orderBy: { created_at: 'asc' },
+        });
+
+        return queue.map(b => ({
+            id: b.id,
+            studentId: b.student_id,
+            studentName: b.students?.first_name 
+                ? `${b.students.first_name} ${b.students.last_name || ''}`.trim()
+                : `${b.students?.users_students_user_idTousers?.first_name || 'Student'} ${b.students?.users_students_user_idTousers?.last_name || ''}`.trim(),
+            studentGrade: b.students?.grade,
+            curriculumName: b.curricula?.name,
+            subjectName: b.subjects?.name,
+            requestedStart: b.requested_start,
+            requestedEnd: b.requested_end,
+            note: b.note,
+            createdAt: b.created_at,
+        }));
+    }
+
+    async assignTutorToBooking(bookingId: string, tutorId: string) {
+        return await this.prisma.bookings.update({
+            where: { id: bookingId },
+            data: {
+                assigned_tutor_id: tutorId,
+                status: 'confirmed',
+            },
+            include: {
+                students: {
+                    include: {
+                        users_students_user_idTousers: true,
+                    },
+                },
+                tutors: {
+                    include: {
+                        users: true,
+                    },
+                },
+                subjects: true,
+            },
+        });
+    }
+
+    async getTutorRecommendations(subjectId: string) {
+        // 1. Get all active tutors who teach this subject
+        const tutors = await this.prisma.tutors.findMany({
+            where: {
+                is_active: true,
+                skills: {
+                    path: ['subjects'],
+                    array_contains: subjectId,
+                },
+            },
+            include: {
+                users: {
+                    select: { id: true, first_name: true, last_name: true, email: true }
+                },
+                _count: {
+                    select: {
+                        bookings: {
+                            where: { status: 'confirmed' }
+                        }
+                    }
+                }
+            }
+        });
+
+        // 2. Sort by workload (count of confirmed bookings)
+        return tutors.map(t => ({
+            id: t.id,
+            name: `${t.users.first_name} ${t.users.last_name || ''}`.trim(),
+            workload: t._count.bookings,
+            email: t.users.email,
+        })).sort((a, b) => a.workload - b.workload);
+    }
 
     async getStats() {
         console.log('[AdminService] 🟡 Fetching stats... checking connection and raw data');
@@ -34,7 +130,7 @@ export class AdminService {
             });
             console.log(`[AdminService] 🔍 Raw User Samples (${allUsers.length} found):`, JSON.stringify(allUsers, null, 2));
 
-            const [studentsCount, parentsCount, tutorsCount, upcomingSessionsCount] =
+            const [studentsCount, parentsCount, tutorsCount, upcomingSessionsCount, pendingAllocations] =
                 await Promise.all([
                     this.prisma.users.count({
                         where: { role: 'student' },
@@ -53,6 +149,12 @@ export class AdminService {
                             status: 'scheduled',
                         },
                     }),
+                    this.prisma.bookings.count({
+                        where: {
+                            assigned_tutor_id: null,
+                            status: { in: ['requested', 'pending', 'open'] },
+                        },
+                    }),
                 ]);
 
             console.log('[AdminService] ✅ Stats Calculated:', {
@@ -60,6 +162,7 @@ export class AdminService {
                 parents: parentsCount,
                 tutors: tutorsCount,
                 upcomingSessions: upcomingSessionsCount,
+                pendingAllocations,
             });
 
             return {
@@ -67,6 +170,7 @@ export class AdminService {
                 parents: parentsCount,
                 tutors: tutorsCount,
                 upcomingSessions: upcomingSessionsCount,
+                pendingAllocations,
             };
         } catch (error) {
             console.error('[AdminService] ❌ Failed to fetch stats:', error);
@@ -423,7 +527,7 @@ export class AdminService {
         };
     }
 
-    async allocateTutor(studentId: string, tutorId: string, subjectId: string) {
+    async allocateTutor(studentId: string, tutorId: string, subjectId: string, bookingId?: string) {
         // Verify student exists
         const student = await this.prisma.students.findUnique({
             where: { id: studentId },
@@ -529,12 +633,14 @@ export class AdminService {
 
         // Find an existing unassigned booking for this student and subject
         const existingBooking = await this.prisma.bookings.findFirst({
-            where: {
-                student_id: studentId,
-                subject_id: subject.id,
-                assigned_tutor_id: null,
-                status: { in: ['requested', 'pending', 'open'] },
-            },
+            where: bookingId 
+                ? { id: bookingId } 
+                : {
+                    student_id: studentId,
+                    subject_id: subject.id,
+                    assigned_tutor_id: null,
+                    status: { in: ['requested', 'pending', 'open'] },
+                },
             orderBy: { created_at: 'desc' },
         });
 

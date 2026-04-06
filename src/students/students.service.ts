@@ -131,6 +131,45 @@ export class StudentsService {
     return student;
   }
 
+  async getEnrollmentStatus(studentId: string) {
+    const student = await this.prisma.students.findUnique({
+      where: { id: studentId },
+      include: {
+        bookings: {
+          where: { status: { in: ['approved', 'confirmed', 'completed'] } },
+          include: { tutors: { include: { users: true } }, sessions: true },
+          orderBy: { requested_start: 'asc' },
+        },
+      },
+    });
+
+    if (!student) throw new NotFoundException('Student not found');
+
+    // Build weekly schedule from upcoming bookings
+    const now = new Date();
+    const weeklySchedule = student.bookings
+      .filter(b => b.requested_start && b.requested_start > now)
+      .slice(0, 7)
+      .map(b => ({
+        bookingId: b.id,
+        date: b.requested_start,
+        end: b.requested_end,
+        tutorName: b.tutors?.users
+          ? `${b.tutors.users.first_name} ${b.tutors.users.last_name || ''}`.trim()
+          : null,
+      }));
+
+    const assignedTutorId = student.bookings.find(b => b.assigned_tutor_id)?.assigned_tutor_id ?? null;
+
+    return {
+      status: student.enrollment_status,
+      sessionsRemaining: student.sessions_remaining,
+      packageEndDate: student.package_end_date,
+      assignedTutorId,
+      weeklySchedule,
+    };
+  }
+
   async findAllByParent(parentUserId: string) {
     return this.prisma.students.findMany({
       where: { parent_user_id: parentUserId },

@@ -311,6 +311,9 @@ model students {
   subscription_credits                 Int                   @default(0)
   subscription_starts                  DateTime?             @db.Timestamptz(6)
   subscription_ends                    DateTime?             @db.Timestamptz(6)
+  enrollment_status                    String                @default("trial")
+  package_end_date                     DateTime?             @db.Timestamptz(6)
+  sessions_remaining                   Int                   @default(0)
   assessment_attempts                  assessment_attempts[]
   attendance                           Attendance[]
   bookings                             bookings[]

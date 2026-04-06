@@ -11,6 +11,7 @@ import {
   HttpStatus,
   UnauthorizedException,
   Query,
+  Patch,
 } from '@nestjs/common';
 import { AdminService } from './admin.service.js';
 import { SyncClerkMetadataService } from './sync-clerk-metadata.js';
@@ -57,6 +58,10 @@ class AllocateTutorDto {
 
   @IsString()
   subjectId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  bookingId?: string;
 }
 
 @Controller('admin')
@@ -167,6 +172,24 @@ export class AdminController {
     }
   }
 
+  @Get('allocations/queue')
+  async getAllocationQueue(@Req() req: any) {
+    const actor = req.user;
+    if (!actor || actor.role !== 'admin') {
+      throw new UnauthorizedException('Admin only');
+    }
+    return this.adminService.getAllocationQueue();
+  }
+
+  @Get('allocations/recommendations/:subjectId')
+  async getTutorRecommendations(@Req() req: any, @Param('subjectId') subjectId: string) {
+    const actor = req.user;
+    if (!actor || actor.role !== 'admin') {
+      throw new UnauthorizedException('Admin only');
+    }
+    return this.adminService.getTutorRecommendations(subjectId);
+  }
+
   @Post('allocations')
   @HttpCode(HttpStatus.CREATED)
   async allocateTutor(@Req() req: any, @Body() dto: AllocateTutorDto) {
@@ -175,19 +198,30 @@ export class AdminController {
       if (!actor || actor.role !== 'admin') {
         throw new UnauthorizedException('Only admins can allocate tutors.');
       }
-      console.log(
-        'POST /admin/allocations - DTO received:',
-        JSON.stringify(dto),
-      );
       return await this.adminService.allocateTutor(
         dto.studentId,
         dto.tutorId,
         dto.subjectId,
+        dto.bookingId,
       );
     } catch (e) {
       console.error('POST /admin/allocations failed:', e);
       throw e;
     }
+  }
+
+  @Patch('bookings/:id/assign-tutor')
+  @HttpCode(HttpStatus.OK)
+  async assignTutorToBooking(
+    @Req() req: any,
+    @Param('id') bookingId: string,
+    @Body('tutorId') tutorId: string,
+  ) {
+    const actor = req.user;
+    if (!actor || actor.role !== 'admin') {
+      throw new UnauthorizedException('Admin only');
+    }
+    return this.adminService.assignTutorToBooking(bookingId, tutorId);
   }
 
   @Delete('tutors/:id')
