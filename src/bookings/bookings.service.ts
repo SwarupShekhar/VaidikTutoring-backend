@@ -796,6 +796,9 @@ export class BookingsService {
         tutors: {
           include: { users: { select: { first_name: true, last_name: true } } },
         },
+        sessions: {
+          orderBy: { start_time: 'desc' },
+        },
       },
       orderBy: { requested_start: 'desc' },
     });

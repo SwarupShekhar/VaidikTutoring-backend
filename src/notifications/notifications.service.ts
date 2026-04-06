@@ -89,4 +89,17 @@ export class NotificationsService {
   async notifyTutorAllocation(userId: string, studentName: string, scheduledTime: string) {
     this.gateway.notifyTutorAllocation(userId, studentName, scheduledTime);
   }
+
+  async notifyParentSessionNote(parentId: string, childId: string, tutorName: string) {
+    // Save to DB (Task 4)
+    await this.create(parentId, 'session_note', {
+      message: `Your child's session with ${tutorName} is complete. ${tutorName} left a note for you.`,
+      tutorName,
+      childId,
+      link: `/parent/children/${childId}/sessions`,
+    });
+
+    // Real-time alert
+    this.gateway.notifyParentSessionNote(parentId, childId, tutorName);
+  }
 }

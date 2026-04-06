@@ -10,6 +10,7 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { JwtService } from '@nestjs/jwt';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class SessionsService {
@@ -19,6 +20,7 @@ export class SessionsService {
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly jwtService: JwtService,
+    private readonly notificationsService: NotificationsService,
   ) { }
 
   async create(dto: any) {
@@ -682,5 +684,47 @@ export class SessionsService {
       chatLogCount: session.session_messages.length,
       whiteboardActivity: session.whiteboard_link !== null,
     };
+  }
+
+  async updateTutorNote(sessionId: string, userId: string, note: string) {
+    const session = await this.prisma.sessions.findUnique({
+      where: { id: sessionId },
+      include: {
+        bookings: {
+          include: {
+            tutors: { include: { users: true } },
+            students: true,
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Session not found');
+    }
+
+    if (!session.bookings?.tutors || session.bookings.tutors.user_id !== userId) {
+      throw new ForbiddenException('Only the assigned tutor can add a note');
+    }
+
+    const updated = await this.prisma.sessions.update({
+      where: { id: sessionId },
+      data: { tutor_note: note },
+    });
+
+    // Task 4: Notify parent
+    const parentId = session.bookings.students?.parent_user_id;
+    if (parentId) {
+      const tutorName = session.bookings.tutors.users?.first_name 
+        ? `${session.bookings.tutors.users.first_name} ${session.bookings.tutors.users.last_name || ''}`.trim()
+        : 'Your tutor';
+      
+      const childId = session.bookings.student_id;
+      if (childId) {
+        await this.notificationsService.notifyParentSessionNote(parentId, childId, tutorName);
+      }
+    }
+
+    return updated;
   }
 }
