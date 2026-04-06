@@ -82,8 +82,8 @@ export class SessionsGateway
         finalSessionId = booking.sessions[0].id;
       }
 
-      await client.join(`session-${finalSessionId}`);
-      this.logger.log(`User ${data.userId} joined session room: session-${finalSessionId}`);
+      await client.join(`session:${finalSessionId}`);
+      this.logger.log(`User ${data.userId} joined session room: session:${finalSessionId}`);
 
       // 1. Sync active poll state for late joiners
       const poll = this.pollState.get(finalSessionId);
@@ -143,8 +143,8 @@ export class SessionsGateway
       if (booking && booking.sessions.length > 0) {
         finalSessionId = booking.sessions[0].id;
       }
-      client.leave(`session-${finalSessionId}`);
-      this.logger.log(`Client ${client.id} left session-${finalSessionId}`);
+      client.leave(`session:${finalSessionId}`);
+      this.logger.log(`Client ${client.id} left session:${finalSessionId}`);
     });
     return { success: true };
   }
@@ -173,7 +173,7 @@ export class SessionsGateway
       );
 
       // 3. Broadcast to everyone in the room EXCEPT sender (client side handles 'me')
-      client.broadcast.to(`session-${finalSessionId}`).emit('receiveMessage', {
+      client.broadcast.to(`session:${finalSessionId}`).emit('receiveMessage', {
         text: payload.text,
         senderName: payload.senderName,
         senderId: payload.senderId,
@@ -210,7 +210,7 @@ export class SessionsGateway
       }
 
       this.whiteboardState.set(finalSessionId, strippedUpdate);
-      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.receiveUpdate', strippedUpdate);
+      client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.receiveUpdate', strippedUpdate);
       return { success: true };
     } catch (error) {
       this.logger.error(`Whiteboard sync failed: ${error.message}`);
@@ -235,7 +235,7 @@ export class SessionsGateway
 
       // Broadcast heavy binary data
       this.logger.log(`Syncing ${Object.keys(payload.files || {}).length} files for session ${finalSessionId}`);
-      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.receiveFiles', payload.files);
+      client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.receiveFiles', payload.files);
       return { success: true };
     } catch (error) {
       this.logger.error(`Whiteboard file sync failed: ${error.message}`);
@@ -258,7 +258,7 @@ export class SessionsGateway
         finalSessionId = booking.sessions[0].id;
       }
 
-      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.penAccessUpdated', {
+      client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.penAccessUpdated', {
         studentId: payload.studentId,
         hasAccess: payload.hasAccess
       });
@@ -284,7 +284,7 @@ export class SessionsGateway
         finalSessionId = booking.sessions[0].id;
       }
 
-      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.confettiFired');
+      client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.confettiFired');
       return { success: true };
     } catch (error) {
       this.logger.error(`Failed to trigger confetti: ${error.message}`);
@@ -307,7 +307,7 @@ export class SessionsGateway
         finalSessionId = booking.sessions[0].id;
       }
 
-      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.pointerUpdate', payload);
+      client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.pointerUpdate', payload);
       return { success: true };
     } catch (error) {
       this.logger.error(`Whiteboard pointer update failed: ${error.message}`);
@@ -330,7 +330,7 @@ export class SessionsGateway
         finalSessionId = booking.sessions[0].id;
       }
 
-      client.broadcast.to(`session-${finalSessionId}`).emit('whiteboard.slideChanged', { index: payload.index });
+      client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.slideChanged', { index: payload.index });
       return { success: true };
     } catch (error) {
       this.logger.error(`Slide change sync failed: ${error.message}`);
@@ -353,7 +353,7 @@ export class SessionsGateway
         finalSessionId = booking.sessions[0].id;
       }
 
-      client.broadcast.to(`session-${finalSessionId}`).emit('session.reaction', {
+      client.broadcast.to(`session:${finalSessionId}`).emit('session.reaction', {
         emoji: payload.emoji
       });
       return { success: true };
@@ -382,11 +382,9 @@ export class SessionsGateway
       const event = await this.attentionEventsService.createEvent(payload);
 
       // 2. Broadcast update to the room
-      this.server.to(`session-${payload.sessionId}`).emit('session.attentionEvent.created', event);
-
-      // 3. Also emit updated summary
+      this.server.to(`session:${payload.sessionId}`).emit('session.attentionEvent.created', event);
       const summary = await this.attentionEventsService.getSummary(payload.sessionId);
-      this.server.to(`session-${payload.sessionId}`).emit('session.attentionSummary.updated', summary);
+      this.server.to(`session:${payload.sessionId}`).emit('session.attentionSummary.updated', summary);
 
       return { success: true };
     } catch (error) {
@@ -411,7 +409,7 @@ export class SessionsGateway
       await this.sessionPhasesService.advancePhase(payload.sessionId, payload.phase);
 
       // 2. Broadcast to everyone
-      this.server.to(`session-${payload.sessionId}`).emit('session.phase.updated', {
+      this.server.to(`session:${payload.sessionId}`).emit('session.phase.updated', {
         phase: payload.phase,
         timestamp: new Date()
       });
@@ -428,14 +426,14 @@ export class SessionsGateway
    * This can be called from the service or controller
    */
   emitNewMessage(sessionId: string, message: any) {
-    this.server.to(`session-${sessionId}`).emit('newMessage', message);
+    this.server.to(`session:${sessionId}`).emit('newMessage', message);
   }
 
   /**
    * Emit a new recording event to all clients in a session
    */
   emitNewRecording(sessionId: string, recording: any) {
-    this.server.to(`session-${sessionId}`).emit('newRecording', recording);
+    this.server.to(`session:${sessionId}`).emit('newRecording', recording);
   }
 
   /**
@@ -447,9 +445,16 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; question: string; options: string[]; userId: string },
   ) {
     try {
+      // 1. Resolve canonical ID
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+
       // Role verification: Only the assigned tutor can launch polls
       const session = await this.prisma.sessions.findUnique({
-        where: { id: payload.sessionId },
+        where: { id: finalSessionId },
         include: { bookings: { include: { tutors: true } } }
       });
 
@@ -459,7 +464,7 @@ export class SessionsGateway
           throw new Error('Unauthorized: Only the assigned tutor can launch polls');
       }
 
-      this.logger.log(`Poll launched in session ${payload.sessionId}: ${payload.question} by ${payload.userId}`);
+      this.logger.log(`Poll launched in session ${finalSessionId}: ${payload.question} by ${payload.userId}`);
       
       const poll = {
         question: payload.question,
@@ -469,10 +474,10 @@ export class SessionsGateway
         startTime: Date.now()
       };
       
-      this.pollState.set(payload.sessionId, poll);
+      this.pollState.set(finalSessionId, poll);
       
       // Broadcast to everyone that a poll has started
-      this.server.to(`session-${payload.sessionId}`).emit('poll:launched', {
+      this.server.to(`session:${finalSessionId}`).emit('poll:launched', {
         question: payload.question,
         options: payload.options
       });
@@ -493,7 +498,14 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; userId: string; optionIndex: number },
   ) {
     try {
-      const poll = this.pollState.get(payload.sessionId);
+      // Resolve canonical ID
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+
+      const poll = this.pollState.get(finalSessionId);
       if (!poll || !poll.active) {
         return { success: false, error: 'No active poll found' };
       }
@@ -507,10 +519,7 @@ export class SessionsGateway
       });
 
       // Broadcast results TO TUTOR ONLY
-      // NOTE: In a true production app, we should target only tutors' socket.id.
-      // For simplicity in this in-memory feature, we emit 'poll:results' to the room,
-      // and the frontend will ensure only tutors respond/display this UI.
-      this.server.to(`session-${payload.sessionId}`).emit('poll:results', {
+      this.server.to(`session:${finalSessionId}`).emit('poll:results', {
         results,
         totalResponses: Object.keys(poll.responses).length
       });
@@ -531,9 +540,16 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; userId: string },
   ) {
     try {
+      // 1. Resolve canonical ID
+      let finalSessionId = payload.sessionId;
+      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+      }
+
       // Role verification: Only the assigned tutor can close polls
       const session = await this.prisma.sessions.findUnique({
-        where: { id: payload.sessionId },
+        where: { id: finalSessionId },
         include: { bookings: { include: { tutors: true } } }
       });
 
@@ -543,7 +559,7 @@ export class SessionsGateway
           throw new Error('Unauthorized: Only the assigned tutor can close polls');
       }
 
-      const poll = this.pollState.get(payload.sessionId);
+      const poll = this.pollState.get(finalSessionId);
       if (!poll) return { success: false, error: 'No poll to close' };
 
       poll.active = false;
@@ -554,7 +570,7 @@ export class SessionsGateway
       });
 
       // Broadcast final results to EVERYONE
-      this.server.to(`session-${payload.sessionId}`).emit('poll:closed', {
+      this.server.to(`session:${finalSessionId}`).emit('poll:closed', {
         question: poll.question,
         options: poll.options,
         results,
