@@ -687,7 +687,10 @@ export class SessionsService {
   }
 
   async updateTutorNote(sessionId: string, userId: string, note: string) {
-    const session = await this.prisma.sessions.findUnique({
+    let finalSessionId = sessionId;
+
+    // 1. Try to find by Session ID
+    let session = await this.prisma.sessions.findUnique({
       where: { id: sessionId },
       include: {
         bookings: {
@@ -699,8 +702,27 @@ export class SessionsService {
       },
     });
 
+    // 2. If not found, try to resolve as a Booking ID
     if (!session) {
-      throw new NotFoundException('Session not found');
+      const booking = await this.resolveBookingToSession(sessionId);
+      if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+        session = await this.prisma.sessions.findUnique({
+          where: { id: finalSessionId },
+          include: {
+            bookings: {
+              include: {
+                tutors: { include: { users: true } },
+                students: true,
+              },
+            },
+          },
+        });
+      }
+    }
+
+    if (!session) {
+      throw new NotFoundException('Session not found (ID could not be resolved from Booking or Session)');
     }
 
     if (!session.bookings?.tutors || session.bookings.tutors.user_id !== userId) {
@@ -708,7 +730,7 @@ export class SessionsService {
     }
 
     const updated = await this.prisma.sessions.update({
-      where: { id: sessionId },
+      where: { id: session.id },
       data: { tutor_note: note },
     });
 
