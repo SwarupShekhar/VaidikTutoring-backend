@@ -15,11 +15,13 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { SessionsService } from './sessions.service';
 import { DailyService } from '../daily/daily.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UploadRecordingDto } from './dto/upload-recording.dto';
 import { Response } from 'express';
@@ -33,6 +35,7 @@ export class SessionsController {
   constructor(
     private readonly sessionsService: SessionsService,
     private readonly dailyService: DailyService,
+    private readonly prisma: PrismaService,
   ) { }
 
   // Create a session (basic)
@@ -241,5 +244,35 @@ export class SessionsController {
     return this.sessionsService.getAdminSummary(id);
   }
 
-}
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @Post(':id/whiteboard-snapshot')
+  async saveWhiteboardSnapshot(
+    @Param('id') id: string,
+    @Body() body: { snapshotUrl: string },
+    @Req() req: any,
+  ) {
+    if (req.user.role !== 'tutor' && req.user.role !== 'admin') {
+      throw new UnauthorizedException('Only tutors can save snapshots');
+    }
+    return this.sessionsService.saveWhiteboardSnapshot(id, req.user.userId, body.snapshotUrl);
+  }
 
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @Get('stickers/:studentId')
+  async getStickers(@Param('studentId') studentId: string, @Req() req: any) {
+    const user = req.user;
+    
+    // Auth logic: User or Parent can see theirs/child's. Admin can see all.
+    if (user.role === 'admin') return this.sessionsService.getStickers(studentId);
+    
+    if (user.role === 'student' && user.userId === studentId) return this.sessionsService.getStickers(studentId);
+    
+    if (user.role === 'parent') {
+        // Verify child
+        const child = await this.prisma.students.findUnique({ where: { user_id: studentId } });
+        if (child?.parent_user_id === user.userId) return this.sessionsService.getStickers(studentId);
+    }
+    
+    throw new ForbiddenException('You do not have access to these stickers');
+  }
+}
