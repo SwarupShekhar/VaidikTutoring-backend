@@ -73,6 +73,14 @@ export class StudentsController {
     }));
   }
 
+  @Get(':id/enrollment-status')
+  @UseGuards(JwtAuthGuard)
+  async getEnrollmentStatus(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) throw new Error('User not authenticated');
+    return this.studentsService.getEnrollmentStatus(id);
+  }
+
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   async delete(@Param('id') id: string, @Req() req: any) {
