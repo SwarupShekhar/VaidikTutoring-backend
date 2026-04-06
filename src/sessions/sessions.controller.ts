@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Patch,
   Body,
   UseGuards,
   Param,
@@ -214,6 +215,19 @@ export class SessionsController {
         mimeType: file.mimetype,
         originalName: file.originalname 
     };
+  }
+
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @Patch(':id/tutor-note')
+  async updateTutorNote(
+    @Param('id') id: string,
+    @Body() body: { note: string },
+    @Req() req: any,
+  ) {
+    if (req.user.role !== 'tutor') {
+      throw new UnauthorizedException('Only tutors can add notes');
+    }
+    return this.sessionsService.updateTutorNote(id, req.user.userId, body.note);
   }
 
   @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)

@@ -8,6 +8,7 @@ import { EmailModule } from '../email/email.module';
 import { AttentionEventsModule } from '../attention-events/attention-events.module.js';
 import { DailyService } from '../daily/daily.service.js';
 import { SessionPhasesModule } from '../session-phases/session-phases.module.js';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { SessionPhasesModule } from '../session-phases/session-phases.module.js'
     AttentionEventsModule,
     SessionPhasesModule,
     AuthModule,
+    NotificationsModule,
   ],
   controllers: [SessionsController],
   providers: [SessionsService, SessionsGateway, DailyService],

@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 
@@ -54,6 +54,53 @@ export class ParentService {
                         email: true,
                         id: true,
                         is_active: true
+                    }
+                }
+            }
+        });
+    }
+
+    async getChildSessions(parentId: string, childId: string) {
+        // 1. Verify parent owns child
+        const student = await this.prisma.students.findFirst({
+            where: { id: childId, parent_user_id: parentId },
+        });
+
+        if (!student) {
+            throw new ForbiddenException('Access denied - not your child');
+        }
+
+        // 2. Fetch sessions
+        return this.prisma.sessions.findMany({
+            where: {
+                bookings: {
+                    student_id: childId
+                }
+            },
+            orderBy: {
+                start_time: 'desc'
+            },
+            select: {
+                id: true,
+                start_time: true,
+                end_time: true,
+                status: true,
+                tutor_note: true,
+                session_recordings: {
+                    take: 1,
+                    orderBy: { created_at: 'desc' },
+                    select: { file_url: true }
+                },
+                bookings: {
+                    select: {
+                        subjects: { select: { name: true } },
+                        tutors: {
+                            select: {
+                                users: {
+                                    select: { first_name: true, last_name: true }
+                                }
+                            }
+                        }
                     }
                 }
             }

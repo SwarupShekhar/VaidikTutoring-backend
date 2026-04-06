@@ -45,4 +45,8 @@ export class NotificationsGateway implements OnGatewayConnection {
     notifyTutorAllocation(userId: string, studentName: string, scheduledTime: string) {
         this.server.to(`user-${userId}`).emit('booking:assigned_to_me', { studentName, scheduledTime });
     }
+
+    notifyParentSessionNote(userId: string, childId: string, tutorName: string) {
+        this.server.to(`user-${userId}`).emit('session:note_added', { childId, tutorName });
+    }
 }

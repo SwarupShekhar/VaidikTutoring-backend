@@ -12,6 +12,7 @@ import { Logger, UseGuards } from '@nestjs/common';
 import { SessionsService } from './sessions.service';
 import { AttentionEventsService } from '../attention-events/attention-events.service.js';
 import { SessionPhasesService } from '../session-phases/session-phases.service.js';
+import { PrismaService } from '../prisma/prisma.service';
 import { AttentionEventType, SessionPhase } from '../../generated/prisma/enums.js';
 
 /**
@@ -47,11 +48,13 @@ export class SessionsGateway
 
   private readonly logger = new Logger(SessionsGateway.name);
   private whiteboardState = new Map<string, any>(); // Cache for late joiners (SessionId -> Elements)
+  private pollState = new Map<string, any>(); // Cache for active polls { question, options, responses: {}, active: true }
 
   constructor(
     private readonly sessionsService: SessionsService,
     private readonly attentionEventsService: AttentionEventsService,
     private readonly sessionPhasesService: SessionPhasesService,
+    private readonly prisma: PrismaService,
   ) { }
 
   handleConnection(client: Socket) {
@@ -82,10 +85,39 @@ export class SessionsGateway
       await client.join(`session-${finalSessionId}`);
       this.logger.log(`User ${data.userId} joined session room: session-${finalSessionId}`);
 
-      // If we have cached whiteboard elements, send them immediately to the new joiner
-      const cachedWhiteboard = this.whiteboardState.get(finalSessionId);
-      if (cachedWhiteboard) {
-        client.emit('whiteboard.receiveUpdate', cachedWhiteboard);
+      // 1. Sync active poll state for late joiners
+      const poll = this.pollState.get(finalSessionId);
+      if (poll && poll.active) {
+        client.emit('poll:launched', {
+          question: poll.question,
+          options: poll.options
+        });
+
+        // 2. If the joiner is the tutor, also send current live results
+        const booking = await this.sessionsService.resolveBookingToSession(data.sessionId);
+        // We need to find the session to get the tutor info if resolveBooking failed
+        let isTutor = false;
+        if (booking && booking.assigned_tutor_id) {
+          const tutor = await this.prisma.tutors.findUnique({ where: { id: booking.assigned_tutor_id } });
+          if (tutor && tutor.user_id === data.userId) isTutor = true;
+        } else {
+          // Try resolving via session ID directly
+          const session = await this.prisma.sessions.findUnique({
+            where: { id: finalSessionId },
+            include: { bookings: { include: { tutors: true } } }
+          });
+          if (session?.bookings?.tutors?.user_id === data.userId) isTutor = true;
+        }
+
+        if (isTutor) {
+          const results = poll.options.map((_: any, idx: number) => {
+            return Object.values(poll.responses).filter(v => v === idx).length;
+          });
+          client.emit('poll:results', {
+            results,
+            totalResponses: Object.keys(poll.responses).length
+          });
+        }
       }
 
       return { success: true, sessionId: finalSessionId };
@@ -404,5 +436,135 @@ export class SessionsGateway
    */
   emitNewRecording(sessionId: string, recording: any) {
     this.server.to(`session-${sessionId}`).emit('newRecording', recording);
+  }
+
+  /**
+   * Tutor launches a poll
+   */
+  @SubscribeMessage('poll:launch')
+  async handlePollLaunch(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; question: string; options: string[]; userId: string },
+  ) {
+    try {
+      // Role verification: Only the assigned tutor can launch polls
+      const session = await this.prisma.sessions.findUnique({
+        where: { id: payload.sessionId },
+        include: { bookings: { include: { tutors: true } } }
+      });
+
+      const tutorUserId = session?.bookings?.tutors?.user_id;
+
+      if (!tutorUserId || tutorUserId !== payload.userId) {
+          throw new Error('Unauthorized: Only the assigned tutor can launch polls');
+      }
+
+      this.logger.log(`Poll launched in session ${payload.sessionId}: ${payload.question} by ${payload.userId}`);
+      
+      const poll = {
+        question: payload.question,
+        options: payload.options,
+        responses: {}, // userId -> optionIndex
+        active: true,
+        startTime: Date.now()
+      };
+      
+      this.pollState.set(payload.sessionId, poll);
+      
+      // Broadcast to everyone that a poll has started
+      this.server.to(`session-${payload.sessionId}`).emit('poll:launched', {
+        question: payload.question,
+        options: payload.options
+      });
+      
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Failed to launch poll: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Student responds to a poll
+   */
+  @SubscribeMessage('poll:respond')
+  async handlePollRespond(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; userId: string; optionIndex: number },
+  ) {
+    try {
+      const poll = this.pollState.get(payload.sessionId);
+      if (!poll || !poll.active) {
+        return { success: false, error: 'No active poll found' };
+      }
+
+      // Record response
+      poll.responses[payload.userId] = payload.optionIndex;
+      
+      // Calculate results for tutor
+      const results = poll.options.map((_: any, idx: number) => {
+        return Object.values(poll.responses).filter(v => v === idx).length;
+      });
+
+      // Broadcast results TO TUTOR ONLY
+      // NOTE: In a true production app, we should target only tutors' socket.id.
+      // For simplicity in this in-memory feature, we emit 'poll:results' to the room,
+      // and the frontend will ensure only tutors respond/display this UI.
+      this.server.to(`session-${payload.sessionId}`).emit('poll:results', {
+        results,
+        totalResponses: Object.keys(poll.responses).length
+      });
+
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Failed to record poll response: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Tutor closes a poll
+   */
+  @SubscribeMessage('poll:close')
+  async handlePollClose(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string; userId: string },
+  ) {
+    try {
+      // Role verification: Only the assigned tutor can close polls
+      const session = await this.prisma.sessions.findUnique({
+        where: { id: payload.sessionId },
+        include: { bookings: { include: { tutors: true } } }
+      });
+
+      const tutorUserId = session?.bookings?.tutors?.user_id;
+
+      if (!tutorUserId || tutorUserId !== payload.userId) {
+          throw new Error('Unauthorized: Only the assigned tutor can close polls');
+      }
+
+      const poll = this.pollState.get(payload.sessionId);
+      if (!poll) return { success: false, error: 'No poll to close' };
+
+      poll.active = false;
+      
+      // Final results breakdown
+      const results = poll.options.map((_: any, idx: number) => {
+        return Object.values(poll.responses).filter(v => v === idx).length;
+      });
+
+      // Broadcast final results to EVERYONE
+      this.server.to(`session-${payload.sessionId}`).emit('poll:closed', {
+        question: poll.question,
+        options: poll.options,
+        results,
+        totalResponses: Object.keys(poll.responses).length
+      });
+
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Failed to close poll: ${error.message}`);
+      return { success: false, error: error.message };
+    }
   }
 }

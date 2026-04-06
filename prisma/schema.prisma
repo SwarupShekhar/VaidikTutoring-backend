@@ -272,6 +272,7 @@ model sessions {
   current_phase      SessionPhase         @default(WARM_CONNECT)
   phase_history      Json?
   pedagogy_status    String?
+  tutor_note         String?
   attendance         Attendance[]
   attention_events   AttentionEvent[]
   credit_usage_logs  credit_usage_logs[]
