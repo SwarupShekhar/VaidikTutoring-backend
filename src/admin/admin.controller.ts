@@ -272,4 +272,13 @@ export class AdminController {
     }
     return this.syncClerkService.syncUserRoleToClerk(userId, role);
   }
+
+  @Post('recordings/cleanup')
+  @HttpCode(HttpStatus.OK)
+  async cleanupRecordings(@Req() req: any) {
+    if (req.user.role !== 'admin') {
+      throw new UnauthorizedException('Admin only');
+    }
+    return this.adminService.cleanupRecordings();
+  }
 }

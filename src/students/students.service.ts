@@ -170,6 +170,162 @@ export class StudentsService {
     };
   }
 
+  async getProgressSummary(studentId: string) {
+    const student = await this.prisma.students.findUnique({
+      where: { id: studentId },
+      include: {
+        bookings: {
+          include: {
+            sessions: {
+              include: {
+                bookings: { include: { subjects: true } }
+              }
+            },
+            subjects: true
+          }
+        }
+      }
+    });
+
+    if (!student) throw new NotFoundException('Student not found');
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Get all sessions
+    const allSessions = student.bookings.flatMap(b => b.sessions);
+    
+    // Total sessions (completed)
+    const totalSessions = allSessions.filter(s => s.status === 'completed').length;
+    
+    // Sessions this month (completed)
+    const sessionsThisMonth = allSessions.filter(s => 
+      s.status === 'completed' && 
+      s.start_time && new Date(s.start_time) >= startOfMonth
+    ).length;
+
+    // Attendance rate (last 30 days)
+    const scheduledLast30 = allSessions.filter(s => 
+      s.start_time && new Date(s.start_time) >= thirtyDaysAgo
+    ).length;
+    
+    const completedLast30 = allSessions.filter(s => 
+      s.status === 'completed' && 
+      s.start_time && new Date(s.start_time) >= thirtyDaysAgo
+    ).length;
+
+    const attendanceRate = scheduledLast30 === 0 ? 100 : Math.round((completedLast30 / scheduledLast30) * 100);
+
+    // Topics this month
+    const notesThisMonth = allSessions
+      .filter(s => s.tutor_note && s.start_time && new Date(s.start_time) >= startOfMonth)
+      .map(s => s.tutor_note as string);
+    
+    let topicsThisMonth: string[] = [];
+    notesThisMonth.forEach(note => {
+      const parts = note.split(/[.,]/).map(p => p.trim()).filter(p => p.length > 0);
+      topicsThisMonth.push(...parts);
+    });
+    topicsThisMonth = [...new Set(topicsThisMonth)].slice(0, 8);
+
+    // Subject Progress
+    const subjectStats: Record<string, { completed: number, improving: number, needsWork: number }> = {};
+    
+    allSessions.filter(s => s.status === 'completed').forEach(s => {
+      const subject = s.bookings?.subjects?.name || 'Unknown';
+      if (!subjectStats[subject]) subjectStats[subject] = { completed: 0, improving: 0, needsWork: 0 };
+      
+      subjectStats[subject].completed++;
+      
+      const note = (s.tutor_note || '').toLowerCase();
+      if (note.includes('improved') || note.includes('great') || note.includes('excellent')) {
+        subjectStats[subject].improving++;
+      } else if (note.includes('struggle') || note.includes('difficult') || note.includes('needs work')) {
+        subjectStats[subject].needsWork++;
+      }
+    });
+
+    const subjectProgress = Object.entries(subjectStats).map(([subject, stats]) => {
+      let level: 'improving' | 'steady' | 'needs_work' = 'steady';
+      if (stats.needsWork > 0) level = 'needs_work';
+      else if (stats.improving > 0) level = 'improving';
+      
+      return { subject, level };
+    });
+
+    // Package info
+    let packageSessionsTotal = student.subscription_credits || 0;
+    const credits = await this.prisma.user_credits.findFirst({
+        where: { user_id: student.user_id || undefined }
+    });
+    if (credits) {
+        packageSessionsTotal = credits.credits_total;
+    }
+
+    return {
+      streakWeeks: student.streak_weeks,
+      totalSessions,
+      totalHoursLearned: student.total_hours_learned,
+      sessionsThisMonth,
+      attendanceRate,
+      packageSessionsRemaining: student.sessions_remaining,
+      packageSessionsTotal,
+      badges: student.badges,
+      topicsThisMonth,
+      subjectProgress
+    };
+  }
+
+  async updateStreak(studentId: string) {
+    const student = await this.prisma.students.findUnique({
+      where: { id: studentId }
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const now = new Date();
+    // ISO week string: YYYY-Www
+    const getISOWeek = (date: Date) => {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+        const yearStart = new Date(d.getFullYear(), 0, 1);
+        const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+        return `${d.getFullYear()}-W${weekNo.toString().padStart(2, '0')}`;
+    };
+
+    const currentWeek = getISOWeek(now);
+    const lastWeek = student.last_session_week;
+
+    if (lastWeek === currentWeek) {
+        return student;
+    }
+
+    let newStreak = student.streak_weeks;
+    
+    if (!lastWeek) {
+        newStreak = 1;
+    } else {
+        const prevWeekDate = new Date(now);
+        prevWeekDate.setDate(prevWeekDate.getDate() - 7);
+        const prevWeek = getISOWeek(prevWeekDate);
+        
+        if (lastWeek === prevWeek) {
+            newStreak += 1;
+        } else {
+            newStreak = 1;
+        }
+    }
+
+    return this.prisma.students.update({
+      where: { id: studentId },
+      data: {
+        streak_weeks: newStreak,
+        last_session_week: currentWeek
+      }
+    });
+  }
+
   async findAllByParent(parentUserId: string) {
     return this.prisma.students.findMany({
       where: { parent_user_id: parentUserId },

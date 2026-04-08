@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../email/email.service';
+import { AzureStorageService } from '../azure/azure-storage.service';
 import { hash } from 'bcrypt';
 import { Prisma, bookings, users } from '../../generated/prisma/client';
 import * as crypto from 'crypto';
@@ -21,7 +22,36 @@ export class AdminService {
         private readonly prisma: PrismaService,
         private readonly jwt: JwtService,
         private readonly email: EmailService,
+        private readonly azureStorageService: AzureStorageService,
     ) { }
+
+    async cleanupRecordings() {
+        console.log('[AdminService] 🟡 Starting cleanup of recordings older than 30 days...');
+        
+        // 1. Identify blobs to delete (using Azure list)
+        const blobsToDelete = await this.azureStorageService.listUnviewedOlderThan(30);
+        
+        let deletedCount = 0;
+        for (const blobName of blobsToDelete) {
+            try {
+                // 2. Delete from Azure
+                await this.azureStorageService.deleteBlob('session-recordings', blobName);
+                
+                // 3. Optional: Clean up DB entries if they still exist (Prisma)
+                // We match by azure_blob_name
+                await this.prisma.session_recordings.deleteMany({
+                    where: { azure_blob_name: blobName }
+                });
+                
+                deletedCount++;
+            } catch (err) {
+                console.error(`[AdminService] ❌ Failed to clean up blob ${blobName}:`, err);
+            }
+        }
+        
+        console.log(`[AdminService] ✅ Cleanup completed. ${deletedCount} recordings removed.`);
+        return { success: true, count: deletedCount };
+    }
     
     async getAllocationQueue() {
         const queue = await this.prisma.bookings.findMany({

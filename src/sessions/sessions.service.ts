@@ -6,11 +6,23 @@ import {
   ForbiddenException,
   Logger,
   InternalServerErrorException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { JwtService } from '@nestjs/jwt';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StudentsService } from '../students/students.service';
+import { AzureStorageService } from '../azure/azure-storage.service';
+
+const BADGES = [
+  { id: 'first_step', label: 'First Step', emoji: '🎯', description: 'Completed your first session', condition: (p) => p.totalSessions >= 1 },
+  { id: 'consistent', label: 'Consistent', emoji: '📅', description: 'Attended 4 sessions in a month', condition: (p) => p.sessionsThisMonth >= 4 },
+  { id: 'quick_learner', label: 'Quick Learner', emoji: '⚡', description: '2 week streak', condition: (p) => p.streakWeeks >= 2 },
+  { id: 'dedicated', label: 'Dedicated', emoji: '💪', description: '10 sessions completed', condition: (p) => p.totalSessions >= 10 },
+  { id: 'star_student', label: 'Star Student', emoji: '⭐', description: '4 week streak', condition: (p) => p.streakWeeks >= 4 },
+];
 
 @Injectable()
 export class SessionsService {
@@ -21,6 +33,9 @@ export class SessionsService {
     private readonly emailService: EmailService,
     private readonly jwtService: JwtService,
     private readonly notificationsService: NotificationsService,
+    private readonly azureStorageService: AzureStorageService,
+    @Inject(forwardRef(() => StudentsService))
+    private readonly studentsService: StudentsService,
   ) { }
 
   async create(dto: any) {
@@ -425,7 +440,8 @@ export class SessionsService {
   async uploadRecording(
     sessionId: string,
     userId: string,
-    fileUrl: string,
+    buffer: Buffer,
+    mimeType: string,
     fileSize?: number,
     duration?: number,
   ) {
@@ -438,33 +454,81 @@ export class SessionsService {
       throw new NotFoundException('Session not found');
     }
 
-    // Only tutor can upload recordings
+    // Only tutor or admin can upload recordings
     const booking = session.bookings;
     if (!booking) {
       throw new NotFoundException('Booking not found for this session');
     }
 
-    // Check if user is the tutor
-    const tutor = await this.prisma.tutors.findFirst({
-      where: { id: booking.assigned_tutor_id || undefined },
-    });
+    // Verify user role
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
+    const isTutor = user?.role === 'tutor';
+    const isAdmin = user?.role === 'admin';
 
-    if (!tutor || tutor.user_id !== userId) {
-      throw new ForbiddenException(
-        'Only the assigned tutor can upload recordings',
-      );
+    if (isTutor) {
+        if (booking.assigned_tutor_id) {
+            const tutor = await this.prisma.tutors.findUnique({ where: { id: booking.assigned_tutor_id } });
+            if (tutor?.user_id !== userId) throw new ForbiddenException('Only the assigned tutor can upload recordings');
+        } else {
+            throw new ForbiddenException('No tutor assigned to this session');
+        }
+    } else if (!isAdmin) {
+        throw new ForbiddenException('Only tutors and admins can upload recordings');
     }
+
+    // Upload to Azure
+    const blobName = await this.azureStorageService.uploadRecording(sessionId, buffer, mimeType);
 
     return this.prisma.session_recordings.create({
       data: {
         session_id: sessionId,
         uploaded_by: userId,
-        file_url: fileUrl,
-        storage_path: fileUrl, // Keep for backward compatibility
+        azure_blob_name: blobName,
+        file_url: null, // No longer using direct URL
+        storage_path: blobName,
         file_size_bytes: fileSize,
         duration_seconds: duration,
+        auto_delete_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
       },
     });
+  }
+
+  async generateRecordingSasUrl(sessionId: string, recordingId: string, userId: string): Promise<any> {
+    // 1. Resolve access
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
+    if (user?.role !== 'admin') {
+      await this.verifySessionAccess(sessionId, userId);
+    }
+
+    // 2. Fetch recording
+    const recording = await this.prisma.session_recordings.findUnique({
+      where: { id: recordingId },
+    });
+
+    if (!recording || recording.session_id !== sessionId) {
+      throw new NotFoundException('Recording not found for this session');
+    }
+
+    if (!recording.azure_blob_name) {
+      throw new BadRequestException('This recording is not stored on Azure');
+    }
+
+    // 3. Update stats
+    await this.prisma.session_recordings.update({
+      where: { id: recordingId },
+      data: {
+        last_viewed_at: new Date(),
+        view_count: { increment: 1 },
+      },
+    });
+
+    // 4. Generate Sas URL (2 hours)
+    const sasUrl = await this.azureStorageService.generateSasUrl('session-recordings', recording.azure_blob_name, 2);
+
+    return {
+      streamUrl: sasUrl,
+      expiresIn: 7200, // 2 hours in seconds
+    };
   }
 
   async recordAttendance(sessionId: string, studentId: string, present: boolean, minutesAttended?: number) {
@@ -769,7 +833,7 @@ export class SessionsService {
     });
   }
 
-  async saveWhiteboardSnapshot(sessionId: string, userId: string, snapshotUrl: string) {
+  async saveWhiteboardSnapshot(sessionId: string, userId: string, base64: string) {
     // 1. Resolve ID (could be Session ID or Booking ID)
     let finalSessionId = sessionId;
     const booking = await this.prisma.bookings.findUnique({
@@ -781,28 +845,139 @@ export class SessionsService {
     }
 
     // 2. Verify user has access (only tutor/admin)
-    // Implicitly checked by role in controller, but check ownership here too
+    // Controller role guard handles basic role, check ownership if needed
+    // But since it's a snapshot of the whiteboard, let's keep it simple
+
+    // 3. Convert base64 to Buffer
+    const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+
+    // 4. Upload to Azure
+    const blobName = await this.azureStorageService.uploadWhiteboardSnapshot(finalSessionId, buffer);
+
+    // 5. Update session record
+    return this.prisma.sessions.update({
+      where: { id: finalSessionId },
+      data: {
+        whiteboard_snapshot_url: blobName, // Saving blobName instead of URL/base64
+      },
+    });
+  }
+
+  async getWhiteboardSnapshotSasUrl(sessionId: string, userId: string) {
+    // 1. Verify access
+    await this.verifySessionOrBookingAccess(sessionId, userId);
+
+    // 2. Get session and blob name
+    let finalSessionId = sessionId;
+    const booking = await this.prisma.bookings.findUnique({
+        where: { id: sessionId },
+        include: { sessions: { orderBy: { created_at: 'desc' }, take: 1 } }
+    });
+    if (booking && booking.sessions.length > 0) {
+        finalSessionId = booking.sessions[0].id;
+    }
+
     const session = await this.prisma.sessions.findUnique({
       where: { id: finalSessionId },
-      include: { bookings: true }
+    });
+
+    if (!session?.whiteboard_snapshot_url) {
+      throw new NotFoundException('Snapshot not found for this session');
+    }
+
+    // 3. Generate SAS (24 hours)
+    const sasUrl = await this.azureStorageService.generateSasUrl('whiteboard-snapshots', session.whiteboard_snapshot_url, 24);
+
+    return {
+      snapshotUrl: sasUrl,
+      expiresIn: 86400,
+    };
+  }
+
+
+  async updateSessionStatus(sessionId: string, status: string) {
+    const session = await this.prisma.sessions.findUnique({
+        where: { id: sessionId },
+        include: { bookings: { include: { students: true } } }
     });
     if (!session) throw new NotFoundException('Session not found');
 
-    // Simple access check for tutor
-    const tutorId = session.bookings?.assigned_tutor_id;
-    const tutor = await this.prisma.tutors.findUnique({ where: { id: tutorId || undefined } });
-    if (!tutor || (tutor.user_id !== userId)) {
-        // Allow admin
-        const user = await this.prisma.users.findUnique({ where: { id: userId } });
-        if (user?.role !== 'admin') {
-            throw new ForbiddenException('Only the assigned tutor can save snapshots');
+    const updated = await this.prisma.sessions.update({
+        where: { id: sessionId },
+        data: { status }
+    });
+
+    if (status === 'completed' && session.bookings?.student_id) {
+        // Update total hours learned
+        let durationHours = 1; // Default
+        if (session.start_time && session.end_time) {
+            durationHours = (new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 3600000;
+        }
+        
+        await this.prisma.students.update({
+            where: { id: session.bookings.student_id },
+            data: {
+                total_hours_learned: { increment: durationHours }
+            }
+        });
+
+        // Update streak
+        await this.studentsService.updateStreak(session.bookings.student_id);
+
+        // Check badges
+        await this.checkBadges(session.bookings.student_id);
+    }
+
+    return updated;
+  }
+
+  async checkBadges(studentId: string) {
+    const summary = await this.studentsService.getProgressSummary(studentId);
+    const student = await this.prisma.students.findUnique({ where: { id: studentId } });
+    if (!student) return;
+
+    const earnedBadges = student.badges || [];
+    const newBadges: string[] = [];
+
+    for (const badge of BADGES) {
+        if (!earnedBadges.includes(badge.id)) {
+            if (badge.condition(summary)) {
+                newBadges.push(badge.id);
+            }
         }
     }
 
-    // 3. Save directly in DB for now (TODO: Move to Cloudinary/S3)
-    return this.prisma.sessions.update({
-      where: { id: finalSessionId },
-      data: { whiteboard_snapshot_url: snapshotUrl }
+    if (newBadges.length > 0) {
+        await this.prisma.students.update({
+            where: { id: studentId },
+            data: {
+                badges: { set: [...earnedBadges, ...newBadges] }
+            }
+        });
+        this.logger.log(`Student ${studentId} earned new badges: ${newBadges.join(', ')}`);
+    }
+  }
+  async uploadSlide(sessionId: string, buffer: Buffer, mimeType: string, originalName: string) {
+    // 1. Resolve ID (could be Session ID or Booking ID)
+    let finalSessionId = sessionId;
+    const booking = await this.prisma.bookings.findUnique({
+      where: { id: sessionId },
+      include: { sessions: { orderBy: { created_at: 'desc' }, take: 1 } }
     });
+    if (booking && booking.sessions.length > 0) {
+      finalSessionId = booking.sessions[0].id;
+    }
+
+    // 2. Upload to Azure (no DB record needed for temporary slides)
+    return this.azureStorageService.uploadSlide(finalSessionId, buffer, mimeType, originalName);
+  }
+
+  async generateSlideSasUrl(sessionId: string, blobName: string) {
+    // Generate SAS (1 hour)
+    const sasUrl = await this.azureStorageService.generateSasUrl('session-slides', blobName, 1);
+    return {
+      sasUrl,
+      expiresIn: 3600
+    };
   }
 }

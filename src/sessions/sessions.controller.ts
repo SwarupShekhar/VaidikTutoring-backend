@@ -68,7 +68,7 @@ export class SessionsController {
 
   @UseGuards(JwtAuthGuard)
   @Post(':id/recordings')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   async uploadRecording(
     @Param('id') id: string,
     @UploadedFile(
@@ -87,17 +87,24 @@ export class SessionsController {
       throw new BadRequestException('No file uploaded');
     }
 
-    // Placeholder: In a real local setup, Multer would save this to disk.
-    // Here we just simulate a path.
-    const fileUrl = `/uploads/recordings/${Date.now()}-${file.originalname}`;
-
     return this.sessionsService.uploadRecording(
       id,
       req.user.userId,
-      fileUrl,
+      file.buffer,
+      file.mimetype,
       file.size,
       dto.duration_seconds,
     );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id/recordings/:recordingId/stream')
+  async streamRecording(
+    @Param('id') id: string,
+    @Param('recordingId') recordingId: string,
+    @Req() req: any,
+  ) {
+    return this.sessionsService.generateRecordingSasUrl(id, recordingId, req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -208,13 +215,16 @@ export class SessionsController {
       throw new BadRequestException('No file uploaded');
     }
 
-    // Return the file as base64 instead of saving to disk
-    const base64 = file.buffer.toString('base64');
-    const dataUrl = `data:${file.mimetype};base64,${base64}`;
+    // 1. Upload to Azure
+    const blobName = await this.sessionsService.uploadSlide(id, file.buffer, file.mimetype, file.originalname);
+
+    // 2. Generate 1 hour SAS URL
+    const sasData = await this.sessionsService.generateSlideSasUrl(id, blobName);
 
     return { 
         success: true, 
-        base64: dataUrl, 
+        sasUrl: sasData.sasUrl,
+        expiresIn: sasData.expiresIn,
         mimeType: file.mimetype,
         originalName: file.originalname 
     };
@@ -234,6 +244,20 @@ export class SessionsController {
   }
 
   @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @Patch(':id/status')
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() body: { status: string },
+    @Req() req: any,
+  ) {
+    // Only tutor or admin can update status
+    if (req.user.role !== 'tutor' && req.user.role !== 'admin') {
+      throw new UnauthorizedException('Only tutors or admins can update session status');
+    }
+    return this.sessionsService.updateSessionStatus(id, body.status);
+  }
+
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
   // Assumes you have Roles and RolesGuard imported and applied at class or method level
   // Actually, RolesGuard needs to be added here.
   @Get(':id/admin-summary')
@@ -242,6 +266,15 @@ export class SessionsController {
       throw new UnauthorizedException('Admin only');
     }
     return this.sessionsService.getAdminSummary(id);
+  }
+
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @Get(':id/whiteboard-snapshot/stream')
+  async streamSnapshot(
+    @Param('id') id: string,
+    @Req() req: any
+  ) {
+    return this.sessionsService.getWhiteboardSnapshotSasUrl(id, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)

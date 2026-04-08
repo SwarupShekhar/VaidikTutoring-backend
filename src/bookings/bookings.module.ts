@@ -7,11 +7,12 @@ import { AuthModule } from '../auth/auth.module.js';
 import { CreditsModule } from '../credits/credits.module.js';
 
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AzureModule } from '../azure/azure.module';
 
 import { BookingsCleanupService } from './bookings.cleanup.service.js';
 
 @Module({
-  imports: [PrismaModule, EmailModule, NotificationsModule, AuthModule, CreditsModule],
+  imports: [PrismaModule, EmailModule, NotificationsModule, AuthModule, CreditsModule, AzureModule],
   controllers: [BookingsController],
   providers: [BookingsService, BookingsCleanupService],
   exports: [BookingsService],

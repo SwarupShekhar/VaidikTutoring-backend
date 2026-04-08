@@ -359,6 +359,16 @@ export class CreditsService {
     }
 
     this.logger.log(`Granted ${creditsTotal} credits to user ${userId} for package ${packageId}`);
+
+    // Post-payment Enrollment Sync
+    await this.prisma.students.updateMany({
+      where: { user_id: userId },
+      data: {
+        enrollment_status: 'enrolled',
+        sessions_remaining: { increment: creditsTotal },
+        package_end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) // 90 days
+      }
+    });
   }
 
   async checkCredits(userId: string): Promise<{ hasCredits: boolean; creditsRemaining: number }> {

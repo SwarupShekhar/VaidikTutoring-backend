@@ -56,6 +56,7 @@ export class DailyService {
                         is_owner: isOwner,
                         user_name: userName,
                         enable_screenshare: true,
+                        enable_recording: 'cloud',
                         start_video_off: true,
                         start_audio_off: true,
                         exp: Math.floor(Date.now() / 1000) + 7200

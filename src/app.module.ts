@@ -31,6 +31,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { CreditsModule } from './credits/credits.module';
 import { MediaModule } from './media/media.module';
 import { StorageModule } from './storage/storage.module';
+import { DailyModule } from './daily/daily.module';
 
 
 @Module({
@@ -64,6 +65,7 @@ import { StorageModule } from './storage/storage.module';
     CreditsModule,
     StorageModule,
     MediaModule,
+    DailyModule,
     ServeStaticModule.forRoot({
       rootPath: path.join(process.cwd(), 'public'),
       serveRoot: '/',
