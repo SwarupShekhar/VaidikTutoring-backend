@@ -1,6 +1,7 @@
-import { Controller, Post, Body, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Logger, Inject, forwardRef } from '@nestjs/common';
 import { AzureStorageService } from '../azure/azure-storage.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SessionsService } from '../sessions/sessions.service';
 
 @Controller('webhooks/daily')
 export class DailyWebhookController {
@@ -8,7 +9,9 @@ export class DailyWebhookController {
 
   constructor(
     private readonly azureService: AzureStorageService,
-    private readonly prisma: PrismaService 
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => SessionsService))
+    private readonly sessionsService: SessionsService,
   ) {}
 
   @Post()
@@ -40,6 +43,16 @@ export class DailyWebhookController {
       } catch (error) {
         this.logger.error(`Failed to process recording for session ${sessionId}: ${error.message}`);
       }
+
+      // 3. Mark session as completed to update dashboard stats
+      try {
+        await this.sessionsService.updateSessionStatus(sessionId, 'completed');
+      } catch (statusError) {
+        this.logger.error(`Failed to update status for session ${sessionId}: ${statusError.message}`);
+        // Don't fail the whole webhook if just status update fails
+      }
+
+      return { received: true, transfer: 'initiated' };
     }
 
     return { received: true };
