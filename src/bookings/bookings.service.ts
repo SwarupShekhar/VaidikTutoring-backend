@@ -1,4 +1,5 @@
 // src/bookings/bookings.service.ts
+import { randomUUID } from 'crypto';
 import {
   Injectable,
   NotFoundException,
@@ -684,10 +685,66 @@ export class BookingsService {
         );
       }
     } catch (e) {
-      this.logger.error(`Failed to send notifications for reassignment: ${e.message}`);
+      this.logger.error(`Failed to send reassignment notifications: ${e.message}`);
     }
 
     return updated;
+  }
+
+  /**
+   * Internal method to create a confirmed booking + session (bypasses logic)
+   * Used by Learning Mode cron/generation
+   */
+  async createScheduledBooking(data: {
+    student_id: string;
+    program_id: string;
+    package_id: string;
+    subject_id: string;
+    curriculum_id: string;
+    tutor_id: string;
+    start: Date;
+    end: Date;
+    enrollment_id?: string;
+  }, tx?: any) {
+    const prisma = tx || this.prisma;
+    return prisma.$transaction ? prisma.$transaction(async (innerTx: any) => {
+      return this.executeScheduledBookingCreation(data, innerTx);
+    }) : this.executeScheduledBookingCreation(data, prisma);
+  }
+
+  private async executeScheduledBookingCreation(data: any, tx: any) {
+    const booking = await tx.bookings.create({
+      data: {
+        student_id: data.student_id,
+        program_id: data.program_id,
+        package_id: data.package_id,
+        subject_id: data.subject_id,
+        curriculum_id: data.curriculum_id,
+        assigned_tutor_id: data.tutor_id,
+        requested_start: data.start,
+        requested_end: data.end,
+        status: 'confirmed',
+        credit_cost: 0, // system-created
+        is_trial_session: false,
+        is_free_session: false,
+        enrollment_id: data.enrollment_id,
+      },
+    });
+
+    const sessionId = randomUUID();
+    const session = await tx.sessions.create({
+      data: {
+        id: sessionId,
+        booking_id: booking.id,
+        program_id: data.program_id,
+        start_time: data.start,
+        end_time: data.end,
+        status: 'scheduled',
+        meet_link: `${process.env.FRONTEND_URL}/session/${sessionId}`,
+      },
+    });
+
+    return { booking, session };
   }
 
   // get bookings for student
@@ -753,7 +810,6 @@ export class BookingsService {
     }));
   }
 
-  // get bookings for tutor
   // get bookings for tutor
   async forTutor(tutorUserId: string) {
     console.log('[forTutor] Looking up tutor with user_id:', tutorUserId);

@@ -10,6 +10,7 @@ import { RawBodyMiddleware } from './common/middleware/raw-body.middleware';
 
 import { AuthModule } from './auth/auth.module.js';
 import { StudentsModule } from './students/students.module.js';
+import { EnrollmentsModule } from './enrollments/enrollments.module.js';
 import { TutorsModule } from './tutors/tutors.module.js';
 import { BookingsModule } from './bookings/bookings.module.js';
 import { SessionsModule } from './sessions/sessions.module.js';
