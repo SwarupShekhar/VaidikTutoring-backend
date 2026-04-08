@@ -22,7 +22,7 @@ import { AzureModule } from '../azure/azure.module';
     AzureModule,
     AuthModule,
     NotificationsModule,
-    DailyModule,
+    forwardRef(() => DailyModule),
     forwardRef(() => StudentsModule),
   ],
   controllers: [SessionsController],
