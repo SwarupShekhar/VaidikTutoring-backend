@@ -9,6 +9,7 @@ import { AdminModule } from '../admin/admin.module.js';
 import { CreditsModule } from '../credits/credits.module.js';
 import { JwtStrategy } from './jwt.strategy.js';
 import { ClerkAuthGuard } from './clerk-auth.guard.js';
+import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata.js';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { ClerkAuthGuard } from './clerk-auth.guard.js';
     CreditsModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, ClerkAuthGuard],
+  providers: [AuthService, JwtStrategy, ClerkAuthGuard, SyncClerkMetadataService],
   exports: [AuthService, JwtModule, ClerkAuthGuard],
 })
 export class AuthModule { }

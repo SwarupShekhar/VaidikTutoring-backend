@@ -3,6 +3,7 @@ import { CanActivate, ExecutionContext, Injectable, Logger, UnauthorizedExceptio
 import { verifyToken, clerkClient } from '@clerk/clerk-sdk-node';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { JwtService } from '@nestjs/jwt';
+import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata.js';
 
 @Injectable()
 export class ClerkAuthGuard implements CanActivate {
@@ -10,7 +11,8 @@ export class ClerkAuthGuard implements CanActivate {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly jwtService: JwtService
+        private readonly jwtService: JwtService,
+        private readonly syncClerkService: SyncClerkMetadataService,
     ) { }
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -86,6 +88,13 @@ export class ClerkAuthGuard implements CanActivate {
                             email_verified: true,
                         },
                     });
+
+                    // Mark new Clerk users as needing phone verification (fire-and-forget)
+                    if (role === 'parent' || role === 'student') {
+                        this.syncClerkService.syncPhoneVerifiedToClerk(dbUser.id, false).catch(err =>
+                            this.logger.error(`[ClerkAuthGuard] Failed to set phone_verified:false for new user: ${err.message}`)
+                        );
+                    }
                 } else {
                     // Sync Name/Role/Verification
                     const tokenRole = (claims.metadata?.role as string) || (claims.public_metadata?.role as string);

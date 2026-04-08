@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { createClerkClient } from '@clerk/clerk-sdk-node';
 
@@ -83,6 +83,34 @@ export class SyncClerkMetadataService {
     } catch (error) {
       this.logger.error(`[SyncClerk] Failed to sync role for ${user.email}:`, error);
       throw error;
+    }
+  }
+
+  async syncPhoneVerifiedToClerk(userId: string, phoneVerified: boolean): Promise<void> {
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
+    if (!user) {
+      this.logger.warn(`[SyncClerk] syncPhoneVerifiedToClerk: user ${userId} not found`);
+      return;
+    }
+
+    try {
+      const clerkUsers = await this.clerkClient.users.getUserList({
+        emailAddress: [user.email],
+      });
+
+      if (!clerkUsers || clerkUsers.length === 0) {
+        this.logger.warn(`[SyncClerk] No Clerk user for email: ${user.email}`);
+        return;
+      }
+
+      await this.clerkClient.users.updateUserMetadata(clerkUsers[0].id, {
+        publicMetadata: { phone_verified: phoneVerified },
+      });
+
+      this.logger.log(`[SyncClerk] phone_verified=${phoneVerified} synced for ${user.email}`);
+    } catch (error) {
+      this.logger.error(`[SyncClerk] Failed to sync phone_verified for ${user.email}: ${error.message}`);
+      // Non-fatal — DB is source of truth; Clerk metadata is best-effort
     }
   }
 
