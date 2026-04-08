@@ -397,6 +397,7 @@ model users {
   timezone                                String?              @default("UTC")
   is_active                               Boolean?             @default(true)
   email_verified                          Boolean              @default(false)
+  phone_verified                          Boolean              @default(false)
   force_password_change                   Boolean              @default(false)
   email_verification_token                String?
   email_verification_expires              DateTime?            @db.Timestamptz(6)
