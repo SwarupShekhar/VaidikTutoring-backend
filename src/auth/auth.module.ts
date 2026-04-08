@@ -25,6 +25,6 @@ import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata.js';
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, ClerkAuthGuard, SyncClerkMetadataService],
-  exports: [AuthService, JwtModule, ClerkAuthGuard],
+  exports: [AuthService, JwtModule, ClerkAuthGuard, SyncClerkMetadataService],
 })
 export class AuthModule { }
