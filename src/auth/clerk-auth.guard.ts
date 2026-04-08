@@ -17,19 +17,23 @@ export class ClerkAuthGuard implements CanActivate {
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest();
-        const token = request.headers.authorization?.replace('Bearer ', '');
+        const authHeader = request.headers.authorization || '';
+        const token = authHeader.replace(/^Bearer\s+/i, '');
         const path = request.url;
 
-        if (!token) {
+        if (!token || token === 'undefined' || token === 'null') {
             this.logger.warn(`ClerkAuthGuard: No token provided for ${path}`);
-            throw new UnauthorizedException('No token provided');
+            throw new UnauthorizedException('No token provided or invalid bearer format');
         }
 
         let claims: any;
         let isClerk = false;
 
         try {
-            // 1. Try Clerk Verification
+            // 1. Detection Strategy: If it looks like our structured JWT or if Clerk fails
+            // Clerk tokens usually have a specific header structure or presence of 'clerk' strings
+            
+            // Try Clerk first as it is the primary auth
             try {
                 // Using clerkClient.verifyToken (Clerk SDK v4)
                 claims = await (clerkClient as any).verifyToken(token);
@@ -42,10 +46,8 @@ export class ClerkAuthGuard implements CanActivate {
                     isClerk = false;
                     this.logger.debug(`ClerkAuthGuard: Token verified via JWT Fallback for ${path}`);
                 } catch (jwtErr) {
-                    this.logger.error(`ClerkAuthGuard: Token verification failed for ${path}`);
-                    this.logger.error(`Clerk Error: ${clerkErr.message}`);
-                    this.logger.error(`JWT Error: ${jwtErr.message}`);
-                    throw new UnauthorizedException('Invalid token');
+                    this.logger.error(`ClerkAuthGuard Auth Fail [${path}]: Clerk(${clerkErr.message}), JWT(${jwtErr.message})`);
+                    throw new UnauthorizedException(`Invalid session. Please login again. Details: Clerk(${clerkErr.message.slice(0, 30)}), JWT(${jwtErr.message.slice(0, 30)})`);
                 }
             }
 
