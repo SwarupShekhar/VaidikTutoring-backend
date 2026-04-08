@@ -89,7 +89,7 @@ export class ParentService {
                 session_recordings: {
                     take: 1,
                     orderBy: { created_at: 'desc' },
-                    select: { file_url: true }
+                    select: { id: true }
                 },
                 bookings: {
                     select: {

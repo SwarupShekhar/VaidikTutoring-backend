@@ -315,7 +315,13 @@ export class PaymentsService {
         where: { id: purchase.id },
         data: { status: 'PAID' },
       });
-      this.logger.log(`Payment captured for purchase ${purchase.id}`);
+
+      // Also grant credits if webhook arrives before verify endpoint
+      if (purchase.user_id && purchase.package_id) {
+        await this.creditsService.grantCredits(purchase.user_id, purchase.package_id);
+      }
+
+      this.logger.log(`Payment captured for purchase ${purchase.id} via webhook, credits granted`);
     }
   }
 

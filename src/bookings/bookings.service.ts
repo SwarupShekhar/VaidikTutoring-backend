@@ -15,6 +15,7 @@ import { CreditsService } from '../credits/credits.service';
 import { Cron } from '@nestjs/schedule';
 
 import { NotificationsService } from '../notifications/notifications.service';
+import { AzureStorageService } from '../azure/azure-storage.service';
 
 @Injectable()
 export class BookingsService {
@@ -25,6 +26,7 @@ export class BookingsService {
     private readonly emailService: EmailService,
     private readonly notificationsService: NotificationsService,
     private readonly creditsService: CreditsService,
+    private readonly azureStorageService: AzureStorageService,
   ) { }
 
   // Create booking and attempt auto-assign tutor
@@ -712,19 +714,42 @@ export class BookingsService {
         tutors: { include: { users: true } },
         sessions: {
           orderBy: { start_time: 'desc' },
+          include: { session_recordings: { take: 1, orderBy: { created_at: 'desc' } } }
         }
       },
       orderBy: { requested_start: 'asc' },
     });
 
-    // TRANSFORM: Flatten session data for frontend consumption
-    return bookings.map(b => ({
-      ...b,
-      start_time: b.sessions?.[0]?.start_time || b.requested_start,
-      end_time: b.sessions?.[0]?.end_time || b.requested_end,
-      meet_link: b.sessions?.[0]?.meet_link,
-      subject: b.subjects,
-      tutor: b.tutors?.users, // Alias singular for frontend hook
+    // TRANSFORM: Flatten session data and inject SAS URLs
+    return Promise.all(bookings.map(async b => {
+      const session = b.sessions?.[0];
+      const recording = session?.session_recordings?.[0];
+      
+      // Inject SAS URL if Azure blob exists
+      if (recording?.azure_blob_name) {
+          try {
+              recording.file_url = await this.azureStorageService.generateSasUrl('session-recordings', recording.azure_blob_name, 2);
+          } catch (e) {
+              this.logger.error(`Failed to generate SAS for recording ${recording.id}: ${e.message}`);
+          }
+      }
+
+      if (session?.whiteboard_snapshot_url && !session.whiteboard_snapshot_url.startsWith('http')) {
+          try {
+              session.whiteboard_snapshot_url = await this.azureStorageService.generateSasUrl('whiteboard-snapshots', session.whiteboard_snapshot_url, 24);
+          } catch (e) {
+              this.logger.error(`Failed SAS snapshot for student: ${e.message}`);
+          }
+      }
+
+      return {
+        ...b,
+        start_time: session?.start_time || b.requested_start,
+        end_time: session?.end_time || b.requested_end,
+        meet_link: session?.meet_link,
+        subject: b.subjects,
+        tutor: b.tutors?.users, // Alias singular for frontend hook
+      };
     }));
   }
 
@@ -785,7 +810,7 @@ export class BookingsService {
     // OPTIONAL: Do parents want to see history? Usually yes, but user request implies strict "expire" for "tutoring portal".
     // Assuming Parent Dashboard behaves like Student Dashboard for consistency regarding "joining".
     // But Admin said "booked session log must be visible only in the Admin dashboard", so let's hide for parents too.
-    return this.prisma.bookings.findMany({
+    const bookings = await this.prisma.bookings.findMany({
       where: {
         student_id: { in: ids },
         // requested_end: { gt: new Date() }, // Unlock history for frontend stats
@@ -803,12 +828,35 @@ export class BookingsService {
               take: 1,
               orderBy: { created_at: 'desc' }
             },
-            sticker_rewards: true
+            sticker_rewards: true,
+            attendance: true
           }
         },
       },
       orderBy: { requested_start: 'desc' },
     });
+
+    // Inject SAS URLs
+    return Promise.all(bookings.map(async b => {
+        for (const session of (b.sessions || [])) {
+            const recording = session.session_recordings?.[0];
+            if (recording?.azure_blob_name) {
+                try {
+                    recording.file_url = await this.azureStorageService.generateSasUrl('session-recordings', recording.azure_blob_name, 2);
+                } catch (e) {
+                    this.logger.error(`Failed SAS generation for parent recording: ${e.message}`);
+                }
+            }
+            if (session.whiteboard_snapshot_url && !session.whiteboard_snapshot_url.startsWith('http')) {
+                try {
+                    session.whiteboard_snapshot_url = await this.azureStorageService.generateSasUrl('whiteboard-snapshots', session.whiteboard_snapshot_url, 24);
+                } catch (e) {
+                    this.logger.error(`Failed SAS generation for parent snapshot: ${e.message}`);
+                }
+            }
+        }
+        return b;
+    }));
   }
 
   // Get available (unclaimed) bookings for a tutor

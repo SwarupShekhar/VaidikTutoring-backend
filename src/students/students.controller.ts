@@ -8,6 +8,7 @@ import {
   Delete,
   Param,
   Patch,
+  NotFoundException,
 } from '@nestjs/common';
 import { StudentsService } from './students.service.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
@@ -52,6 +53,16 @@ export class StudentsController {
     return student;
   }
 
+  @Get('me/progress-summary')
+  @UseGuards(JwtAuthGuard)
+  async getMyProgressSummary(@Req() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) throw new Error('User not authenticated');
+    const student = await this.studentsService.findByUserId(userId);
+    if (!student) throw new NotFoundException('Student profile not found');
+    return this.studentsService.getProgressSummary(student.id);
+  }
+
   @Get('parent')
   @UseGuards(JwtAuthGuard)
   async findAllByParent(@Req() req: any) {
@@ -79,6 +90,22 @@ export class StudentsController {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
     return this.studentsService.getEnrollmentStatus(id);
+  }
+
+  @Get(':id/progress-summary')
+  @UseGuards(JwtAuthGuard)
+  async getProgressSummary(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) throw new Error('User not authenticated');
+    return this.studentsService.getProgressSummary(id);
+  }
+
+  @Post(':id/update-streak')
+  @UseGuards(JwtAuthGuard)
+  async updateStreak(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) throw new Error('User not authenticated');
+    return this.studentsService.updateStreak(id);
   }
 
   @Delete(':id')

@@ -9,5 +9,6 @@ import { CreditsModule } from '../credits/credits.module';
   imports: [PrismaModule, AuthModule, CreditsModule],
   controllers: [StudentsController],
   providers: [StudentsService],
+  exports: [StudentsService],
 })
 export class StudentsModule { }
