@@ -2,6 +2,7 @@ import { Controller, Post, Body, Logger, Inject, forwardRef } from '@nestjs/comm
 import { AzureStorageService } from '../azure/azure-storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionsService } from '../sessions/sessions.service';
+import { DailyService } from './daily.service';
 
 @Controller('webhooks/daily')
 export class DailyWebhookController {
@@ -12,15 +13,16 @@ export class DailyWebhookController {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => SessionsService))
     private readonly sessionsService: SessionsService,
+    private readonly dailyService: DailyService,
   ) {}
 
   @Post()
   async handleDailyWebhook(@Body() payload: any) {
-    this.logger.log(`Received Daily.co webhook: ${payload.event}`);
+    this.logger.log(`Received Daily.co webhook: ${payload.type}`);
 
     // 1. Handle Recording ready
-    if (payload.event === 'recording.ready-to-download') {
-      const { room_name, download_url } = payload.payload;
+    if (payload.type === 'recording.ready-to-download') {
+      const { room_name, recording_id } = payload.payload;
       const sessionId = this.extractSessionId(room_name);
 
       if (!sessionId) {
@@ -29,10 +31,11 @@ export class DailyWebhookController {
       }
 
       this.logger.log(`Recording ready for session room: ${room_name}. Starting transfer to Azure...`);
-      
+
       try {
         const resolvedSessionId = await this.sessionsService.ensureSessionId(sessionId);
-        const azureBlobName = await this.azureService.uploadFromUrl(resolvedSessionId, download_url);
+        const downloadUrl = await this.dailyService.getRecordingAccessLink(recording_id);
+        const azureBlobName = await this.azureService.uploadFromUrl(resolvedSessionId, downloadUrl);
         await this.prisma.session_recordings.create({
           data: {
             session_id: resolvedSessionId,
@@ -52,7 +55,7 @@ export class DailyWebhookController {
     }
 
     // 2. Handle Meeting Ended (Important for dashboard stats)
-    if (payload.event === 'meeting.ended') {
+    if (payload.type === 'meeting.ended') {
       const roomName = payload.payload?.room || payload.payload?.room_name;
       const sessionId = this.extractSessionId(roomName);
 

@@ -46,6 +46,18 @@ export class DailyService {
             throw new HttpException('Failed to create video room', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+    async getRecordingAccessLink(recordingId: string): Promise<string> {
+        try {
+            const response = await axios.get(`${this.apiUrl}/recordings/${recordingId}/access-link`, {
+                headers: { Authorization: `Bearer ${this.apiKey}` }
+            });
+            return response.data.download_link;
+        } catch (err: any) {
+            console.error('[Daily] Failed to get access link:', err.response?.data);
+            throw new HttpException('Failed to get recording access link', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     async createMeetingToken(roomName: string, isOwner: boolean, userName: string): Promise<string> {
         try {
             const response = await axios.post(
