@@ -58,8 +58,19 @@ export class AzureStorageService implements OnModuleInit {
     const blobName = `${sessionId}/${Date.now()}.mp4`;
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
+    const headers: Record<string, string> = {};
+    if (url.includes('daily.co')) {
+        const dailyKey = process.env.DAILY_API_KEY;
+        if (dailyKey) {
+            headers['Authorization'] = `Bearer ${dailyKey}`;
+        }
+    }
+
     // Use axios to get a stream of the file
-    const response = await axios.get(url, { responseType: 'stream' });
+    const response = await axios.get(url, { 
+        responseType: 'stream',
+        headers
+    });
     
     // Upload the stream to Azure
     await blockBlobClient.uploadStream(response.data, undefined, undefined, {
