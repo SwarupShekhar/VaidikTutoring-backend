@@ -51,7 +51,6 @@ model audit_logs {
   @@schema("app")
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model bookings {
   id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   student_id        String?    @db.Uuid
@@ -75,6 +74,8 @@ model bookings {
   students          students?  @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   subjects          subjects?  @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sessions          sessions[]
+  enrollment_id     String?    @db.Uuid
+  enrollment        enrollments? @relation(fields: [enrollment_id], references: [id])
 
   @@schema("app")
 }
@@ -129,7 +130,6 @@ model package_items {
   @@schema("app")
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model packages {
   id            String          @id
   name          String
@@ -147,7 +147,6 @@ model packages {
   @@schema("app")
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model progress_points {
   id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   student_id     String?    @db.Uuid
@@ -161,7 +160,6 @@ model progress_points {
   @@schema("app")
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model purchases {
   id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id               String?   @db.Uuid
@@ -257,7 +255,6 @@ model session_recordings {
   @@schema("app")
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model sessions {
   id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   booking_id         String?              @db.Uuid
@@ -323,11 +320,14 @@ model students {
   last_session_week                    String?
   badges                               String[]              @default([])
   total_hours_learned                  Float                 @default(0)
+  trial_tutor_id                       String?               @db.Uuid
   assessment_attempts                  assessment_attempts[]
   attendance                           Attendance[]
   bookings                             bookings[]
   credit_adjustments                   credit_adjustments[]
   progress_points                      progress_points[]
+  enrollments                          enrollments[]
+  trial_tutor                          tutors?               @relation("trial_tutor", fields: [trial_tutor_id], references: [id])
   curricula                            curricula?            @relation(fields: [curriculum_preference], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users_students_parent_user_idTousers users?                @relation("students_parent_user_idTousers", fields: [parent_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   program                              Program?              @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -350,7 +350,6 @@ model subjects {
   @@schema("app")
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model tutor_shifts {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tutor_id    String?   @db.Uuid
@@ -364,7 +363,6 @@ model tutor_shifts {
   @@schema("app")
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model tutors {
   id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id            String         @db.Uuid
@@ -382,11 +380,12 @@ model tutors {
   tutor_shifts       tutor_shifts[]
   program            Program?       @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users              users          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  trial_students     students[]    @relation("trial_tutor")
+  enrollments        enrollments[]
 
   @@schema("app")
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model users {
   id                                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email                                   String               @unique
@@ -514,6 +513,7 @@ model Program {
   sessions    sessions[]
   students    students[]
   tutors      tutors[]
+  enrollments enrollments[]
 
   @@map("programs")
   @@schema("app")
@@ -571,6 +571,56 @@ model AttentionEvent {
   @@schema("app")
 }
 
+model enrollments {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  student_id      String    @db.Uuid
+  program_id      String    @db.Uuid
+  tutor_id        String?   @db.Uuid
+
+  // Schedule
+  schedule_preset String    // "SCHOOL_NIGHTS" | "WEEKENDS" | "FLEXIBLE" | "CUSTOM"
+  schedule_days   Int[]     // [1,3,5] Mon=1...Sun=7, resolved from preset
+  start_time      String    // "18:00" HH:mm in student's timezone
+  duration        Int       @default(60)  // minutes
+
+  // Booking fields (needed for auto-created bookings)
+  subject_ids     String[]
+  curriculum_id   String?
+  package_id      String?
+
+  // Lifecycle
+  status          String    // "active" | "paused" | "completed"
+  started_at      DateTime  @default(now()) @db.Timestamptz(6)
+  ended_at        DateTime? @db.Timestamptz(6)
+  pause_until     DateTime? @db.Timestamptz(6)
+
+  // Control
+  schedule_source String    @default("auto")  // "auto" | "manual"
+  auto_assign     Boolean   @default(true)
+
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  students  students @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  program   Program  @relation(fields: [program_id], references: [id], onDelete: NoAction)
+  tutors    tutors?  @relation(fields: [tutor_id], references: [id], onDelete: NoAction)
+  bookings  bookings[]
+
+  @@schema("app")
+}
+
+model sticker_rewards {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  session_id String   @db.Uuid
+  student_id String   @db.Uuid
+  sticker    String
+  given_at   DateTime @default(now()) @db.Timestamptz(6)
+  sessions   sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  users      users    @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@map("sticker_rewards")
+  @@schema("app")
+}
+
 enum TutorStatus {
   ACTIVE
   SUSPENDED
@@ -596,18 +646,5 @@ enum SessionPhase {
   REINFORCE
   REFLECT
 
-  @@schema("app")
-}
-
-model sticker_rewards {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  session_id String   @db.Uuid
-  student_id String   @db.Uuid
-  sticker    String
-  given_at   DateTime @default(now()) @db.Timestamptz(6)
-  sessions   sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
-  users      users    @relation(fields: [student_id], references: [id], onDelete: Cascade)
-
-  @@map("sticker_rewards")
   @@schema("app")
 }

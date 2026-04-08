@@ -3,7 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface CreditStatus {
-  mode: 'trial_active' | 'trial_exhausted' | 'trial_expired' | 'paid' | 'no_access';
+  mode: 'trial_active' | 'trial_exhausted' | 'trial_expired' | 'paid' | 'no_access' | 'learning';
   creditsRemaining: number;
   trialExpiresAt: string | null;
   daysLeft: number | null;
@@ -54,7 +54,20 @@ export class CreditsService {
   getCreditStatus(student: any): CreditStatus {
     const now = new Date();
 
-    // 1. Check for paid subscription
+    // 1. Check for Learning Mode Enrollment
+    if (student.enrollment_status === 'learning') {
+      return {
+        mode: 'learning',
+        creditsRemaining: student.subscription_credits || 0,
+        trialExpiresAt: null,
+        daysLeft: null,
+        sessionsUsed: student.trial_sessions_used || 0,
+        canBook: true, // Learning mode manages bookings automatically
+        plan: student.subscription_plan as any,
+      };
+    }
+
+    // 2. Check for paid subscription
     if (
       student.subscription_plan &&
       student.subscription_ends &&
@@ -364,7 +377,7 @@ export class CreditsService {
     await this.prisma.students.updateMany({
       where: { user_id: userId },
       data: {
-        enrollment_status: 'enrolled',
+        enrollment_status: 'learning',
         sessions_remaining: { increment: creditsTotal },
         package_end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) // 90 days
       }
