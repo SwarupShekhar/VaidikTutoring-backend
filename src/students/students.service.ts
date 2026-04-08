@@ -354,6 +354,29 @@ export class StudentsService {
         blobName: s.session_recordings[0]?.azure_blob_name,
       }));
 
+    // --- Badge Logic ---
+    const earnedBadges = [...(student.badges || [])];
+    const hasBadge = (id: string) => earnedBadges.includes(id);
+    
+    // 1. First Step: 1 session
+    if (totalSessions >= 1 && !hasBadge('first_step')) earnedBadges.push('first_step');
+    // 2. Consistent: 5 sessions
+    if (totalSessions >= 5 && !hasBadge('consistent')) earnedBadges.push('consistent');
+    // 3. Quick Learner: 10 hours
+    if (totalHoursLearned >= 10 && !hasBadge('quick_learner')) earnedBadges.push('quick_learner');
+    // 4. Dedicated: 4 week streak
+    if (student.streak_weeks >= 4 && !hasBadge('dedicated')) earnedBadges.push('dedicated');
+    // 5. Star Student: 5 stickers
+    if (stickers.length >= 5 && !hasBadge('star_student')) earnedBadges.push('star_student');
+
+    // Update DB if new badges earned (fire-and-forget)
+    if (earnedBadges.length > (student.badges?.length || 0)) {
+       this.prisma.students.update({
+         where: { id: studentId },
+         data: { badges: earnedBadges }
+       }).catch(() => {});
+    }
+
     return {
       streakWeeks: student.streak_weeks,
       totalSessions,
@@ -362,7 +385,7 @@ export class StudentsService {
       attendanceRate,
       packageSessionsRemaining: student.sessions_remaining,
       packageSessionsTotal,
-      badges: student.badges,
+      badges: earnedBadges,
       stickers: stickers.map(s => s.sticker),
       topicsThisMonth,
       subjectProgress,
