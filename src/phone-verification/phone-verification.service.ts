@@ -7,18 +7,26 @@ const Twilio = require('twilio');
 @Injectable()
 export class PhoneVerificationService {
   private readonly logger = new Logger(PhoneVerificationService.name);
-  private readonly twilioClient: any;
+  private _twilioClient: any = null;
   private readonly verifySid: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly syncClerkService: SyncClerkMetadataService,
   ) {
-    this.twilioClient = Twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN,
-    );
-    this.verifySid = process.env.TWILIO_VERIFY_SERVICE_SID!;
+    this.verifySid = process.env.TWILIO_VERIFY_SERVICE_SID ?? '';
+  }
+
+  private get twilioClient(): any {
+    if (!this._twilioClient) {
+      const sid = process.env.TWILIO_ACCOUNT_SID;
+      const token = process.env.TWILIO_AUTH_TOKEN;
+      if (!sid || !token) {
+        throw new BadRequestException('Twilio credentials not configured');
+      }
+      this._twilioClient = Twilio(sid, token);
+    }
+    return this._twilioClient;
   }
 
   async sendOtp(phone: string, channel: 'sms' | 'whatsapp'): Promise<{ success: boolean }> {
