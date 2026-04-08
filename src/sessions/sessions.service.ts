@@ -902,13 +902,18 @@ export class SessionsService {
     });
     if (!session) throw new NotFoundException('Session not found');
 
+    // If it's already completed and we're trying to set it to completed again, just return
+    if (session.status === 'completed' && status === 'completed') {
+        return session;
+    }
+
     const updated = await this.prisma.sessions.update({
         where: { id: sessionId },
         data: { status }
     });
 
     if (status === 'completed' && session.bookings?.student_id) {
-        // Update total hours learned
+        // Update total hours learned and completed sessions
         let durationHours = 1; // Default
         if (session.start_time && session.end_time) {
             durationHours = (new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 3600000;
@@ -929,6 +934,35 @@ export class SessionsService {
     }
 
     return updated;
+  }
+
+  /**
+   * Resolves a provided ID (which could be a Session ID or a Booking ID) to an actual Session record.
+   * If a Booking ID is provided and no session exists, it creates one.
+   */
+  async ensureSessionId(idOrBookingId: string): Promise<string> {
+    // 1. Try as Session ID
+    const session = await this.prisma.sessions.findUnique({ where: { id: idOrBookingId } });
+    if (session) return session.id;
+
+    // 2. Try as Booking ID
+    const booking = await this.prisma.bookings.findUnique({
+      where: { id: idOrBookingId },
+      include: { sessions: { orderBy: { created_at: 'desc' }, take: 1 } }
+    });
+
+    if (!booking) throw new NotFoundException('Session or Booking not found');
+
+    if (booking.sessions.length > 0) {
+      return booking.sessions[0].id;
+    }
+
+    // 3. Create a new session for this booking if none exists
+    const newSession = await this.create({
+      booking_id: booking.id,
+      status: 'scheduled'
+    });
+    return newSession.id;
   }
 
   async checkBadges(studentId: string) {

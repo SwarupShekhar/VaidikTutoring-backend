@@ -124,11 +124,28 @@ export class StudentsService {
   async findByUserId(userId: string) {
     const student = await this.prisma.students.findFirst({
       where: { user_id: userId },
+      include: {
+        bookings: {
+          include: {
+            sessions: {
+              include: {
+                sticker_rewards: true
+              }
+            }
+          }
+        }
+      }
     });
-    // If no specific student record, maybe return null or 404. 
-    // But for "New User" issues, we might want to ensure one exists?
-    // For now, simple find.
-    return student;
+    
+    if (!student) return null;
+
+    // Flatten stickers
+    const stickers = student.bookings.flatMap(b => b.sessions.flatMap(s => s.sticker_rewards.map(r => r.sticker)));
+
+    return {
+        ...student,
+        stickers
+    };
   }
 
   async getEnrollmentStatus(studentId: string) {
@@ -263,6 +280,12 @@ export class StudentsService {
         packageSessionsTotal = credits.credits_total;
     }
 
+    // Fetch stickers
+    const stickers = await this.prisma.sticker_rewards.findMany({
+      where: { session_id: { in: allSessions.map(s => s.id) } },
+      select: { sticker: true, given_at: true }
+    });
+
     return {
       streakWeeks: student.streak_weeks,
       totalSessions,
@@ -272,6 +295,7 @@ export class StudentsService {
       packageSessionsRemaining: student.sessions_remaining,
       packageSessionsTotal,
       badges: student.badges,
+      stickers: stickers.map(s => s.sticker),
       topicsThisMonth,
       subjectProgress
     };

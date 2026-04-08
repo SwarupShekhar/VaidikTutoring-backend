@@ -79,12 +79,7 @@ export class SessionsGateway
       // 1. Resolve canonical Session ID or Booking ID to ensure everyone is in the same room
       let finalSessionId = this.sessionMap.get(data.sessionId);
       if (!finalSessionId) {
-          const booking = await this.sessionsService.resolveBookingToSession(data.sessionId);
-          if (booking && booking.sessions.length > 0) {
-            finalSessionId = booking.sessions[0].id;
-          } else {
-            finalSessionId = data.sessionId;
-          }
+          finalSessionId = await this.sessionsService.ensureSessionId(data.sessionId);
           this.sessionMap.set(data.sessionId, finalSessionId);
       }
 
@@ -365,13 +360,26 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; studentId: string; stickerType: string; studentName: string },
   ) {
     try {
-      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      const finalSessionId = await this.sessionsService.ensureSessionId(payload.sessionId);
+
+      // We need to resolve the student profile to a User ID because sticker_rewards table
+      // currently incorrectly references the users table's ID.
+      const studentProfile = await this.prisma.students.findUnique({
+        where: { id: payload.studentId },
+        select: { user_id: true, parent_user_id: true }
+      });
+
+      const studentUserId = studentProfile?.user_id || studentProfile?.parent_user_id;
+
+      if (!studentUserId) {
+          this.logger.warn(`Could not resolve a User ID for student profile ${payload.studentId}`);
+      }
 
       // Persist to DB
       await this.prisma.sticker_rewards.create({
         data: {
           session_id: finalSessionId,
-          student_id: payload.studentId,
+          student_id: studentUserId || payload.studentId, // Fallback to raw ID (might fail FK if not resolved)
           sticker: payload.stickerType,
         }
       });
