@@ -195,7 +195,8 @@ export class StudentsService {
           include: {
             sessions: {
               include: {
-                bookings: { include: { subjects: true } }
+                bookings: { include: { subjects: true } },
+                session_recordings: { take: 1, orderBy: { created_at: 'desc' } }
               }
             },
             subjects: true
@@ -213,30 +214,72 @@ export class StudentsService {
     // Get all sessions
     const allSessions = student.bookings.flatMap(b => b.sessions);
     
-    // Total sessions (completed)
-    const totalSessions = allSessions.filter(s => s.status === 'completed').length;
+    // A session is "effectively completed" if:
+    // 1. status === 'completed'  OR
+    // 2. end_time exists and is in the past  OR
+    // 3. The parent booking has a past end date and the session is not cancelled
+    const isEffectivelyCompleted = (s: any) => {
+      if (s.status === 'completed') return true;
+      if (s.status === 'cancelled') return false;
+      if (s.end_time && new Date(s.end_time) < now) return true;
+      // Check booking dates as fallback
+      const booking = student.bookings.find(b => b.sessions.some(sess => sess.id === s.id));
+      if (booking?.requested_end && new Date(booking.requested_end) < now) return true;
+      return false;
+    };
+
+    const completedSessions = allSessions.filter(isEffectivelyCompleted);
+    const totalSessions = completedSessions.length;
     
-    // Sessions this month (completed)
-    const sessionsThisMonth = allSessions.filter(s => 
-      s.status === 'completed' && 
-      s.start_time && new Date(s.start_time) >= startOfMonth
-    ).length;
+    // Auto-fix: mark past sessions as completed in DB (fire-and-forget)
+    const needsFix = completedSessions.filter(s => s.status !== 'completed');
+    if (needsFix.length > 0) {
+      this.prisma.sessions.updateMany({
+        where: { id: { in: needsFix.map(s => s.id) } },
+        data: { status: 'completed' }
+      }).catch(() => {}); // fire-and-forget
+    }
+    
+    // Sessions this month
+    const sessionsThisMonth = completedSessions.filter(s => {
+      const t = s.start_time || s.created_at;
+      return t && new Date(t) >= startOfMonth;
+    }).length;
 
     // Attendance rate (last 30 days)
-    const scheduledLast30 = allSessions.filter(s => 
-      s.start_time && new Date(s.start_time) >= thirtyDaysAgo
-    ).length;
+    const scheduledLast30 = allSessions.filter(s => {
+      const t = s.start_time || s.created_at;
+      return t && new Date(t) >= thirtyDaysAgo;
+    }).length;
     
-    const completedLast30 = allSessions.filter(s => 
-      s.status === 'completed' && 
-      s.start_time && new Date(s.start_time) >= thirtyDaysAgo
-    ).length;
+    const completedLast30 = completedSessions.filter(s => {
+      const t = s.start_time || s.created_at;
+      return t && new Date(t) >= thirtyDaysAgo;
+    }).length;
 
     const attendanceRate = scheduledLast30 === 0 ? 100 : Math.round((completedLast30 / scheduledLast30) * 100);
 
-    // Topics this month
+    // Calculate total hours dynamically
+    let dynamicHours = 0;
+    completedSessions.forEach(s => {
+      if (s.start_time && s.end_time) {
+        dynamicHours += (new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 3600000;
+      } else {
+        // Fallback: check booking duration
+        const booking = student.bookings.find(b => b.sessions.some(sess => sess.id === s.id));
+        if (booking?.requested_start && booking?.requested_end) {
+          dynamicHours += (new Date(booking.requested_end).getTime() - new Date(booking.requested_start).getTime()) / 3600000;
+        } else {
+          dynamicHours += 1; // Default assumption: 1 hour per session
+        }
+      }
+    });
+    // Use whichever is higher: stored value or dynamically calculated
+    const totalHoursLearned = Math.max(student.total_hours_learned || 0, dynamicHours);
+
+    // Topics this month (from tutor notes)
     const notesThisMonth = allSessions
-      .filter(s => s.tutor_note && s.start_time && new Date(s.start_time) >= startOfMonth)
+      .filter(s => s.tutor_note && (s.start_time || s.created_at) && new Date((s.start_time || s.created_at)!).getTime() >= startOfMonth.getTime())
       .map(s => s.tutor_note as string);
     
     let topicsThisMonth: string[] = [];
@@ -249,7 +292,7 @@ export class StudentsService {
     // Subject Progress
     const subjectStats: Record<string, { completed: number, improving: number, needsWork: number }> = {};
     
-    allSessions.filter(s => s.status === 'completed').forEach(s => {
+    completedSessions.forEach(s => {
       const subject = s.bookings?.subjects?.name || 'Unknown';
       if (!subjectStats[subject]) subjectStats[subject] = { completed: 0, improving: 0, needsWork: 0 };
       
@@ -286,10 +329,35 @@ export class StudentsService {
       select: { sticker: true, given_at: true }
     });
 
+    // Recent tutor feedback (last 5 sessions with notes)
+    const recentFeedback = completedSessions
+      .filter(s => s.tutor_note)
+      .sort((a, b) => new Date((b.start_time || b.created_at || 0) as any).getTime() - new Date((a.start_time || a.created_at || 0) as any).getTime())
+      .slice(0, 5)
+      .map(s => ({
+        sessionId: s.id,
+        date: s.start_time || s.created_at,
+        subject: s.bookings?.subjects?.name || 'Session',
+        note: s.tutor_note,
+      }));
+
+    // Recent recordings (last 5 sessions with recordings)
+    const recentRecordings = completedSessions
+      .filter(s => s.session_recordings?.length > 0)
+      .sort((a, b) => new Date((b.start_time || b.created_at || 0) as any).getTime() - new Date((a.start_time || a.created_at || 0) as any).getTime())
+      .slice(0, 5)
+      .map(s => ({
+        sessionId: s.id,
+        date: s.start_time || s.created_at,
+        subject: s.bookings?.subjects?.name || 'Session',
+        recordingId: s.session_recordings[0]?.id,
+        blobName: s.session_recordings[0]?.azure_blob_name,
+      }));
+
     return {
       streakWeeks: student.streak_weeks,
       totalSessions,
-      totalHoursLearned: student.total_hours_learned,
+      totalHoursLearned,
       sessionsThisMonth,
       attendanceRate,
       packageSessionsRemaining: student.sessions_remaining,
@@ -297,7 +365,9 @@ export class StudentsService {
       badges: student.badges,
       stickers: stickers.map(s => s.sticker),
       topicsThisMonth,
-      subjectProgress
+      subjectProgress,
+      recentFeedback,
+      recentRecordings,
     };
   }
 
