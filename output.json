@@ -1,0 +1,231 @@
+{
+  "users": [
+    {
+      "id": "2e3b1df7-641b-4869-be65-428d667cd68e",
+      "email": "info@vaidikedu.com",
+      "first_name": "Swarup",
+      "last_name": "Shekhar",
+      "role": "tutor"
+    },
+    {
+      "id": "fe94c0fd-3933-4b05-b4c9-55c61a44185e",
+      "email": "swarup.shekhar@vaidikedu.com",
+      "first_name": "swarup.shekhar",
+      "last_name": "",
+      "role": "student"
+    },
+    {
+      "id": "99727cc3-d464-4109-bdc6-0a9ca7ed1cac",
+      "email": "swarupshekhar.vaidikedu@gmail.com",
+      "first_name": "Swarup",
+      "last_name": "Shekhar",
+      "role": "admin"
+    }
+  ],
+  "students": [
+    {
+      "id": "c6905039-9bef-4a5c-aa40-64cb613f5605",
+      "first_name": "anmolchauhan.vaidikedu",
+      "last_name": "",
+      "total_hours_learned": 0,
+      "streak_weeks": 0,
+      "user_id": "84f09a9e-c3ca-4f3e-bd0c-a773e2fcbb43"
+    },
+    {
+      "id": "c1631bc6-1106-4a4f-8c58-8f9e6477fd7f",
+      "first_name": "keshav.mishra",
+      "last_name": "",
+      "total_hours_learned": 0,
+      "streak_weeks": 0,
+      "user_id": "036873c2-23c4-476b-b42b-02fda3cedfef"
+    },
+    {
+      "id": "ed5ba446-6a20-4736-8eef-66977fbdcffa",
+      "first_name": "ashigarg001",
+      "last_name": "",
+      "total_hours_learned": 0,
+      "streak_weeks": 0,
+      "user_id": "76c9be33-136f-40b7-b009-607e32f1ffc2"
+    },
+    {
+      "id": "2ba98ef1-4176-4fc6-95c8-85a65f9b0a83",
+      "first_name": "ashish.garg",
+      "last_name": "",
+      "total_hours_learned": 0,
+      "streak_weeks": 0,
+      "user_id": "aafae4ab-5ef0-4add-b1b3-54519ce195fa"
+    },
+    {
+      "id": "e6219a18-485d-4109-bf9c-5dfd283cf694",
+      "first_name": "swarup.shekhar",
+      "last_name": "",
+      "total_hours_learned": 0,
+      "streak_weeks": 0,
+      "user_id": "fe94c0fd-3933-4b05-b4c9-55c61a44185e"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "f56896d6-dd1d-4ab2-81b8-158fac298882",
+      "status": "scheduled",
+      "booking_id": "8c40b259-82f4-4884-b19e-fb478b4bb6e2",
+      "tutor_note": null
+    },
+    {
+      "id": "43490a51-70c4-4f08-b5a4-59ce518ed422",
+      "status": "scheduled",
+      "booking_id": "8c40b259-82f4-4884-b19e-fb478b4bb6e2",
+      "tutor_note": null
+    },
+    {
+      "id": "6c683f26-8bfa-45ae-9c41-a43301f63a64",
+      "status": "scheduled",
+      "booking_id": "23aacf25-e876-4728-8732-528a83c3d8f5",
+      "tutor_note": null
+    },
+    {
+      "id": "61cbc241-885b-43b8-b3a7-9cd76241d05c",
+      "status": "scheduled",
+      "booking_id": "d188265c-c66e-4c86-981e-afef70c76db4",
+      "tutor_note": null
+    },
+    {
+      "id": "72c248b7-74e8-4823-abb1-b1b1b9b044d6",
+      "status": "scheduled",
+      "booking_id": "ef2f3558-4e91-47cb-9185-f7f918235aa6",
+      "tutor_note": null
+    },
+    {
+      "id": "2472496e-bdc1-4692-bc17-fabebaba8306",
+      "status": "scheduled",
+      "booking_id": "a080232d-83c0-4a11-88d3-7e7cb0c24cb6",
+      "tutor_note": null
+    },
+    {
+      "id": "050665c7-2ecc-430f-bbae-59a0134f2bbc",
+      "status": "scheduled",
+      "booking_id": "9fcc1616-5216-4a90-b152-9764918c7ed1",
+      "tutor_note": null
+    },
+    {
+      "id": "568338e7-d8ca-4bea-bd3c-340214e5c5a4",
+      "status": "scheduled",
+      "booking_id": "f887eaf1-edad-46b7-8cb2-2fc746020d6d",
+      "tutor_note": null
+    },
+    {
+      "id": "6d51224e-9227-4779-9019-cc59f9cc8a8d",
+      "status": "scheduled",
+      "booking_id": "9ec4233f-6fc6-462b-b707-b6b5c49b0011",
+      "tutor_note": null
+    },
+    {
+      "id": "6eee6a1b-7a55-4315-b58a-834a5a6b98e6",
+      "status": "scheduled",
+      "booking_id": "6d458488-c402-4a2e-8cfb-530072055ad1",
+      "tutor_note": null
+    },
+    {
+      "id": "ca8585cc-d063-4c50-a34b-88a717d1139e",
+      "status": "scheduled",
+      "booking_id": "27764839-2f25-4b6e-94b0-11879faa4236",
+      "tutor_note": null
+    },
+    {
+      "id": "e7f573d2-dcb4-4121-b64c-6781f7024293",
+      "status": "scheduled",
+      "booking_id": "a9f8b74c-5e75-42e3-924d-1beba7cfef29",
+      "tutor_note": null
+    },
+    {
+      "id": "72fbb646-9b95-43e3-972b-35975d9f2ab7",
+      "status": "scheduled",
+      "booking_id": "9b3edbd0-3996-47bb-8d3c-9da04ede6cd4",
+      "tutor_note": null
+    },
+    {
+      "id": "5738009a-323a-4679-8679-7762a98939f1",
+      "status": "scheduled",
+      "booking_id": "f5b43963-22a6-49ea-8367-e3e6cacad3f2",
+      "tutor_note": null
+    },
+    {
+      "id": "f63e80f8-3099-4327-aa85-19cd7de9f507",
+      "status": "scheduled",
+      "booking_id": "842a398d-7324-47bf-9301-019cddc76e4a",
+      "tutor_note": null
+    }
+  ],
+  "bookings": [
+    {
+      "id": "f5b43963-22a6-49ea-8367-e3e6cacad3f2",
+      "student_id": "e6219a18-485d-4109-bf9c-5dfd283cf694",
+      "status": "archived"
+    },
+    {
+      "id": "8c40b259-82f4-4884-b19e-fb478b4bb6e2",
+      "student_id": "e6219a18-485d-4109-bf9c-5dfd283cf694",
+      "status": "archived"
+    },
+    {
+      "id": "23aacf25-e876-4728-8732-528a83c3d8f5",
+      "student_id": "e6219a18-485d-4109-bf9c-5dfd283cf694",
+      "status": "archived"
+    },
+    {
+      "id": "d188265c-c66e-4c86-981e-afef70c76db4",
+      "student_id": "e6219a18-485d-4109-bf9c-5dfd283cf694",
+      "status": "archived"
+    },
+    {
+      "id": "ef2f3558-4e91-47cb-9185-f7f918235aa6",
+      "student_id": "ed5ba446-6a20-4736-8eef-66977fbdcffa",
+      "status": "archived"
+    },
+    {
+      "id": "9ec4233f-6fc6-462b-b707-b6b5c49b0011",
+      "student_id": "2ba98ef1-4176-4fc6-95c8-85a65f9b0a83",
+      "status": "archived"
+    },
+    {
+      "id": "9fcc1616-5216-4a90-b152-9764918c7ed1",
+      "student_id": "ed5ba446-6a20-4736-8eef-66977fbdcffa",
+      "status": "archived"
+    },
+    {
+      "id": "f887eaf1-edad-46b7-8cb2-2fc746020d6d",
+      "student_id": "ed5ba446-6a20-4736-8eef-66977fbdcffa",
+      "status": "archived"
+    },
+    {
+      "id": "6d458488-c402-4a2e-8cfb-530072055ad1",
+      "student_id": "e6219a18-485d-4109-bf9c-5dfd283cf694",
+      "status": "archived"
+    },
+    {
+      "id": "a080232d-83c0-4a11-88d3-7e7cb0c24cb6",
+      "student_id": "ed5ba446-6a20-4736-8eef-66977fbdcffa",
+      "status": "archived"
+    },
+    {
+      "id": "27764839-2f25-4b6e-94b0-11879faa4236",
+      "student_id": "e6219a18-485d-4109-bf9c-5dfd283cf694",
+      "status": "archived"
+    },
+    {
+      "id": "a9f8b74c-5e75-42e3-924d-1beba7cfef29",
+      "student_id": "e6219a18-485d-4109-bf9c-5dfd283cf694",
+      "status": "archived"
+    },
+    {
+      "id": "9b3edbd0-3996-47bb-8d3c-9da04ede6cd4",
+      "student_id": "e6219a18-485d-4109-bf9c-5dfd283cf694",
+      "status": "archived"
+    },
+    {
+      "id": "842a398d-7324-47bf-9301-019cddc76e4a",
+      "student_id": "e6219a18-485d-4109-bf9c-5dfd283cf694",
+      "status": "archived"
+    }
+  ]
+}
