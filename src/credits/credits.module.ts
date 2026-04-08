@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { CreditsController } from './credits.controller';
 import { CreditsService } from './credits.service';
-import { PrismaModule } from '../prisma/prisma.module.js';
+import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
   imports: [
