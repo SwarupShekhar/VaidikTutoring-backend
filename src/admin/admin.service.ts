@@ -57,10 +57,26 @@ export class AdminService {
     }
     
     async getAllocationQueue() {
+        const now = new Date();
+
+        // Auto-archive unallocated bookings whose requested_start is in the past
+        await this.prisma.bookings.updateMany({
+            where: {
+                assigned_tutor_id: null,
+                status: { in: ['requested', 'pending', 'open'] },
+                requested_start: { lt: now },
+            },
+            data: { status: 'expired' },
+        });
+
         const queue = await this.prisma.bookings.findMany({
             where: {
                 assigned_tutor_id: null,
                 status: { in: ['requested', 'pending', 'open'] },
+                OR: [
+                    { requested_start: { gte: now } },
+                    { requested_start: null }, // no time set yet — keep visible
+                ],
             },
             include: {
                 students: {
@@ -186,6 +202,10 @@ export class AdminService {
                         where: {
                             assigned_tutor_id: null,
                             status: { in: ['requested', 'pending', 'open'] },
+                            OR: [
+                                { requested_start: { gte: new Date() } },
+                                { requested_start: null },
+                            ],
                         },
                     }),
                 ]);
