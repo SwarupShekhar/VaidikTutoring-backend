@@ -1,5 +1,6 @@
 import {
     Injectable,
+    Logger,
     ForbiddenException,
     BadRequestException,
 } from '@nestjs/common';
@@ -18,6 +19,8 @@ interface TutorSkills {
 
 @Injectable()
 export class AdminService {
+    private readonly logger = new Logger(AdminService.name);
+
     constructor(
         private readonly prisma: PrismaService,
         private readonly jwt: JwtService,
@@ -26,7 +29,7 @@ export class AdminService {
     ) { }
 
     async cleanupRecordings() {
-        console.log('[AdminService] 🟡 Starting cleanup of recordings older than 30 days...');
+        this.logger.log('Starting cleanup of recordings older than 30 days...');
         
         // 1. Identify blobs to delete (using Azure list)
         const blobsToDelete = await this.azureStorageService.listUnviewedOlderThan(30);
@@ -45,11 +48,11 @@ export class AdminService {
                 
                 deletedCount++;
             } catch (err) {
-                console.error(`[AdminService] ❌ Failed to clean up blob ${blobName}:`, err);
+                this.logger.error(`Failed to clean up blob ${blobName}`, err);
             }
         }
         
-        console.log(`[AdminService] ✅ Cleanup completed. ${deletedCount} recordings removed.`);
+        this.logger.log(`Cleanup completed. ${deletedCount} recordings removed.`);
         return { success: true, count: deletedCount };
     }
     
@@ -150,7 +153,7 @@ export class AdminService {
     }
 
     async getStats() {
-        console.log('[AdminService] 🟡 Fetching stats... checking connection and raw data');
+        this.logger.debug('Fetching stats...');
 
         try {
             // DIAGNOSTICS: Check if we can see ANY users at all
@@ -158,7 +161,7 @@ export class AdminService {
                 select: { id: true, email: true, role: true, is_active: true },
                 take: 10
             });
-            console.log(`[AdminService] 🔍 Raw User Samples (${allUsers.length} found):`, JSON.stringify(allUsers, null, 2));
+            this.logger.debug(`Raw user sample: ${allUsers.length} found`);
 
             const [studentsCount, parentsCount, tutorsCount, upcomingSessionsCount, pendingAllocations] =
                 await Promise.all([
@@ -187,13 +190,7 @@ export class AdminService {
                     }),
                 ]);
 
-            console.log('[AdminService] ✅ Stats Calculated:', {
-                students: studentsCount,
-                parents: parentsCount,
-                tutors: tutorsCount,
-                upcomingSessions: upcomingSessionsCount,
-                pendingAllocations,
-            });
+            this.logger.debug(`Stats: students=${studentsCount} parents=${parentsCount} tutors=${tutorsCount}`);
 
             return {
                 students: studentsCount,
@@ -203,7 +200,7 @@ export class AdminService {
                 pendingAllocations,
             };
         } catch (error) {
-            console.error('[AdminService] ❌ Failed to fetch stats:', error);
+            this.logger.error('Failed to fetch stats', error);
             throw error;
         }
     }
@@ -340,7 +337,7 @@ export class AdminService {
             });
         } catch (error) {
             const err = error as Error;
-            console.error('Failed to create tutor:', err);
+            this.logger.error('Failed to create tutor', err);
             throw new BadRequestException(
                 `Failed to create tutor: ${err.message || 'Unknown error'}`,
             );
@@ -375,7 +372,7 @@ export class AdminService {
                 from: process.env.EMAIL_FROM || 'K12 Tutoring <no-reply@k12.com>',
             });
         } catch (e) {
-            console.error('Failed to send credentials email', e);
+            this.logger.error('Failed to send credentials email', e);
         }
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -592,7 +589,7 @@ export class AdminService {
         });
 
         if (!tutor) {
-            console.log('[allocateTutor] Tutor not found by ID, checking by User ID:', tutorId);
+            this.logger.debug(`Tutor not found by ID, checking by User ID: ${tutorId}`);
             tutor = await this.prisma.tutors.findFirst({
                 where: { user_id: tutorId },
                 include: {
@@ -621,7 +618,7 @@ export class AdminService {
 
         // If tutor has no program, assign them to the student's program upon allocation
         if (!tutor.program_id && student.program_id) {
-            console.log(`[allocateTutor] Auto-assigning Tutor ${tutor.id} to Program ${student.program_id}`);
+            this.logger.log(`Auto-assigning Tutor ${tutor.id} to Program ${student.program_id}`);
             await this.prisma.tutors.update({
                 where: { id: tutor.id },
                 data: { program_id: student.program_id }
@@ -712,9 +709,7 @@ export class AdminService {
             }
         } else {
             // No existing booking found - create one for the admin
-            console.log(
-                '[allocateTutor] No existing booking found, creating new booking...',
-            );
+            this.logger.debug('No existing booking found, creating new booking...');
 
             // Set default times: tomorrow at 10 AM for 1 hour
             const tomorrow = new Date();
@@ -769,7 +764,7 @@ export class AdminService {
                 html,
             });
         } catch (e) {
-            console.error('Failed to send tutor notification email:', e);
+            this.logger.error('Failed to send tutor notification email', e);
             // Don't fail the allocation if email fails
         }
 

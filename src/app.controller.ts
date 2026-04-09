@@ -10,6 +10,11 @@ export class AppController {
     return { status: 'ok', timestamp: new Date().toISOString() };
   }
 
+  @Get('debug-sentry')
+  debugSentry() {
+    throw new Error('My first Sentry error!');
+  }
+
   @Get('health/db')
   async health() {
     try {

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Logger,
   Post,
   Get,
   Delete,
@@ -67,6 +68,8 @@ class AllocateTutorDto {
 @Controller('admin')
 @UseGuards(JwtAuthGuard)
 export class AdminController {
+  private readonly logger = new Logger(AdminController.name);
+
   constructor(
     private readonly adminService: AdminService,
     private readonly syncClerkService: SyncClerkMetadataService
@@ -81,7 +84,7 @@ export class AdminController {
       }
       return await this.adminService.getStats();
     } catch (e) {
-      console.error('GET /admin/stats failed:', e);
+      this.logger.error('GET /admin/stats failed', e);
       throw e;
     }
   }
@@ -105,7 +108,7 @@ export class AdminController {
       // FORCE FIX: Always return array to prevent frontend crash
       return result.data;
     } catch (e) {
-      console.error('GET /admin/tutors failed:', e);
+      this.logger.error('GET /admin/tutors failed', e);
       throw e;
     }
   }
@@ -122,7 +125,7 @@ export class AdminController {
       }
       return await this.adminService.createTutor(actor, dto);
     } catch (e) {
-      console.error('POST /admin/tutors failed:', e);
+      this.logger.error('POST /admin/tutors failed', e);
       throw e;
     }
   }
@@ -146,7 +149,7 @@ export class AdminController {
       // FORCE FIX: Always return array to prevent frontend crash
       return result.data;
     } catch (e) {
-      console.error('GET /admin/students failed:', e);
+      this.logger.error('GET /admin/students failed', e);
       throw e;
     }
   }
@@ -167,7 +170,7 @@ export class AdminController {
       const result = await this.adminService.getBookings(pageNum, limitNum);
       return result.data;
     } catch (e) {
-      console.error('GET /admin/bookings failed:', e);
+      this.logger.error('GET /admin/bookings failed', e);
       throw e;
     }
   }
@@ -205,7 +208,7 @@ export class AdminController {
         dto.bookingId,
       );
     } catch (e) {
-      console.error('POST /admin/allocations failed:', e);
+      this.logger.error('POST /admin/allocations failed', e);
       throw e;
     }
   }
@@ -233,7 +236,7 @@ export class AdminController {
       }
       return await this.adminService.removeTutor(id);
     } catch (e) {
-      console.error('DELETE /admin/tutors/:id failed:', e);
+      this.logger.error('DELETE /admin/tutors/:id failed', e);
       throw e;
     }
   }

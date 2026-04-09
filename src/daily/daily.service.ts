@@ -1,7 +1,8 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import axios from 'axios';
 @Injectable()
 export class DailyService {
+    private readonly logger = new Logger(DailyService.name);
     private readonly apiKey = process.env.DAILY_API_KEY;
     private readonly apiUrl = 'https://api.daily.co/v1';
     async createRoom(sessionId: string) {
@@ -16,7 +17,7 @@ export class DailyService {
             if (err.response?.status === 404) {
                 // 2. Create if doesn't exist
                 try {
-                    console.log(`[Daily] Creating room: ${roomName}`);
+                    this.logger.log(`Creating room: ${roomName}`);
                     const createResponse = await axios.post(
                         `${this.apiUrl}/rooms`,
                         {
@@ -38,11 +39,11 @@ export class DailyService {
                     return createResponse.data;
                 } catch (createErr: any) {
                     // CRITICAL: Log the specific error reason from Daily API
-                    console.error('[Daily] Room creation failed details:', createErr.response?.data);
+                    this.logger.error('Room creation failed', createErr.response?.data);
                     throw createErr;
                 }
             }
-            console.error('[Daily] Get room failed:', err.response?.data);
+            this.logger.error('Get room failed', err.response?.data);
             throw new HttpException('Failed to create video room', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
@@ -53,7 +54,7 @@ export class DailyService {
             });
             return response.data.download_link;
         } catch (err: any) {
-            console.error('[Daily] Failed to get access link:', err.response?.data);
+            this.logger.error('Failed to get access link', err.response?.data);
             throw new HttpException('Failed to get recording access link', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
@@ -78,7 +79,7 @@ export class DailyService {
             );
             return response.data.token;
         } catch (err: any) {
-            console.error('[Daily] Token creation failed:', err.response?.data);
+            this.logger.error('Token creation failed', err.response?.data);
             throw new HttpException('Failed to create token', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }

@@ -1,10 +1,12 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { CreateBlogDto } from './dto/create-blog.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
 
 @Injectable()
 export class BlogsService {
+    private readonly logger = new Logger(BlogsService.name);
+
     constructor(
         private readonly prisma: PrismaService,
         private readonly storage: StorageService
@@ -74,9 +76,7 @@ export class BlogsService {
             whereClause.category = category;
         }
 
-        // Debug logging
-        console.log('[Blogs Service] Fetching blogs with where:', whereClause);
-        console.log('[Blogs Service] Skip:', skip, 'Limit:', limit);
+        this.logger.debug(`Fetching blogs skip=${skip} limit=${limit}`);
 
         const [data, total] = await Promise.all([
             this.prisma.blogs.findMany({
@@ -93,7 +93,7 @@ export class BlogsService {
             this.prisma.blogs.count({ where: whereClause })
         ]);
 
-        console.log('[Blogs Service] Found blogs:', data.length, 'Total:', total);
+        this.logger.debug(`Found ${data.length} blogs, total=${total}`);
 
         return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
     }
@@ -209,7 +209,7 @@ export class BlogsService {
             try {
                 await this.storage.deleteFile(oldImageUrlToDelete);
             } catch (e) {
-                console.error('Failed to delete old image after successful blog update:', e);
+                this.logger.error('Failed to delete old image after successful blog update', e);
             }
         }
 
@@ -285,7 +285,7 @@ export class BlogsService {
             throw new BadRequestException('Invalid status');
         }
         
-        console.log(`[Blogs Service] Updating blog ${id} status to: ${status}`);
+        this.logger.log(`Updating blog ${id} status to: ${status}`);
         
         return this.prisma.blogs.update({
             where: { id },
@@ -295,18 +295,13 @@ export class BlogsService {
 
     // Emergency recovery method - check if any blogs exist
     async emergencyCheck() {
-        console.log('[Blogs Service] Emergency check - counting all blogs...');
+        this.logger.log('Emergency check - counting all blogs...');
         const totalBlogs = await this.prisma.blogs.count();
         const publishedBlogs = await this.prisma.blogs.count({ where: { status: 'PUBLISHED' } });
         const pendingBlogs = await this.prisma.blogs.count({ where: { status: 'PENDING' } });
         const rejectedBlogs = await this.prisma.blogs.count({ where: { status: 'REJECTED' } });
-        
-        console.log(`[Blogs Service] Emergency check results:
-        - Total blogs: ${totalBlogs}
-        - Published: ${publishedBlogs}
-        - Pending: ${pendingBlogs}
-        - Rejected: ${rejectedBlogs}
-        `);
+
+        this.logger.log(`Emergency check: total=${totalBlogs} published=${publishedBlogs} pending=${pendingBlogs} rejected=${rejectedBlogs}`);
         
         return {
             total: totalBlogs,
@@ -337,7 +332,7 @@ export class BlogsService {
             try {
                 await this.storage.deleteFile(blog.image_url);
             } catch (error) {
-                console.error(`[Blogs Service] Failed to delete image file: ${blog.image_url}`, error);
+                this.logger.error(`Failed to delete image file: ${blog.image_url}`, error);
             }
         }
 

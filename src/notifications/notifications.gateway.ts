@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { WebSocketGateway, WebSocketServer, SubscribeMessage, OnGatewayConnection } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
@@ -18,18 +19,20 @@ import { Server, Socket } from 'socket.io';
     }
 }) // Root namespace
 export class NotificationsGateway implements OnGatewayConnection {
+    private readonly logger = new Logger(NotificationsGateway.name);
+
     @WebSocketServer()
     server: Server;
 
     handleConnection(client: Socket) {
-        console.log('Client connected to notifications:', client.id);
+        this.logger.debug(`Client connected to notifications: ${client.id}`);
     }
 
     @SubscribeMessage('join_personal_room')
     handleJoinRoom(client: Socket, payload: { userId: string }) {
         if (payload.userId) {
             client.join(`user-${payload.userId}`);
-            console.log(`User ${payload.userId} joined notification room: user-${payload.userId}`);
+            this.logger.debug(`User ${payload.userId} joined notification room: user-${payload.userId}`);
         }
     }
 
