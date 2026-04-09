@@ -212,6 +212,7 @@ export class AdminService {
             this.prisma.tutors.findMany({
                 skip,
                 take: limit,
+                where: { is_active: true },
                 include: {
                     users: {
                         select: {
@@ -228,7 +229,7 @@ export class AdminService {
                     created_at: 'desc',
                 },
             }),
-            this.prisma.tutors.count(),
+            this.prisma.tutors.count({ where: { is_active: true } }),
         ]);
 
         // Format tutors for frontend compatibility
@@ -799,8 +800,7 @@ export class AdminService {
             throw new BadRequestException('Tutor not found');
         }
 
-        // 1. Unassign all bookings
-        // We set them back to 'requested' so they can be re-allocated
+        // 1. Unassign bookings so they can be re-allocated
         await this.prisma.bookings.updateMany({
             where: { assigned_tutor_id: tutorId },
             data: {
@@ -810,13 +810,30 @@ export class AdminService {
             },
         });
 
-        // 2. Delete the User (Cascades to Tutor profile, Shifts, etc.)
-        // We delete the USER record to fully remove credentials
-        await this.prisma.users.delete({
-            where: { id: tutor.user_id },
+        // 2. Clear trial_tutor_id on any students pointing to this tutor
+        await this.prisma.students.updateMany({
+            where: { trial_tutor_id: tutorId },
+            data: { trial_tutor_id: null },
         });
 
-        return { success: true, message: 'Tutor deleted successfully' };
+        // 3. Soft-delete: deactivate both tutor profile and user account
+        // Hard delete is blocked by FK constraints (NoAction) on notifications,
+        // purchases, user_credits, audit_logs, session_recordings, etc.
+        await this.prisma.tutors.update({
+            where: { id: tutorId },
+            data: { is_active: false },
+        });
+
+        await this.prisma.users.update({
+            where: { id: tutor.user_id },
+            data: {
+                is_active: false,
+                tutor_status: 'SUSPENDED',
+                email: `removed_${tutor.user_id}@deleted.invalid`, // prevent email reuse
+            },
+        });
+
+        return { success: true, message: 'Tutor removed successfully' };
     }
 
     async suspendTutor(tutorId: string, reason?: string) {
@@ -864,6 +881,52 @@ export class AdminService {
         });
 
         return { success: true, message: 'Tutor activated' };
+    }
+
+    async resetTutorPassword(tutorId: string) {
+        const tutor = await this.prisma.tutors.findUnique({
+            where: { id: tutorId },
+            include: { users: { select: { id: true, email: true, first_name: true } } },
+        });
+
+        if (!tutor) throw new BadRequestException('Tutor not found');
+
+        const tempPassword =
+            Math.random().toString(36).slice(2, 10) +
+            Math.random().toString(36).slice(2, 6).toUpperCase() +
+            '123!';
+
+        const password_hash = await hash(tempPassword, 10);
+
+        await this.prisma.users.update({
+            where: { id: tutor.user_id },
+            data: { password_hash, force_password_change: true },
+        });
+
+        const frontend = process.env.FRONTEND_URL || 'https://vaidiktutoring.vercel.app';
+        const loginUrl = `${frontend.replace(/\/$/, '')}/login`;
+
+        const html = `
+      <p>Hi ${tutor.users.first_name ?? ''},</p>
+      <p>Your password has been reset by an administrator.</p>
+      <p><strong>Temporary Password:</strong> ${tempPassword}</p>
+      <p>Please login and change your password immediately:</p>
+      <p><a href="${loginUrl}">Login</a></p>
+    `;
+
+        try {
+            await this.email.sendMail({
+                to: tutor.users.email,
+                subject: 'K12 Tutoring — Password Reset',
+                text: `Your temporary password is: ${tempPassword}`,
+                html,
+                from: process.env.EMAIL_FROM || 'K12 Tutoring <no-reply@k12.com>',
+            });
+        } catch (e) {
+            this.logger.error('Failed to send password reset email', e);
+        }
+
+        return { success: true, message: 'Password reset and emailed to tutor' };
     }
 
     private safeIso(d: Date | null | undefined): string | null {

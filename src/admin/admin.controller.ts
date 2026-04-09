@@ -241,6 +241,14 @@ export class AdminController {
     }
   }
 
+  @Post('tutors/:id/reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetTutorPassword(@Req() req: any, @Param('id') id: string) {
+    const actor = req.user;
+    if (!actor || actor.role !== 'admin') throw new UnauthorizedException('Admin only');
+    return this.adminService.resetTutorPassword(id);
+  }
+
   @Post('tutors/:id/suspend')
   async suspendTutor(@Req() req: any, @Param('id') id: string, @Body('reason') reason?: string) {
     const actor = (req as any).user;
