@@ -1,14 +1,14 @@
 // IMPORTANT: instrument.ts must be imported first before anything else
-import './instrument.js';
+import './instrument';
 
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import { AppModule } from './app.module.js';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
-import { SentryFilter } from './common/filters/sentry.filter.js';
+import { AppModule } from './app.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { SentryFilter } from './common/filters/sentry.filter';
 import helmet from 'helmet';
 import compression from 'compression';
 
@@ -24,11 +24,21 @@ class ExtendedIoAdapter extends IoAdapter {
 }
 
 async function bootstrap() {
-  if (!process.env.JWT_SECRET) {
-    throw new Error('JWT_SECRET environment variable is not set. Refusing to start.');
+  const logger = new Logger('Bootstrap');
+  logger.log('Starting application...');
+
+  // Critical Environment Validation
+  const requiredEnv = ['DATABASE_URL', 'CLERK_SECRET_KEY', 'JWT_SECRET'];
+  const missing = requiredEnv.filter(k => !process.env[k]);
+  if (missing.length > 0) {
+    logger.error(`FATAL: Missing required environment variables: ${missing.join(', ')}`);
+    // On Render, we want to exit so the deployment fails visibly
+    process.exit(1);
   }
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+  });
 
   // Use Custom Socket.IO adapter for high-bandwidth whiteboard sync
   app.useWebSocketAdapter(new ExtendedIoAdapter(app));
@@ -81,12 +91,17 @@ async function bootstrap() {
   // Global Validation Pipe
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
 
-  const port = process.env.PORT ?? 3000;
+  const port = process.env.PORT || 3001;
+  logger.log(`Application binding to port ${port} on 0.0.0.0`);
   
   // Enable graceful shutdown for Prisma / Render
   app.enableShutdownHooks();
 
   await app.listen(port, '0.0.0.0');
-  console.log(`🚀 Application is running on: http://0.0.0.0:${port}`);
+  logger.log(`Application is running on: ${await app.getUrl()}`);
+  logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 }
-bootstrap();
+bootstrap().catch(err => {
+  console.error('Unhandled bootstrap error:', err);
+  process.exit(1);
+});

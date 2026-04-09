@@ -3,8 +3,8 @@ import { SupportController } from './support.controller';
 import { SupportService } from './support.service';
 import { EmailModule } from '../email/email.module';
 import { PrismaModule } from '../prisma/prisma.module';
-import { AuthModule } from '../auth/auth.module.js';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
+import { AuthModule } from '../auth/auth.module';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @Module({
   imports: [EmailModule, PrismaModule, AuthModule],

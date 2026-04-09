@@ -10,10 +10,10 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards } from '@nestjs/common';
 import { SessionsService } from './sessions.service';
-import { AttentionEventsService } from '../attention-events/attention-events.service.js';
-import { SessionPhasesService } from '../session-phases/session-phases.service.js';
+import { AttentionEventsService } from '../attention-events/attention-events.service';
+import { SessionPhasesService } from '../session-phases/session-phases.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { AttentionEventType, SessionPhase } from '../../generated/prisma/enums.js';
+import { AttentionEventType, SessionPhase } from '@prisma/client';
 
 /**
  * WebSocket Gateway for real-time session chat

@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { SessionPhase } from '../../generated/prisma/enums.js';
+import { SessionPhase } from '@prisma/client';
 
 @Injectable()
 export class SessionPhasesService {
