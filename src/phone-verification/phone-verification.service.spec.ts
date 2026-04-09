@@ -30,12 +30,20 @@ describe('PhoneVerificationService', () => {
     service = module.get(PhoneVerificationService);
   });
 
+  const mockTwilioClient = (overrides: object) => {
+    Object.defineProperty(service, 'twilioClient', {
+      value: overrides,
+      writable: true,
+      configurable: true,
+    });
+  };
+
   describe('sendOtp', () => {
     it('should call Twilio verifications.create with correct params', async () => {
       const mockCreate = jest.fn().mockResolvedValue({ status: 'pending' });
-      (service as any).twilioClient = {
+      mockTwilioClient({
         verify: { v2: { services: jest.fn().mockReturnValue({ verifications: { create: mockCreate } }) } },
-      };
+      });
 
       await service.sendOtp('+447911123456', 'sms');
 
@@ -46,9 +54,9 @@ describe('PhoneVerificationService', () => {
   describe('verifyOtp', () => {
     it('should update DB and sync Clerk when code is approved', async () => {
       const mockCheckCreate = jest.fn().mockResolvedValue({ status: 'approved' });
-      (service as any).twilioClient = {
+      mockTwilioClient({
         verify: { v2: { services: jest.fn().mockReturnValue({ verificationChecks: { create: mockCheckCreate } }) } },
-      };
+      });
 
       await service.verifyOtp('user-1', '+447911123456', '123456');
 
@@ -61,9 +69,9 @@ describe('PhoneVerificationService', () => {
 
     it('should throw BadRequestException when code is not approved', async () => {
       const mockCheckCreate = jest.fn().mockResolvedValue({ status: 'pending' });
-      (service as any).twilioClient = {
+      mockTwilioClient({
         verify: { v2: { services: jest.fn().mockReturnValue({ verificationChecks: { create: mockCheckCreate } }) } },
-      };
+      });
 
       await expect(service.verifyOtp('user-1', '+447911123456', '000000'))
         .rejects.toThrow(BadRequestException);

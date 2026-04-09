@@ -1,13 +1,18 @@
-import { Controller, Post, Get } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Controller, Post, Get, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service.js';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 
 @Controller('admin/seed-pricing')
+@UseGuards(JwtAuthGuard)
 export class SeedPricingController {
   constructor(private prisma: PrismaService) {}
 
   @Post()
-  async seedPricing() {
-    console.log('🌱 Seeding pricing packages...');
+  async seedPricing(@Req() req: any) {
+    const actor = req.user;
+    if (!actor || actor.role !== 'admin') {
+      throw new UnauthorizedException('Only admins can seed pricing data.');
+    }
 
     // US Packages
     const usPackages = [
@@ -72,34 +77,24 @@ export class SeedPricingController {
     ];
 
     try {
-      // Insert US packages
       for (const pkg of usPackages) {
-        await this.prisma.packages.upsert({
-          where: { id: pkg.id },
-          update: pkg,
-          create: pkg,
-        });
+        await this.prisma.packages.upsert({ where: { id: pkg.id }, update: pkg, create: pkg });
       }
-
-      // Insert UK packages
       for (const pkg of ukPackages) {
-        await this.prisma.packages.upsert({
-          where: { id: pkg.id },
-          update: pkg,
-          create: pkg,
-        });
+        await this.prisma.packages.upsert({ where: { id: pkg.id }, update: pkg, create: pkg });
       }
-
-      console.log('✅ Pricing packages seeded successfully!');
       return { success: true, message: 'Pricing packages seeded successfully!' };
     } catch (error) {
-      console.error('❌ Error seeding pricing:', error);
       return { success: false, message: 'Error seeding pricing packages', error: error.message };
     }
   }
 
   @Get()
-  async getPackages() {
+  async getPackages(@Req() req: any) {
+    const actor = req.user;
+    if (!actor || actor.role !== 'admin') {
+      throw new UnauthorizedException('Only admins can view pricing data.');
+    }
     const packages = await this.prisma.packages.findMany({
       where: { active: true },
       orderBy: { created_at: 'desc' },
