@@ -12,7 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../email/email.service';
 import { AzureStorageService } from '../azure/azure-storage.service';
 import { hash } from 'bcrypt';
-import { Prisma, bookings, users } from '../../generated/prisma/client';
+import { Prisma, bookings, users } from '@prisma/client';
 import * as crypto from 'crypto';
 
 // Define a type for skills structure

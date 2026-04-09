@@ -1,15 +1,14 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { AuthService } from './auth.service.js';
-import { AuthController } from './auth.controller.js';
-import { EmailModule } from '../email/email.module.js';
-import { PrismaModule } from '../prisma/prisma.module.js';
-import { AdminModule } from '../admin/admin.module.js';
-import { CreditsModule } from '../credits/credits.module.js';
-import { JwtStrategy } from './jwt.strategy.js';
-import { ClerkAuthGuard } from './clerk-auth.guard.js';
-import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata.js';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+import { EmailModule } from '../email/email.module';
+import { PrismaModule } from '../prisma/prisma.module';
+import { AdminModule } from '../admin/admin.module';
+import { CreditsModule } from '../credits/credits.module';
+import { JwtStrategy } from './jwt.strategy';
+import { ClerkAuthGuard } from './clerk-auth.guard';
 
 @Module({
   imports: [
@@ -24,7 +23,7 @@ import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata.js';
     CreditsModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, ClerkAuthGuard, SyncClerkMetadataService],
-  exports: [AuthService, JwtModule, ClerkAuthGuard, SyncClerkMetadataService],
+  providers: [AuthService, JwtStrategy, ClerkAuthGuard],
+  exports: [AuthService, JwtModule, ClerkAuthGuard],
 })
 export class AuthModule { }
