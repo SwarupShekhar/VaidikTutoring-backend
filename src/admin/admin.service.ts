@@ -252,9 +252,26 @@ export class AdminService {
             this.prisma.tutors.count({ where: { is_active: true } }),
         ]);
 
+        // Fetch avg ratings for all tutors
+        const tutorIds = tutors.map(t => t.id);
+        const ratingAggregates = await Promise.all(
+            tutorIds.map(id =>
+                this.prisma.tutor_ratings.aggregate({
+                    where: { tutor_id: id },
+                    _avg: { score: true },
+                    _count: { score: true },
+                })
+            )
+        );
+        const ratingMap = new Map(
+            tutorIds.map((id, i) => [id, ratingAggregates[i]])
+        );
+
         // Format tutors for frontend compatibility
         const formattedTutors = tutors.map((tutor) => {
-            const skills = tutor.skills as unknown as TutorSkills; // Safe cast after type unknown
+            const skills = tutor.skills as unknown as TutorSkills;
+            const agg = ratingMap.get(tutor.id);
+            const avgScore = agg?._avg?.score;
             return {
                 id: tutor.id,
                 user_id: tutor.user_id,
@@ -269,6 +286,8 @@ export class AdminService {
                 first_name: tutor.users.first_name,
                 last_name: tutor.users.last_name,
                 subjects: skills?.subjects || [],
+                avgRating: avgScore != null ? Math.round(avgScore * 10) / 10 : null,
+                totalRatings: agg?._count?.score ?? 0,
             };
         });
 
