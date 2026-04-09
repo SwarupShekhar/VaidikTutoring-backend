@@ -56,3 +56,4 @@ ALTER TABLE "app"."bookings" ADD CONSTRAINT "bookings_package_id_fkey" FOREIGN K
 ALTER TABLE "app"."package_items" ADD CONSTRAINT "package_items_package_id_fkey" FOREIGN KEY ("package_id") REFERENCES "app"."packages"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "app"."purchases" ADD CONSTRAINT "purchases_package_id_fkey" FOREIGN KEY ("package_id") REFERENCES "app"."packages"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
 ALTER TABLE "app"."user_credits" ADD CONSTRAINT "user_credits_package_id_fkey" FOREIGN KEY ("package_id") REFERENCES "app"."packages"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
+

@@ -36,6 +36,7 @@ import { MediaModule } from './media/media.module';
 import { StorageModule } from './storage/storage.module';
 import { DailyModule } from './daily/daily.module';
 import { PhoneVerificationModule } from './phone-verification/phone-verification.module.js';
+import { SupportModule } from './support/support.module';
 
 
 @Module({
@@ -73,7 +74,9 @@ import { PhoneVerificationModule } from './phone-verification/phone-verification
     StorageModule,
     MediaModule,
     DailyModule,
+    SupportModule,
     ServeStaticModule.forRoot({
+
       rootPath: path.join(process.cwd(), 'public'),
       serveRoot: '/',
     }),
