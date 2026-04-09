@@ -1,3 +1,6 @@
+// IMPORTANT: instrument.ts must be imported first before anything else
+import './instrument.js';
+
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
@@ -5,10 +8,8 @@ import { json, urlencoded } from 'express';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
-
 import { SentryFilter } from './common/filters/sentry.filter.js';
-import * as Sentry from '@sentry/node';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
+import helmet from 'helmet';
 
 // Custom Socket adapter to increase max payload size for drawings with images
 class ExtendedIoAdapter extends IoAdapter {
@@ -22,12 +23,9 @@ class ExtendedIoAdapter extends IoAdapter {
 }
 
 async function bootstrap() {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    integrations: [nodeProfilingIntegration()],
-    tracesSampleRate: 1.0,
-    profilesSampleRate: 1.0,
-  });
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is not set. Refusing to start.');
+  }
 
   const app = await NestFactory.create(AppModule);
 
@@ -56,6 +54,12 @@ async function bootstrap() {
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
   });
+
+  // Security headers
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow Daily.co and other CDN resources
+    contentSecurityPolicy: false, // CSP is handled by the frontend Next.js config
+  }));
 
   // Global Exception Filters
   // Note: We access the httpAdapter directly to pass to BaseExceptionFilter

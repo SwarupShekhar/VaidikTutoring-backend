@@ -5,7 +5,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
-import * as Sentry from '@sentry/node';
+import * as Sentry from '@sentry/nestjs';
 
 @Catch()
 export class SentryFilter extends BaseExceptionFilter {

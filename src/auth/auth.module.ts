@@ -16,8 +16,8 @@ import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata.js';
     PrismaModule,
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'secret',
-      signOptions: { expiresIn: '1d' },
+      secret: process.env.JWT_SECRET,
+      signOptions: { expiresIn: (process.env.JWT_EXPIRATION || '1d') as any },
     }),
     EmailModule,
     AdminModule,
