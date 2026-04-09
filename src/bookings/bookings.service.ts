@@ -380,8 +380,13 @@ export class BookingsService {
     // 4. Atomic Assignment
     try {
       await this.prisma.$transaction(async (tx) => {
-        // Double-check conflict inside transaction for safety (optional but good for strict correctness)
-        // For high-speed, we might skip, but let's be safe.
+        // LOCK: Explicitly lock the tutor record to prevent simultaneous allocations to the same tutor
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM "app"."tutors" WHERE id = $1 FOR UPDATE`,
+          chosenTutor.id
+        );
+
+        // Double-check conflict inside transaction for safety
         const isStillBusy = await tx.bookings.findFirst({
           where: {
             assigned_tutor_id: chosenTutor.id,
@@ -531,9 +536,12 @@ export class BookingsService {
   // Claim a booking (Tutor Race)
   async claimBooking(bookingId: string, tutorUserId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const booking = await tx.bookings.findUnique({
-        where: { id: bookingId },
-      });
+      // LOCK: Explicitly lock the booking record to prevent two tutors from claiming the same row
+      const [booking]: any[] = await tx.$queryRawUnsafe(
+        `SELECT * FROM "app"."bookings" WHERE id = $1 FOR UPDATE`,
+        bookingId
+      );
+
       if (!booking) throw new NotFoundException('Booking not found');
 
       if (booking.assigned_tutor_id || booking.status === 'confirmed') {
@@ -548,10 +556,13 @@ export class BookingsService {
       if (!tutor)
         throw new ForbiddenException('User is not a registered tutor');
 
+      // LOCK: Lock the tutor record to prevent overlapping claims by the same tutor
+      await tx.$queryRawUnsafe(
+        `SELECT id FROM "app"."tutors" WHERE id = $1 FOR UPDATE`,
+        tutor.id
+      );
+
       // Check overlaps again for this specific tutor
-      // (Simplified: assuming if we are here, we can claim. OR verify overlaps)
-      // For now, let's allow overlapping claims but warn? No, block.
-      // We must handle Date | null logic carefully.
       if (booking.requested_start && booking.requested_end) {
         const overlapping = await tx.bookings.findFirst({
           where: {

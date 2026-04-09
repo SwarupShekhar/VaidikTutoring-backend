@@ -135,34 +135,26 @@ export class SessionsController {
 
   @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
   @Get(':id/daily-token')
-  async getDailyToken(@Param('id') sessionId: string, @Req() req: any) {
+  async getDailyToken(@Param('id') idOrBookingId: string, @Req() req: any) {
     const user = req.user;
 
-    // VALIDATION: Ensure session/booking exists and user has access
-    // This prevents generating tokens for deleted bookings or unauthorized access
-    // Pass user.role === 'admin' logic if admin should always have access?
-    // Current helper checks specific ownership.
+    // 1. Resolve to canonical Session ID so everyone ends up in the same Daily room
+    // This allows passing either a Booking ID or a Session ID
+    const sessionId = await this.sessionsService.ensureSessionId(idOrBookingId);
+
+    // 2. VALIDATION: Ensure user has access
     if (user.role !== 'admin') {
       await this.sessionsService.verifySessionOrBookingAccess(sessionId, user.userId);
-    } else {
-      // Admin: just check existence
-      try {
-        await this.sessionsService.verifySessionOrBookingAccess(sessionId, user.userId);
-      } catch (e) {
-        // If 403, ignore for admin. If 404, throw.
-        if (e instanceof Error && e.message.includes('not found')) throw e;
-        // If 403 Forbidden, Admin overrides it.
-      }
     }
 
-    // Create or get Daily.co room
+    // 3. Create or get Daily.co room using Canonical Session ID
     const room = await this.dailyService.createRoom(sessionId);
 
     // Determine if user is owner (tutor/admin)
     const isOwner = user.role === 'tutor' || user.role === 'admin';
 
     // Generate meeting token
-    const userName = user.first_name || user.email || 'User';
+    const userName = user.first_name || user.display_name || user.email || 'User';
     const token = await this.dailyService.createMeetingToken(
       room.name,
       isOwner,
@@ -174,6 +166,7 @@ export class SessionsController {
       token: token
     };
   }
+
 
   @Post('validate-token')
   async validateToken(@Body() body: { sessionId: string; token: string }) {
