@@ -370,7 +370,6 @@ export class AdminService {
                 subject: 'K12 Tutoring — Account Credentials',
                 text: `Temp Password: ${finalPassword}`,
                 html,
-                from: process.env.EMAIL_FROM || 'K12 Tutoring <no-reply@k12.com>',
             });
         } catch (e) {
             this.logger.error('Failed to send credentials email', e);
@@ -920,7 +919,6 @@ export class AdminService {
                 subject: 'K12 Tutoring — Password Reset',
                 text: `Your temporary password is: ${tempPassword}`,
                 html,
-                from: process.env.EMAIL_FROM || 'K12 Tutoring <no-reply@k12.com>',
             });
         } catch (e) {
             this.logger.error('Failed to send password reset email', e);
