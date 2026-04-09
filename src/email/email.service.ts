@@ -27,7 +27,7 @@ export class EmailService {
     }>;
     from?: string;
   }) {
-    const from = opts.from || process.env.EMAIL_FROM || 'onboarding@resend.dev';
+    const from = opts.from || process.env.EMAIL_FROM || 'StudyHours <no-reply@studyhours.com>';
     const to = Array.isArray(opts.to) ? opts.to : [opts.to];
 
     if (!this.resend) {
@@ -38,22 +38,27 @@ export class EmailService {
     }
 
     try {
-      const data = await this.resend.emails.send({
+      const result = await this.resend.emails.send({
         from,
         to,
         subject: opts.subject,
-        html: opts.html || opts.text || '', // Resend requires html or react
-        text: opts.text, // Optional plaintext fallback
+        html: opts.html || opts.text || '',
+        text: opts.text,
         attachments: opts.attachments?.map(a => ({
           filename: a.filename,
           content: a.content,
         })),
       });
 
-      this.logger.log(`Email sent via Resend: ${data.data?.id || JSON.stringify(data)}`);
-      return data;
+      if (result.error) {
+        this.logger.error(`Resend API Error: ${JSON.stringify(result.error)}`);
+        throw new Error(result.error.message);
+      }
+
+      this.logger.log(`Email sent via Resend: ${result.data?.id}`);
+      return result.data;
     } catch (error) {
-      this.logger.error(`Failed to send email via Resend: ${error}`);
+      this.logger.error(`Failed to send email via Resend: ${error.message || error}`);
       throw error;
     }
   }
