@@ -629,14 +629,16 @@ model tutor_ratings {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   session_id       String   @unique @db.Uuid
   tutor_id         String   @db.Uuid
-  rated_by_user_id String   @db.Uuid
+  rated_by_user_id String?  @db.Uuid
   score            Int      // 1–5
-  comment          String?
+  comment          String?  @db.VarChar(1000)
   created_at       DateTime @default(now()) @db.Timestamptz(6)
   sessions         sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   tutors           tutors   @relation(fields: [tutor_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  users            users    @relation(fields: [rated_by_user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users            users?   @relation(fields: [rated_by_user_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
+  @@index([tutor_id])
+  @@index([rated_by_user_id])
   @@schema("app")
 }
 
