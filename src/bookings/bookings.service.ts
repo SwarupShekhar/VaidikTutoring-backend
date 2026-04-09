@@ -754,10 +754,10 @@ export class BookingsService {
       where: { user_id: studentUserId },
     });
     if (!stud) {
-      console.warn(`BookingsService: No student profile found for user_id: ${studentUserId}`);
+      this.logger.warn(`No student profile found for user_id: ${studentUserId}`);
       throw new NotFoundException('Student profile not found');
     }
-    console.log(`[forStudent] Found student profile ${stud.id} for user ${studentUserId}. Fetching all bookings...`);
+    this.logger.debug(`Found student profile ${stud.id} for user ${studentUserId}`);
     const bookings = await this.prisma.bookings.findMany({
       where: {
         OR: [
@@ -812,21 +812,17 @@ export class BookingsService {
 
   // get bookings for tutor
   async forTutor(tutorUserId: string) {
-    console.log('[forTutor] Looking up tutor with user_id:', tutorUserId);
+    this.logger.debug(`Looking up tutor with user_id: ${tutorUserId}`);
     // FIX: Find tutor by user_id
     const tutor = await this.prisma.tutors.findFirst({
       where: { user_id: tutorUserId },
     });
 
     if (!tutor) {
-      console.log(
-        '[forTutor] Tutor profile not found for user_id:',
-        tutorUserId,
-      );
       throw new NotFoundException('Tutor profile not found');
     }
 
-    console.log('[forTutor] Found tutor:', tutor.id);
+    this.logger.debug(`Found tutor: ${tutor.id}`);
     const now = new Date();
     const bookings = await this.prisma.bookings.findMany({
       where: {
@@ -849,12 +845,7 @@ export class BookingsService {
       orderBy: { requested_start: 'desc' },
     });
 
-    console.log(
-      '[forTutor] Found',
-      bookings.length,
-      'bookings for tutor',
-      tutor.id,
-    );
+    this.logger.debug(`Found ${bookings.length} bookings for tutor ${tutor.id}`);
     return bookings;
   }
 

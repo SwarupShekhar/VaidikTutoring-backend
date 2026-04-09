@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
   BadRequestException,
@@ -14,6 +15,8 @@ import * as crypto from 'crypto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
@@ -32,7 +35,7 @@ export class AuthService {
         },
       });
     } catch (e) {
-      console.error('Failed to log audit:', e);
+      this.logger.error('Failed to log audit', e);
     }
   }
 
@@ -145,7 +148,7 @@ export class AuthService {
       try {
         await this.creditsService.initTrialCredits(studentRecord.id);
       } catch (e) {
-        console.error('Failed to initialize trial credits:', e);
+        this.logger.error('Failed to initialize trial credits', e);
       }
     }
 
@@ -159,7 +162,7 @@ export class AuthService {
       // Log error but don't fail signup? Or fail?
       // If email fails, user can't verify.
       // Better to fail or rely on resend.
-      console.error('Failed to send verification email', e);
+      this.logger.error('Failed to send verification email', e);
     }
 
     return {
@@ -371,10 +374,7 @@ export class AuthService {
 
     if (!user) return null;
 
-    // Debug logging for role issues
-    console.log('[AuthService] User profile requested:', userId);
-    console.log('[AuthService] User role from DB:', user.role);
-    console.log('[AuthService] User email:', user.email);
+    this.logger.debug(`User profile requested: ${userId} role=${user.role}`);
 
     // return safe user object (exclude password hash)
     // We can use a mapper or just return what we need + spread
@@ -384,7 +384,7 @@ export class AuthService {
 
   // Emergency: Fix admin role for specific email
   async fixAdminRole(email: string) {
-    console.log('[AuthService] Attempting to fix admin role for:', email);
+    this.logger.log(`Attempting to fix admin role for: ${email}`);
     
     const user = await this.prisma.users.findUnique({
       where: { email },
@@ -404,12 +404,12 @@ export class AuthService {
       // Also sync to Clerk permanently
       try {
         await this.syncClerkService.syncUserRoleToClerk(updatedUser.id, 'admin');
-        console.log('[AuthService] Permanently synced admin role to Clerk for:', email);
+        this.logger.log(`Permanently synced admin role to Clerk for: ${email}`);
       } catch (err) {
-        console.error('[AuthService] Clerk sync failed, but DB updated:', err);
+        this.logger.error('Clerk sync failed, but DB updated', err);
       }
 
-      console.log('[AuthService] Fixed admin role for:', email);
+      this.logger.log(`Fixed admin role for: ${email}`);
       await this.logAudit('ADMIN_ROLE_FIXED', user.id, { email, previousRole: user.role, newRole: 'admin' });
 
       return {
