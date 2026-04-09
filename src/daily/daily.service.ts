@@ -28,28 +28,51 @@ export class DailyService {
                 if (err.response?.status === 404) {
                     // 2. Create if doesn't exist
                     this.logger.log(`Room ${roomName} not found, creating new room.`);
-                    const createResponse = await axios.post(
-                        `${this.apiUrl}/rooms`,
-                        {
-                            name: roomName,
-                            privacy: 'private',
-                            properties: {
-                                enable_screenshare: true,
-                                enable_chat: false,
-                                // We'll try to set recording, but handle failure later if not supported by plan
-                                enable_recording: 'cloud',
-                                start_cloud_recording: true,
-                                exp: Math.floor(Date.now() / 1000) + 7200
+                    try {
+                        const createResponse = await axios.post(
+                            `${this.apiUrl}/rooms`,
+                            {
+                                name: roomName,
+                                privacy: 'private',
+                                properties: {
+                                    enable_screenshare: true,
+                                    enable_chat: false,
+                                    enable_recording: 'cloud',
+                                    start_cloud_recording: true,
+                                    exp: Math.floor(Date.now() / 1000) + 7200
+                                }
+                            },
+                            {
+                                headers: {
+                                    Authorization: `Bearer ${this.apiKey}`,
+                                    'Content-Type': 'application/json'
+                                }
                             }
-                        },
-                        {
-                            headers: {
-                                Authorization: `Bearer ${this.apiKey}`,
-                                'Content-Type': 'application/json'
+                        );
+                        return createResponse.data;
+                    } catch (createErr: any) {
+                        // Retry without recording properties (free plan limitation)
+                        this.logger.warn(`Room creation failed (possibly plan limitation), retrying without recording: ${createErr.response?.data?.info || createErr.message}`);
+                        const fallbackResponse = await axios.post(
+                            `${this.apiUrl}/rooms`,
+                            {
+                                name: roomName,
+                                privacy: 'private',
+                                properties: {
+                                    enable_screenshare: true,
+                                    enable_chat: false,
+                                    exp: Math.floor(Date.now() / 1000) + 7200
+                                }
+                            },
+                            {
+                                headers: {
+                                    Authorization: `Bearer ${this.apiKey}`,
+                                    'Content-Type': 'application/json'
+                                }
                             }
-                        }
-                    );
-                    return createResponse.data;
+                        );
+                        return fallbackResponse.data;
+                    }
                 }
                 
                 // Other GET error (like 401 Unauthorized or 403)
