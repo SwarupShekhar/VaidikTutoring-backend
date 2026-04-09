@@ -12,6 +12,22 @@ export class DailyService {
             const getResponse = await axios.get(`${this.apiUrl}/rooms/${roomName}`, {
                 headers: { Authorization: `Bearer ${this.apiKey}` }
             });
+            
+            // 2. Synchronize properties to ensure auto-recording is enabled for old rooms
+            await axios.post(
+                `${this.apiUrl}/rooms/${roomName}`,
+                {
+                    properties: {
+                        enable_screenshare: true,
+                        enable_chat: false,
+                        enable_recording: 'cloud',
+                        start_cloud_recording: true,
+                        exp: Math.floor(Date.now() / 1000) + 7200
+                    }
+                },
+                { headers: { Authorization: `Bearer ${this.apiKey}` } }
+            );
+
             return getResponse.data;
         } catch (err: any) {
             if (err.response?.status === 404) {
@@ -26,6 +42,8 @@ export class DailyService {
                             properties: {
                                 enable_screenshare: true,
                                 enable_chat: false,
+                                enable_recording: 'cloud',
+                                start_cloud_recording: true,
                                 exp: Math.floor(Date.now() / 1000) + 7200
                             }
                         },
