@@ -17,6 +17,8 @@ import {
 import { AdminService } from './admin.service.js';
 import { SyncClerkMetadataService } from './sync-clerk-metadata.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
+import { RolesGuard } from '../common/guards/roles.guard.js';
+import { Roles } from '../common/decorators/roles.decorators.js';
 import {
   IsEmail,
   IsOptional,
@@ -66,7 +68,8 @@ class AllocateTutorDto {
 }
 
 @Controller('admin')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('admin')
 export class AdminController {
   private readonly logger = new Logger(AdminController.name);
 

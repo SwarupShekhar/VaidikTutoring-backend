@@ -10,6 +10,7 @@ import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { SentryFilter } from './common/filters/sentry.filter.js';
 import helmet from 'helmet';
+import compression from 'compression';
 
 // Custom Socket adapter to increase max payload size for drawings with images
 class ExtendedIoAdapter extends IoAdapter {
@@ -32,13 +33,17 @@ async function bootstrap() {
   // Use Custom Socket.IO adapter for high-bandwidth whiteboard sync
   app.useWebSocketAdapter(new ExtendedIoAdapter(app));
 
-  // Increase body limit to 50mb for large blog posts
-  app.use(json({ limit: '50mb' }));
-  app.use(urlencoded({ limit: '50mb', extended: true }));
+  // Default body limit (restrict DOS attacks)
+  app.use(json({ limit: '2mb' }));
+  app.use(urlencoded({ limit: '2mb', extended: true }));
+
+  // Response Compression
+  app.use(compression());
 
   // ✅ Enable CORS so frontend (Next.js) can call backend
-  app.enableCors({
-    origin: [
+  const allowedOrigins = process.env.ALLOWED_ORIGINS 
+    ? process.env.ALLOWED_ORIGINS.split(',') 
+    : [
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:3002',
@@ -50,7 +55,10 @@ async function bootstrap() {
       'https://k-12-vaidik.vercel.app',
       'https://vaidiktutoring.vercel.app',
       'https://k-12-backend.onrender.com',
-    ],
+    ];
+
+  app.enableCors({
+    origin: allowedOrigins,
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
   });
@@ -74,6 +82,10 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
 
   const port = process.env.PORT ?? 3000;
+  
+  // Enable graceful shutdown for Prisma / Render
+  app.enableShutdownHooks();
+
   await app.listen(port, '0.0.0.0');
   console.log(`🚀 Application is running on: http://0.0.0.0:${port}`);
 }

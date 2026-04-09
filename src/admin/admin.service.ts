@@ -3,7 +3,10 @@ import {
     Logger,
     ForbiddenException,
     BadRequestException,
+    Inject,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../email/email.service';
@@ -22,6 +25,7 @@ export class AdminService {
     private readonly logger = new Logger(AdminService.name);
 
     constructor(
+        @Inject(CACHE_MANAGER) private cacheManager: Cache,
         private readonly prisma: PrismaService,
         private readonly jwt: JwtService,
         private readonly email: EmailService,
@@ -169,7 +173,13 @@ export class AdminService {
     }
 
     async getStats() {
-        this.logger.debug('Fetching stats...');
+        const cachedStats = await this.cacheManager.get('admin_home_stats');
+        if (cachedStats) {
+            this.logger.debug('Returning cached stats from Redis');
+            return cachedStats;
+        }
+
+        this.logger.debug('Fetching stats from DB...');
 
         try {
             // DIAGNOSTICS: Check if we can see ANY users at all
@@ -212,13 +222,18 @@ export class AdminService {
 
             this.logger.debug(`Stats: students=${studentsCount} parents=${parentsCount} tutors=${tutorsCount}`);
 
-            return {
+            const statsResult = {
                 students: studentsCount,
                 parents: parentsCount,
                 tutors: tutorsCount,
                 upcomingSessions: upcomingSessionsCount,
                 pendingAllocations,
             };
+
+            // Cache for 5 minutes (300000 ms)
+            await this.cacheManager.set('admin_home_stats', statsResult, 300000);
+
+            return statsResult;
         } catch (error) {
             this.logger.error('Failed to fetch stats', error);
             throw error;

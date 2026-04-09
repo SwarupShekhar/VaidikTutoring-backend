@@ -4,6 +4,8 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { CacheModule } from '@nestjs/cache-manager';
+import { redisStore } from 'cache-manager-ioredis-yet';
 import * as path from 'path';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -11,7 +13,6 @@ import { RawBodyMiddleware } from './common/middleware/raw-body.middleware';
 
 import { AuthModule } from './auth/auth.module.js';
 import { StudentsModule } from './students/students.module.js';
-import { EnrollmentsModule } from './enrollments/enrollments.module.js';
 import { TutorsModule } from './tutors/tutors.module.js';
 import { BookingsModule } from './bookings/bookings.module.js';
 import { SessionsModule } from './sessions/sessions.module.js';
@@ -37,12 +38,28 @@ import { StorageModule } from './storage/storage.module';
 import { DailyModule } from './daily/daily.module';
 import { PhoneVerificationModule } from './phone-verification/phone-verification.module.js';
 import { SupportModule } from './support/support.module';
-
+import { BackupModule } from './backup/backup.module';
 
 @Module({
   imports: [
     SentryModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }),
+    CacheModule.registerAsync({
+      isGlobal: true,
+      useFactory: async () => {
+        try {
+          return {
+            store: await redisStore({
+              url: process.env.REDIS_URL,
+              ttl: 60 * 60 * 1000, // 1 hour default
+            }),
+          };
+        } catch (err) {
+          console.error('Redis connection failed, falling back to in-memory cache:', err);
+          return { ttl: 60 * 60 * 1000 }; // Falls back to local memoryStore
+        }
+      },
+    }),
     ThrottlerModule.forRoot([{
       ttl: 60000, // 1 minute
       limit: 100, // 100 requests per minute
@@ -75,6 +92,7 @@ import { SupportModule } from './support/support.module';
     MediaModule,
     DailyModule,
     SupportModule,
+    BackupModule,
     ServeStaticModule.forRoot({
 
       rootPath: path.join(process.cwd(), 'public'),
