@@ -326,6 +326,26 @@ export class SessionsController {
   }
 
   @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @Post(':id/shared-pdf')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async sharePdf(
+    @Param('id') sessionId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    return this.sessionsService.shareNote(
+      sessionId,
+      req.user.userId,
+      'Whiteboard Annotations',
+      'whiteboard_pdf',
+      file.buffer,
+      file.mimetype,
+      file.originalname,
+      'Automated export of whiteboard annotations',
+    );
+  }
+
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
   @Get(':id/notes')
   async getSessionNotes(@Param('id') sessionId: string, @Req() req: any) {
     return this.sessionsService.getSessionNotes(sessionId, req.user.userId);
