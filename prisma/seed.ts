@@ -89,14 +89,14 @@ async function main() {
     // 3. Packages (Regional Tiered Pricing)
     const packagesList = [
         // US Region
-        { id: 'us-foundation-package-id', name: 'Foundation (US)', hours: 8, price: 199, currency: 'USD', region: 'US' },
-        { id: 'us-mastery-package-id', name: 'Mastery (US)', hours: 16, price: 349, currency: 'USD', region: 'US' },
-        { id: 'us-elite-package-id', name: 'Elite (US)', hours: 24, price: 499, currency: 'USD', region: 'US' },
+        { id: 'da36d75d-8e6d-4786-9a25-9de7890f5d5e', name: 'Foundation (US)', hours: 8, price: 199, currency: 'USD', region: 'US' },
+        { id: '8d89045b-3814-4632-95f7-873b8852e690', name: 'Mastery (US)', hours: 16, price: 349, currency: 'USD', region: 'US' },
+        { id: '5952f418-477c-4749-8086-5389476b7bd1', name: 'Elite (US)', hours: 24, price: 499, currency: 'USD', region: 'US' },
         
         // UK Region
-        { id: 'uk-foundation-package-id', name: 'Foundation (UK)', hours: 8, price: 149, currency: 'GBP', region: 'UK' },
-        { id: 'uk-mastery-package-id', name: 'Mastery (UK)', hours: 16, price: 249, currency: 'GBP', region: 'UK' },
-        { id: 'uk-elite-package-id', name: 'Elite (UK)', hours: 24, price: 375, currency: 'GBP', region: 'UK' },
+        { id: 'f47385ef-963d-4299-bb6e-2f54297a73e3', name: 'Foundation (UK)', hours: 8, price: 149, currency: 'GBP', region: 'UK' },
+        { id: '76fb2bd0-96f3-47ad-9a00-50284b7f4337', name: 'Mastery (UK)', hours: 16, price: 249, currency: 'GBP', region: 'UK' },
+        { id: '6f48a101-3820-4180-8b1e-25ba3194a0d9', name: 'Elite (UK)', hours: 24, price: 375, currency: 'GBP', region: 'UK' },
     ];
 
     console.log(`Upserting ${packagesList.length} regional packages...`);

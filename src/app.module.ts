@@ -51,6 +51,8 @@ import { BackupModule } from './backup/backup.module';
           return {
             store: await redisStore({
               url: process.env.REDIS_URL,
+              // Force IPv4 as Render sometimes struggles with IPv6 resolution for external Redis
+              family: 4, 
               ttl: 60 * 60 * 1000, // 1 hour default
             }),
           };
