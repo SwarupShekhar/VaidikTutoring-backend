@@ -25,7 +25,7 @@ export class EnrollmentsService {
     });
     if (!student) throw new NotFoundException('Student not found');
 
-    const creditStatus = this.creditsService.getCreditStatus(student);
+    const creditStatus = await this.creditsService.getCreditStatus(student);
     if (!creditStatus.canBook) {
       throw new ForbiddenException(
         JSON.stringify({

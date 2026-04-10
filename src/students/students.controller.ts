@@ -47,7 +47,7 @@ export class StudentsController {
     
     // Enrich with credit status
     if (student) {
-      const creditStatus = this.creditsService.getCreditStatus(student);
+      const creditStatus = await this.creditsService.getCreditStatus(student);
       return { ...student, creditStatus };
     }
     return student;
