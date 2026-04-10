@@ -66,7 +66,7 @@ export class CreditsController {
       };
     }
 
-    return this.creditsService.getCreditStatus(student);
+    return await this.creditsService.getCreditStatus(student);
   }
 
   /**
@@ -121,7 +121,7 @@ export class CreditsController {
     return {
       success: true,
       message: `Granted ${body.credits} credits to student`,
-      creditStatus: student ? this.creditsService.getCreditStatus(student) : null,
+      creditStatus: student ? await this.creditsService.getCreditStatus(student) : null,
     };
   }
 

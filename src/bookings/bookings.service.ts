@@ -197,7 +197,7 @@ export class BookingsService {
     // Only check credits for student bookings (not admin)
     let creditCostInfo: any = null;
     if (studentRecord && user.role !== 'admin') {
-      const creditStatus = this.creditsService.getCreditStatus(studentRecord);
+      const creditStatus = await this.creditsService.getCreditStatus(studentRecord);
       if (!creditStatus.canBook) {
         throw new ForbiddenException(
           JSON.stringify({
@@ -213,7 +213,7 @@ export class BookingsService {
       // FIX: Ensure they have enough credits/session-headroom for ALL subjects requested
       const requestedCount = createDto.subject_ids.length;
       if (creditStatus.mode === 'trial_active') {
-        const remainingSessions = 3 - (studentRecord.trial_sessions_used || 0);
+        const remainingSessions = 3 - (creditStatus.sessionsUsed || 0);
         if (requestedCount > remainingSessions) {
           throw new ForbiddenException(
             JSON.stringify({
