@@ -47,18 +47,24 @@ import { BackupModule } from './backup/backup.module';
     CacheModule.registerAsync({
       isGlobal: true,
       useFactory: async () => {
+        const redisUrl = process.env.REDIS_URL;
+        if (!redisUrl) {
+          console.log('[Cache] No REDIS_URL found, using in-memory cache');
+          return { ttl: 60 * 60 * 1000 };
+        }
+
         try {
+          console.log(`[Cache] Initializing Redis connection... (Family: 4)`);
           return {
             store: await redisStore({
-              url: process.env.REDIS_URL,
-              // Force IPv4 as Render sometimes struggles with IPv6 resolution for external Redis
+              url: redisUrl,
               family: 4, 
-              ttl: 60 * 60 * 1000, // 1 hour default
+              ttl: 60 * 60 * 1000,
             }),
           };
         } catch (err) {
-          console.error('Redis connection failed, falling back to in-memory cache:', err);
-          return { ttl: 60 * 60 * 1000 }; // Falls back to local memoryStore
+          console.error('[Cache] Redis connection failed, falling back to in-memory:', err.message);
+          return { ttl: 60 * 60 * 1000 };
         }
       },
     }),
