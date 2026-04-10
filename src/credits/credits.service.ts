@@ -56,13 +56,14 @@ export class CreditsService {
 
     // 1. Check for Learning Mode Enrollment
     if (student.enrollment_status === 'learning') {
+      const creditsRemaining = student.subscription_credits || 0;
       return {
         mode: 'learning',
-        creditsRemaining: student.subscription_credits || 0,
+        creditsRemaining,
         trialExpiresAt: null,
         daysLeft: null,
         sessionsUsed: student.trial_sessions_used || 0,
-        canBook: true, // Learning mode manages bookings automatically
+        canBook: creditsRemaining > 0, // Must still have credits even in learning mode
         plan: student.subscription_plan as any,
       };
     }
@@ -136,6 +137,11 @@ export class CreditsService {
    */
   computeBookingCreditCost(student: any): BookingCreditCost {
     const now = new Date();
+
+    // Learning mode: deduct 1 subscription credit
+    if (student.enrollment_status === 'learning') {
+      return { cost: 1, isFree: false, isTrialSession: false };
+    }
 
     // Paid plan
     if (
@@ -261,6 +267,7 @@ export class CreditsService {
         subscription_starts: now,
         subscription_ends: ends,
         is_trial_active: false, // trial ends when subscription starts
+        enrollment_status: 'learning', // Move to learning mode
       },
     });
 
