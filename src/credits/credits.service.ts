@@ -307,7 +307,7 @@ export class CreditsService {
 
     this.logger.log(`Student ${studentId} subscribed to ${plan} plan with ${credits} credits`);
 
-    return this.getCreditStatus(updated);
+    return await this.getCreditStatus(updated);
   }
 
   /**
