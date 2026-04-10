@@ -54,16 +54,28 @@ import { BackupModule } from './backup/backup.module';
         }
 
         try {
-          console.log(`[Cache] Initializing Redis connection... (Family: 4)`);
-          return {
-            store: await redisStore({
-              url: redisUrl,
-              family: 4, 
-              ttl: 60 * 60 * 1000,
-            }),
-          };
+          console.log(`[Cache] Connecting to Redis: ${redisUrl.split('@').pop()} (Family: 4)`);
+          
+          const store = await redisStore({
+            url: redisUrl,
+            family: 4,
+            ttl: 60 * 60 * 1000,
+            // Add a command timeout to prevent hanging
+            commandTimeout: 5000,
+          });
+
+          // Access the underlying ioredis client and attach error handler
+          const client = store.client;
+          client.on('error', (err) => {
+            console.error('[Cache] Redis Client Error:', err.message);
+          });
+          client.on('ready', () => {
+            console.log('[Cache] ✅ Redis connected successfully!');
+          });
+
+          return { store };
         } catch (err) {
-          console.error('[Cache] Redis connection failed, falling back to in-memory:', err.message);
+          console.error('[Cache] Redis initialization failed:', err.message);
           return { ttl: 60 * 60 * 1000 };
         }
       },
