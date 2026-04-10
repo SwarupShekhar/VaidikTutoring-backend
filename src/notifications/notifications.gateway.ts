@@ -52,4 +52,17 @@ export class NotificationsGateway implements OnGatewayConnection {
     notifyParentSessionNote(userId: string, childId: string, tutorName: string) {
         this.server.to(`user-${userId}`).emit('session:note_added', { childId, tutorName });
     }
+
+    notifyAdminSupport(ticketId: string, userName: string, message: string) {
+        // Broadcast to all connected clients in the admin room
+        this.server.to('room:admins').emit('support:new_ticket', { ticketId, userName, message });
+    }
+
+    @SubscribeMessage('join_admin_room')
+    handleJoinAdminRoom(client: Socket, payload: { role: string }) {
+        if (payload.role === 'admin') {
+            client.join('room:admins');
+            this.logger.debug(`Admin client ${client.id} joined admin room`);
+        }
+    }
 }

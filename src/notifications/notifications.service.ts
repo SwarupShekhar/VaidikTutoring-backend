@@ -90,6 +90,29 @@ export class NotificationsService {
     this.gateway.notifyTutorAllocation(userId, studentName, scheduledTime);
   }
 
+  async notifyAdminSupport(ticketId: string, userName: string, message: string) {
+    // 1. Real-time to all connected admin clients
+    this.gateway.notifyAdminSupport(ticketId, userName, message);
+
+    // 2. Persist to DB bell notification for every admin
+    try {
+      const admins = await this.prisma.users.findMany({
+        where: { role: 'admin', is_active: true },
+        select: { id: true },
+      });
+      for (const admin of admins) {
+        await this.create(admin.id, 'support_ticket', {
+          message: `New help request from ${userName}`,
+          ticketId,
+          preview: message.slice(0, 120),
+          link: '/admin/dashboard?tab=support',
+        });
+      }
+    } catch (e) {
+      this.logger.error(`Failed to persist support notifications: ${e.message}`);
+    }
+  }
+
   async notifyParentSessionNote(parentId: string, childId: string, tutorName: string) {
     // Save to DB (Task 4)
     await this.create(parentId, 'session_note', {
