@@ -53,7 +53,7 @@ model audit_logs {
 model bookings {
   id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   student_id        String?    @db.Uuid
-  package_id        String?
+  package_id        String?    @db.Uuid
   subject_id        String?
   curriculum_id     String?
   requested_start   DateTime?  @db.Timestamptz(6)
@@ -119,7 +119,7 @@ model notifications {
 
 model package_items {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  package_id String?
+  package_id String?   @db.Uuid
   subject_id String?
   hours      Int?
   note       String?
@@ -130,7 +130,7 @@ model package_items {
 }
 
 model packages {
-  id            String          @id
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name          String
   description   String?
   price_cents   Int?
@@ -162,7 +162,7 @@ model progress_points {
 model purchases {
   id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id               String?   @db.Uuid
-  package_id            String?
+  package_id            String?   @db.Uuid
   amount_cents          Int?
   currency              String?   @default("USD")
   status                String?   @default("PENDING")
@@ -205,7 +205,7 @@ model webhook_events {
 model user_credits {
   id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id           String    @db.Uuid
-  package_id        String?
+  package_id        String?   @db.Uuid
   credits_total     Int       @default(0)
   credits_used      Int       @default(0)
   credits_remaining Int       @default(0)
@@ -277,6 +277,7 @@ model sessions {
   whiteboard_snapshot_url String?
   attendance         Attendance[]
   attention_events   AttentionEvent[]
+  class_notes        class_notes[]
   credit_usage_logs  credit_usage_logs[]
   session_messages   session_messages[]
   session_recordings session_recordings[]
@@ -419,6 +420,7 @@ model users {
   notifications                           notifications[]
   purchases                               purchases[]
   session_messages                        session_messages[]
+  class_notes                             class_notes[]
   session_recordings                      session_recordings[]
   students_students_parent_user_idTousers students[]           @relation("students_parent_user_idTousers")
   students_students_user_idTousers        students?            @relation("students_user_idTousers")
@@ -554,6 +556,7 @@ model Attendance {
   sessions        sessions  @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   students        students  @relation(fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@unique([sessionId, studentId])
   @@map("attendance")
   @@schema("app")
 }
@@ -589,7 +592,7 @@ model enrollments {
   // Booking fields (needed for auto-created bookings)
   subject_ids     String[]
   curriculum_id   String?
-  package_id      String?
+  package_id      String?    @db.Uuid
 
   // Lifecycle
   status          String    // "active" | "paused" | "completed"
@@ -638,6 +641,21 @@ model tutor_ratings {
 
   @@index([tutor_id])
   @@index([rated_by_user_id])
+  @@schema("app")
+}
+
+model class_notes {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  session_id  String   @db.Uuid
+  uploaded_by String   @db.Uuid
+  title       String
+  note_type   String   @default("general")
+  blob_name   String?
+  content     String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  sessions    sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users       users    @relation(fields: [uploaded_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
   @@schema("app")
 }
 
