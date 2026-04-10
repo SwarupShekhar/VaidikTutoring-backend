@@ -10,8 +10,8 @@ import { SessionPhasesModule } from '../session-phases/session-phases.module.js'
 import { DailyModule } from '../daily/daily.module.js';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { StudentsModule } from '../students/students.module';
-
 import { AzureModule } from '../azure/azure.module';
+import { CreditsModule } from '../credits/credits.module';
 
 @Module({
   imports: [
@@ -22,6 +22,7 @@ import { AzureModule } from '../azure/azure.module';
     AzureModule,
     AuthModule,
     NotificationsModule,
+    CreditsModule,
     forwardRef(() => DailyModule),
     forwardRef(() => StudentsModule),
   ],

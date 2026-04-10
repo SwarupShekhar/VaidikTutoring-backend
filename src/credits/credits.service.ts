@@ -443,6 +443,7 @@ export class CreditsService {
     this.logger.log(`Consumed ${credits} credits from user ${userId} for session ${sessionId}`);
   }
 
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
   async resetExpiredCredits(): Promise<void> {
     const expiredCredits = await this.prisma.user_credits.findMany({
       where: {
