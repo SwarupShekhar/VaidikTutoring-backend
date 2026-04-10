@@ -1,20 +1,23 @@
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service.js';
 
 @Injectable()
 export class TutorStatusGuard implements CanActivate {
-    canActivate(context: ExecutionContext): boolean {
+    constructor(private readonly prisma: PrismaService) {}
+
+    async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest();
         const user = request.user;
 
-        // Check if user is a tutor and is suspended
-        // We assume 'tutor_status' is present on the user object from JwtStrategy
-        // If not, we might need to fetch it, but usually we put status in JWT or fetch user in Strategy.
-        // Let's check JwtStrategy. If it's not in JWT, we rely on the `validate` method fetching it.
+        if (!user || user.role !== 'tutor') return true;
 
-        // For now, let's assume `req.user` has the field. If strict redundancy is needed, we fetch.
-        // However, for performance, best if it's in JWT or User object attached by Guard.
+        // Real-time DB check — JWT cache cannot be trusted for suspension enforcement
+        const tutor = await this.prisma.tutors.findFirst({
+            where: { user_id: user.userId || user.id },
+            select: { is_active: true, tutor_approved: true },
+        });
 
-        if (user && user.role === 'tutor' && user.tutor_status === 'SUSPENDED') {
+        if (!tutor || tutor.is_active === false || tutor.tutor_approved === false) {
             throw new ForbiddenException('TUTOR_SUSPENDED');
         }
 

@@ -1,4 +1,5 @@
 import { Body, Controller, Post, Get, BadRequestException, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service.js';
 import { signupSchema } from './schemas/signup.schema.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
@@ -8,6 +9,7 @@ import { ClerkAuthGuard } from './clerk-auth.guard.js';
 export class AuthController {
   constructor(private auth: AuthService) { }
 
+  @Throttle({ default: { limit: 5, ttl: 3600000 } }) // 5 signups per hour per IP
   @Post('signup')
   async signup(@Body() body: unknown, @Req() req: any) {
     const data = signupSchema.parse(body);
@@ -27,6 +29,7 @@ export class AuthController {
     return this.auth.resendVerification(req.user.userId || req.user.sub || req.user.id);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 900000 } }) // 10 attempts per 15 min per IP
   @Post('login')
   login(@Body() body: any) {
     return this.auth.login(body.email, body.password);
@@ -73,13 +76,12 @@ export class AuthController {
   }
 
   @Post('fix-admin-role')
+  @UseGuards(JwtAuthGuard)
   async fixAdminRole(@Req() req: any, @Body('email') email: string) {
-    // This should only be callable by admins or as emergency measure
     const actor = req.user;
-    if (!actor || (actor.role !== 'admin' && actor.email !== 'swarupshekhar.vaidikedu@gmail.com')) {
+    if (!actor || actor.role !== 'admin') {
       throw new UnauthorizedException('Not authorized to fix admin roles');
     }
-    
     return this.auth.fixAdminRole(email);
   }
 }

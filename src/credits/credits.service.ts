@@ -217,7 +217,7 @@ export class CreditsService {
    * Refund credits on cancellation. Only refunds if trial has not expired.
    */
   async refundCredits(studentId: string, cost: number, isTrialSession: boolean): Promise<void> {
-    if (!isTrialSession || cost === 0) return;
+    if (cost === 0) return;
 
     const student = await this.prisma.students.findUnique({
       where: { id: studentId },
@@ -225,22 +225,32 @@ export class CreditsService {
 
     if (!student) return;
 
-    // Only refund if trial hasn't expired
-    if (student.trial_expires_at && new Date(student.trial_expires_at) < new Date()) {
-      this.logger.log(`Skipping refund for student ${studentId}: trial already expired`);
-      return;
+    if (isTrialSession) {
+      // Only refund trial credits if trial hasn't expired
+      if (student.trial_expires_at && new Date(student.trial_expires_at) < new Date()) {
+        this.logger.log(`Skipping trial refund for student ${studentId}: trial already expired`);
+        return;
+      }
+
+      await this.prisma.students.update({
+        where: { id: studentId },
+        data: {
+          trial_credits: (student.trial_credits || 0) + cost,
+          trial_sessions_used: Math.max(0, (student.trial_sessions_used || 0) - 1),
+          is_trial_active: true,
+        },
+      });
+    } else {
+      // Refund subscription credit
+      await this.prisma.students.update({
+        where: { id: studentId },
+        data: {
+          subscription_credits: (student.subscription_credits || 0) + cost,
+        },
+      });
     }
 
-    await this.prisma.students.update({
-      where: { id: studentId },
-      data: {
-        trial_credits: (student.trial_credits || 0) + cost,
-        trial_sessions_used: Math.max(0, (student.trial_sessions_used || 0) - 1),
-        is_trial_active: true,
-      },
-    });
-
-    this.logger.log(`Refunded ${cost} credits to student ${studentId}`);
+    this.logger.log(`Refunded ${cost} credits to student ${studentId} (trial: ${isTrialSession})`);
   }
 
   /**

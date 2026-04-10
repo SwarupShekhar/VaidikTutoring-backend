@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 import sharp from 'sharp';
 
 @Injectable()
@@ -16,8 +17,8 @@ export class StorageService {
 
     async saveImage(file: Express.Multer.File): Promise<string> {
         // Use .webp extension as we are converting for better compression
-        const baseName = path.parse(file.originalname).name.replace(/\s+/g, '-');
-        const fileName = `${Date.now()}-${baseName}.webp`;
+        const baseName = path.parse(file.originalname).name.replace(/[^a-zA-Z0-9-_]/g, '-');
+        const fileName = `${randomUUID()}-${baseName}.webp`;
         const filePath = path.join(this.uploadDir, fileName);
 
         // Image Optimization

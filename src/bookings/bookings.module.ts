@@ -10,11 +10,12 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { AzureModule } from '../azure/azure.module';
 
 import { BookingsCleanupService } from './bookings.cleanup.service.js';
+import { TutorStatusGuard } from '../auth/tutor-status.guard.js';
 
 @Module({
   imports: [PrismaModule, EmailModule, NotificationsModule, AuthModule, CreditsModule, AzureModule],
   controllers: [BookingsController],
-  providers: [BookingsService, BookingsCleanupService],
+  providers: [BookingsService, BookingsCleanupService, TutorStatusGuard],
   exports: [BookingsService],
 })
 export class BookingsModule { }

@@ -36,9 +36,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
       finalMessage = (message as any).message;
     }
 
+    // In production, never leak internal error details for 5xx responses
+    if (process.env.NODE_ENV === 'production' && status >= 500) {
+      finalMessage = 'An internal error occurred. Please try again later.';
+    }
+
     response.status(status).json({
       statusCode: status,
-      // Ensure message is top-level for frontend convenience
       message: Array.isArray(finalMessage) ? finalMessage[0] : finalMessage,
       error:
         exception instanceof HttpException

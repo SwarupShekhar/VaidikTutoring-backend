@@ -51,21 +51,26 @@ async function bootstrap() {
   app.use(compression());
 
   // ✅ Enable CORS so frontend (Next.js) can call backend
-  const allowedOrigins = process.env.ALLOWED_ORIGINS 
-    ? process.env.ALLOWED_ORIGINS.split(',') 
-    : [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:3001',
-      'https://studyhours.com',
-      'https://www.studyhours.com',
-      'https://k-12-backend-vnp4.vercel.app',
-      'https://k-12-vaidik.vercel.app',
-      'https://vaidiktutoring.vercel.app',
-      'https://k-12-backend.onrender.com',
-    ];
+  const isProduction = process.env.NODE_ENV === 'production';
+  const productionOrigins = [
+    'https://studyhours.com',
+    'https://www.studyhours.com',
+    'https://k-12-backend-vnp4.vercel.app',
+    'https://k-12-vaidik.vercel.app',
+    'https://vaidiktutoring.vercel.app',
+    'https://k-12-backend.onrender.com',
+  ];
+  const developmentOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    ...productionOrigins,
+  ];
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : isProduction ? productionOrigins : developmentOrigins;
 
   app.enableCors({
     origin: allowedOrigins,

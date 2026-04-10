@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsISO8601,
   IsArray,
+  MaxLength,
 } from 'class-validator';
 
 export class CreateBookingDto {
@@ -15,14 +16,14 @@ export class CreateBookingDto {
   @IsUUID()
   program_id?: string;
 
-  @IsString()
+  @IsUUID()
   package_id: string;
 
   @IsArray()
-  @IsString({ each: true })
+  @IsUUID('all', { each: true })
   subject_ids: string[];
 
-  @IsString()
+  @IsUUID()
   curriculum_id: string;
 
   @IsISO8601()
@@ -33,5 +34,6 @@ export class CreateBookingDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   note?: string;
 }
