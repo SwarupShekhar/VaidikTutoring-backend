@@ -20,10 +20,10 @@ export class CreateBookingDto {
   package_id: string;
 
   @IsArray()
-  @IsUUID('all', { each: true })
+  @IsString({ each: true })
   subject_ids: string[];
 
-  @IsUUID()
+  @IsString()
   curriculum_id: string;
 
   @IsISO8601()

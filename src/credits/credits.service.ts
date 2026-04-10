@@ -85,14 +85,17 @@ export class CreditsService {
       };
     }
 
-    // 2. Check if trial is expired
+    // 2. Check if trial is expired or exhausted
     if (
       !student.is_trial_active ||
       (student.trial_expires_at && new Date(student.trial_expires_at) < now)
     ) {
+      // If it was deactivated because of session limits or credits
+      const isExhausted = (student.trial_credits || 0) <= 0 || (student.trial_sessions_used || 0) >= 3;
+      
       return {
-        mode: 'trial_expired',
-        creditsRemaining: 0,
+        mode: isExhausted ? 'trial_exhausted' : 'trial_expired',
+        creditsRemaining: Math.max(0, student.trial_credits || 0),
         trialExpiresAt: student.trial_expires_at?.toISOString() || null,
         daysLeft: 0,
         sessionsUsed: student.trial_sessions_used || 0,

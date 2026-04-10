@@ -209,6 +209,36 @@ export class BookingsService {
           }),
         );
       }
+
+      // FIX: Ensure they have enough credits/session-headroom for ALL subjects requested
+      const requestedCount = createDto.subject_ids.length;
+      if (creditStatus.mode === 'trial_active') {
+        const remainingSessions = 3 - (studentRecord.trial_sessions_used || 0);
+        if (requestedCount > remainingSessions) {
+          throw new ForbiddenException(
+            JSON.stringify({
+              error: 'booking_limit_reached',
+              message: `You can only book ${remainingSessions} more trial sessions. Please select fewer subjects or upgrade.`,
+            }),
+          );
+        }
+        if (creditStatus.creditsRemaining < requestedCount) {
+          throw new ForbiddenException(
+            JSON.stringify({
+              error: 'insufficient_credits',
+              message: `You only have ${creditStatus.creditsRemaining} credits left, but requested ${requestedCount} sessions.`,
+            }),
+          );
+        }
+      } else if (studentRecord.subscription_credits < requestedCount) {
+        throw new ForbiddenException(
+          JSON.stringify({
+            error: 'insufficient_credits',
+            message: `You only have ${studentRecord.subscription_credits} credits left, but requested ${requestedCount} sessions.`,
+          }),
+        );
+      }
+
       creditCostInfo = this.creditsService.computeBookingCreditCost(studentRecord);
     }
 

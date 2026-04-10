@@ -5,9 +5,10 @@ import { EmailModule } from '../email/email.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [EmailModule, PrismaModule, AuthModule],
+  imports: [EmailModule, PrismaModule, AuthModule, NotificationsModule],
   controllers: [SupportController],
   providers: [SupportService, JwtAuthGuard],
 })
