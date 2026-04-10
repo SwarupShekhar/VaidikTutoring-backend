@@ -287,18 +287,53 @@ export class SessionsController {
   @Get('stickers/:studentId')
   async getStickers(@Param('studentId') studentId: string, @Req() req: any) {
     const user = req.user;
-    
+
     // Auth logic: User or Parent can see theirs/child's. Admin can see all.
     if (user.role === 'admin') return this.sessionsService.getStickers(studentId);
-    
+
     if (user.role === 'student' && user.userId === studentId) return this.sessionsService.getStickers(studentId);
-    
+
     if (user.role === 'parent') {
         // Verify child
         const child = await this.prisma.students.findUnique({ where: { user_id: studentId } });
         if (child?.parent_user_id === user.userId) return this.sessionsService.getStickers(studentId);
     }
-    
+
     throw new ForbiddenException('You do not have access to these stickers');
+  }
+
+  // ==================== CLASS NOTES ====================
+
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @Post(':id/notes')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async shareNote(
+    @Param('id') sessionId: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() body: { title: string; note_type: string; content?: string },
+    @Req() req: any,
+  ) {
+    return this.sessionsService.shareNote(
+      sessionId,
+      req.user.userId,
+      body.title,
+      body.note_type || 'general',
+      file?.buffer,
+      file?.mimetype,
+      file?.originalname,
+      body.content,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @Get(':id/notes')
+  async getSessionNotes(@Param('id') sessionId: string, @Req() req: any) {
+    return this.sessionsService.getSessionNotes(sessionId, req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @Get('notes/:noteId/download')
+  async downloadNote(@Param('noteId') noteId: string, @Req() req: any) {
+    return this.sessionsService.generateNoteSasUrl(noteId, req.user.userId);
   }
 }

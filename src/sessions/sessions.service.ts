@@ -532,59 +532,25 @@ export class SessionsService {
   }
 
   async recordAttendance(sessionId: string, studentId: string, present: boolean, minutesAttended?: number) {
-    // Helper: Verify session exists
-    const session = await this.prisma.sessions.findUnique({
-      where: { id: sessionId }
-    });
+    const session = await this.prisma.sessions.findUnique({ where: { id: sessionId } });
     if (!session) throw new NotFoundException('Session not found');
 
-    // Verify student exists
-    // Upsert attendance record
     return this.prisma.attendance.upsert({
       where: {
-        // Composite key simulation or findFirst?
-        // Prisma doesn't support where clause on non-unique fields in upsert unless @@unique is set.
-        // We haven't set @@unique([sessionId, studentId]) in schema (oops, should have).
-        // So we use findFirst -> update/create pattern.
-        id: (await this.prisma.attendance.findFirst({
-          where: { sessionId, studentId }
-        }))?.id || '00000000-0000-0000-0000-000000000000' // Hacky workaround for upsert? No.
-        // Let's use clean findFirst logic.
+        sessionId_studentId: { sessionId, studentId },
       },
       update: {
         present,
         minutesAttended,
-        leftAt: present ? new Date() : null // Example logic
+        ...(present && { leftAt: null }), // Clear leftAt if they are back
       },
       create: {
         sessionId,
         studentId,
         present,
         minutesAttended,
-        joinedAt: present ? new Date() : null
-      }
-    }).catch(async (e) => {
-      // If the ID hack failed because it didn't exist, we fallback to create.
-      // Actually, let's just write explicit find-then-act logic to be safe and clear.
-      const existing = await this.prisma.attendance.findFirst({
-        where: { sessionId, studentId }
-      });
-      if (existing) {
-        return this.prisma.attendance.update({
-          where: { id: existing.id },
-          data: { present, minutesAttended }
-        });
-      } else {
-        return this.prisma.attendance.create({
-          data: {
-            sessionId,
-            studentId,
-            present,
-            minutesAttended,
-            joinedAt: new Date()
-          }
-        });
-      }
+        joinedAt: present ? new Date() : null,
+      },
     });
   }
 
@@ -1013,5 +979,107 @@ export class SessionsService {
       sasUrl,
       expiresIn: 3600
     };
+  }
+
+  // ==================== CLASS NOTES ====================
+
+  async shareNote(
+    sessionId: string,
+    userId: string,
+    title: string,
+    noteType: string,
+    buffer?: Buffer,
+    mimeType?: string,
+    originalName?: string,
+    content?: string,
+  ) {
+    // Verify session exists
+    const session = await this.prisma.sessions.findUnique({
+      where: { id: sessionId },
+      include: { bookings: true },
+    });
+    if (!session) throw new NotFoundException('Session not found');
+
+    // Only tutor or admin can share notes
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
+    if (user?.role !== 'tutor' && user?.role !== 'admin') {
+      throw new ForbiddenException('Only tutors and admins can share notes');
+    }
+
+    let blobName: string | null = null;
+    if (buffer && mimeType && originalName) {
+      blobName = await this.azureStorageService.uploadNote(sessionId, buffer, mimeType, originalName);
+    }
+
+    return this.prisma.class_notes.create({
+      data: {
+        session_id: sessionId,
+        uploaded_by: userId,
+        title,
+        note_type: noteType,
+        blob_name: blobName,
+        content: content || null,
+      },
+    });
+  }
+
+  async getSessionNotes(sessionId: string, userId: string) {
+    await this.verifySessionOrBookingAccess(sessionId, userId);
+    return this.prisma.class_notes.findMany({
+      where: { session_id: sessionId },
+      orderBy: { created_at: 'desc' },
+      include: {
+        users: { select: { first_name: true, last_name: true } },
+      },
+    });
+  }
+
+  async getStudentNotes(userId: string) {
+    // Find all sessions for this student
+    const student = await this.prisma.students.findFirst({
+      where: { user_id: userId },
+      include: {
+        bookings: {
+          include: { sessions: true },
+        },
+      },
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const sessionIds = student.bookings.flatMap(b => b.sessions.map(s => s.id));
+
+    return this.prisma.class_notes.findMany({
+      where: { session_id: { in: sessionIds } },
+      orderBy: { created_at: 'desc' },
+      include: {
+        users: { select: { first_name: true, last_name: true } },
+        sessions: {
+          select: {
+            id: true,
+            start_time: true,
+            bookings: { select: { subjects: { select: { name: true } } } },
+          },
+        },
+      },
+    });
+  }
+
+  async generateNoteSasUrl(noteId: string, userId: string) {
+    const note = await this.prisma.class_notes.findUnique({
+      where: { id: noteId },
+      include: {
+        sessions: {
+          include: { bookings: { include: { subjects: true } } },
+        },
+      },
+    });
+    if (!note) throw new NotFoundException('Note not found');
+    if (!note.blob_name) throw new BadRequestException('This note has no file attachment');
+
+    // Verify access
+    await this.verifySessionOrBookingAccess(note.session_id, userId);
+
+    const sasUrl = await this.azureStorageService.generateSasUrl('class-notes', note.blob_name, 2);
+    return { url: sasUrl, expiresIn: 7200 };
   }
 }

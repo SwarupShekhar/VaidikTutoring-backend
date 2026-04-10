@@ -11,6 +11,7 @@ export class AzureStorageService implements OnModuleInit {
   private readonly RECORDINGS_CONTAINER = 'session-recordings';
   private readonly SNAPSHOTS_CONTAINER = 'whiteboard-snapshots';
   private readonly SLIDES_CONTAINER = 'session-slides';
+  private readonly NOTES_CONTAINER = 'class-notes';
 
   constructor() {
     const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
@@ -28,7 +29,7 @@ export class AzureStorageService implements OnModuleInit {
   }
 
   private async ensureContainers() {
-    const containers = [this.RECORDINGS_CONTAINER, this.SNAPSHOTS_CONTAINER, this.SLIDES_CONTAINER];
+    const containers = [this.RECORDINGS_CONTAINER, this.SNAPSHOTS_CONTAINER, this.SLIDES_CONTAINER, this.NOTES_CONTAINER];
     for (const container of containers) {
       const containerClient = this.blobServiceClient.getContainerClient(container);
       const exists = await containerClient.exists();
@@ -100,7 +101,17 @@ export class AzureStorageService implements OnModuleInit {
     return blobName;
   }
 
-  async generateSasUrl(containerName: 'session-recordings' | 'whiteboard-snapshots' | 'session-slides', blobName: string, expiryHours = 24): Promise<string> {
+  async uploadNote(sessionId: string, buffer: Buffer, mimeType: string, originalName: string): Promise<string> {
+    const containerClient = this.blobServiceClient.getContainerClient(this.NOTES_CONTAINER);
+    const blobName = `${sessionId}/${Date.now()}-${originalName}`;
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    await blockBlobClient.uploadData(buffer, {
+      blobHTTPHeaders: { blobContentType: mimeType }
+    });
+    return blobName;
+  }
+
+  async generateSasUrl(containerName: 'session-recordings' | 'whiteboard-snapshots' | 'session-slides' | 'class-notes', blobName: string, expiryHours = 24): Promise<string> {
     const containerClient = this.blobServiceClient.getContainerClient(containerName);
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
     const expiresOn = new Date(Date.now() + expiryHours * 60 * 60 * 1000);

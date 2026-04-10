@@ -126,4 +126,20 @@ export class StudentsController {
 
     return this.studentsService.update(id, body, userId, role);
   }
+
+  @Get('me/notes')
+  @UseGuards(JwtAuthGuard)
+  async getMyNotes(@Req() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) throw new Error('User not authenticated');
+    return this.studentsService.getStudentNotes(userId);
+  }
+
+  @Get('me/sessions')
+  @UseGuards(JwtAuthGuard)
+  async getMySessions(@Req() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) throw new Error('User not authenticated');
+    return this.studentsService.getStudentSessions(userId);
+  }
 }

@@ -341,17 +341,18 @@ export class StudentsService {
         note: s.tutor_note,
       }));
 
-    // Recent recordings (last 5 sessions with recordings)
+    // Recent recordings (last 5 sessions with recordings or whiteboard snapshots)
     const recentRecordings = completedSessions
-      .filter(s => s.session_recordings?.length > 0)
+      .filter(s => s.session_recordings?.length > 0 || s.whiteboard_snapshot_url)
       .sort((a, b) => new Date((b.start_time || b.created_at || 0) as any).getTime() - new Date((a.start_time || a.created_at || 0) as any).getTime())
       .slice(0, 5)
       .map(s => ({
         sessionId: s.id,
         date: s.start_time || s.created_at,
         subject: s.bookings?.subjects?.name || 'Session',
-        recordingId: s.session_recordings[0]?.id,
-        blobName: s.session_recordings[0]?.azure_blob_name,
+        recordingId: s.session_recordings[0]?.id || null,
+        blobName: s.session_recordings[0]?.azure_blob_name || null,
+        hasWhiteboardSnapshot: !!s.whiteboard_snapshot_url,
       }));
 
     // --- Badge Logic ---
@@ -494,5 +495,68 @@ export class StudentsService {
         students_students_parent_user_idTousers: true,
       },
     });
+  }
+
+  async getStudentNotes(userId: string) {
+    const student = await this.prisma.students.findFirst({
+      where: { user_id: userId },
+      include: {
+        bookings: {
+          include: { sessions: true },
+        },
+      },
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const sessionIds = student.bookings.flatMap(b => b.sessions.map(s => s.id));
+
+    return this.prisma.class_notes.findMany({
+      where: { session_id: { in: sessionIds } },
+      orderBy: { created_at: 'desc' },
+      include: {
+        users: { select: { first_name: true, last_name: true } },
+        sessions: {
+          select: {
+            id: true,
+            start_time: true,
+            bookings: { select: { subjects: { select: { name: true } } } },
+          },
+        },
+      },
+    });
+  }
+
+  async getStudentSessions(userId: string) {
+    const student = await this.prisma.students.findFirst({
+      where: { user_id: userId },
+      include: {
+        bookings: {
+          include: {
+            subjects: true,
+            sessions: {
+              include: {
+                session_recordings: { take: 1, orderBy: { created_at: 'desc' } },
+              },
+              orderBy: { start_time: 'desc' },
+            },
+          },
+        },
+      },
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    return student.bookings.flatMap(b =>
+      b.sessions.map(s => ({
+        sessionId: s.id,
+        subject: b.subjects?.name || 'Session',
+        startTime: s.start_time,
+        endTime: s.end_time,
+        status: s.status,
+        hasRecording: s.session_recordings.length > 0,
+        recordingId: s.session_recordings[0]?.id || null,
+        hasWhiteboardSnapshot: !!s.whiteboard_snapshot_url,
+        tutorNote: s.tutor_note,
+      }))
+    );
   }
 }
