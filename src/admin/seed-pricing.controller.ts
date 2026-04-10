@@ -17,7 +17,7 @@ export class SeedPricingController {
     // US Packages
     const usPackages = [
       {
-        id: 'us-foundation-package-id',
+        id: 'da36d75d-8e6d-4786-9a25-9de7890f5d5e',
         name: 'Foundation (US)',
         description: '2 sessions per week - 8 monthly credits',
         price_cents: 19900,
@@ -26,7 +26,7 @@ export class SeedPricingController {
         active: true,
       },
       {
-        id: 'us-mastery-package-id',
+        id: '8d89045b-3814-4632-95f7-873b8852e690',
         name: 'Mastery (US)',
         description: '4 sessions per week - 16 monthly credits',
         price_cents: 34900,
@@ -35,7 +35,7 @@ export class SeedPricingController {
         active: true,
       },
       {
-        id: 'us-elite-package-id',
+        id: '5952f418-477c-4749-8086-5389476b7bd1',
         name: 'Elite (US)',
         description: '6 sessions per week - 24 monthly credits',
         price_cents: 49900,
@@ -48,7 +48,7 @@ export class SeedPricingController {
     // UK Packages
     const ukPackages = [
       {
-        id: 'uk-foundation-package-id',
+        id: 'f47385ef-963d-4299-bb6e-2f54297a73e3',
         name: 'Foundation (UK)',
         description: '2 sessions per week - 8 monthly credits',
         price_cents: 14900,
@@ -57,7 +57,7 @@ export class SeedPricingController {
         active: true,
       },
       {
-        id: 'uk-mastery-package-id',
+        id: '76fb2bd0-96f3-47ad-9a00-50284b7f4337',
         name: 'Mastery (UK)',
         description: '4 sessions per week - 16 monthly credits',
         price_cents: 24900,
@@ -66,7 +66,7 @@ export class SeedPricingController {
         active: true,
       },
       {
-        id: 'uk-elite-package-id',
+        id: '6f48a101-3820-4180-8b1e-25ba3194a0d9',
         name: 'Elite (UK)',
         description: '6 sessions per week - 24 monthly credits',
         price_cents: 37500,
