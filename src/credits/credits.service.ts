@@ -380,14 +380,26 @@ export class CreditsService {
 
     this.logger.log(`Granted ${creditsTotal} credits to user ${userId} for package ${packageId}`);
 
-    // Post-payment Enrollment Sync
+    // Derive plan name from package for the new subscription system
+    const pkgName = pkg.name.toLowerCase();
+    const planName = pkgName.includes('elite') ? 'elite' : pkgName.includes('mastery') ? 'mastery' : 'foundation';
+    const subEnds = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+    // Post-payment Enrollment Sync — updates BOTH the legacy sessions_remaining
+    // field AND the new subscription credit fields used by getCreditStatus()
     await this.prisma.students.updateMany({
       where: { user_id: userId },
       data: {
         enrollment_status: 'learning',
         sessions_remaining: { increment: creditsTotal },
-        package_end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) // 90 days
-      }
+        package_end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+        // New credit system fields — these are what BookingsService reads
+        subscription_plan: planName,
+        subscription_credits: { increment: creditsTotal },
+        subscription_starts: new Date(),
+        subscription_ends: subEnds,
+        is_trial_active: false,
+      },
     });
   }
 

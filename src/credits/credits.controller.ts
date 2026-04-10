@@ -70,28 +70,20 @@ export class CreditsController {
   }
 
   /**
-   * POST /credits/subscribe — subscribe to a plan (stub)
+   * POST /credits/subscribe — subscribe to a plan
+   * Requires a verified Razorpay payment_id in the body. Credits are only granted
+   * after the payment is confirmed via the payments webhook. This endpoint is
+   * intentionally disabled — use POST /payments/verify instead.
    */
   @Post('subscribe')
   @UseGuards(JwtAuthGuard)
   async subscribe(@Req() req: any, @Body() body: { plan: string }) {
-    const userId = req.user?.userId;
-    if (!userId) throw new BadRequestException('User not authenticated');
-
-    const validPlans = ['foundation', 'mastery', 'elite'];
-    if (!validPlans.includes(body.plan)) {
-      throw new BadRequestException('Invalid plan. Must be foundation, mastery, or elite.');
-    }
-
-    const student = await this.prisma.students.findFirst({
-      where: { user_id: userId },
-    });
-
-    if (!student) {
-      throw new BadRequestException('Student profile not found');
-    }
-
-    return this.creditsService.subscribe(student.id, body.plan as any);
+    // SECURITY: Direct subscription without payment is disabled.
+    // All subscriptions must go through the Razorpay payment flow at POST /payments/create-order
+    // followed by POST /payments/verify which calls CreditsService.subscribe() after signature verification.
+    throw new BadRequestException(
+      'Direct subscription is disabled. Please use the payment flow at /payments/create-order.',
+    );
   }
 
   /**

@@ -1,8 +1,9 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateEnrollmentDto } from './create-enrollment.dto.js';
 import { BookingsService } from '../bookings/bookings.service.js';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { CreditsService } from '../credits/credits.service.js';
+import { Cron } from '@nestjs/schedule';
 import { addDays, setHours, setMinutes, startOfWeek } from 'date-fns';
 
 @Injectable()
@@ -12,18 +13,38 @@ export class EnrollmentsService {
   constructor(
     private prisma: PrismaService,
     private bookingsService: BookingsService,
+    private creditsService: CreditsService,
   ) {}
 
   async createEnrollment(dto: CreateEnrollmentDto) {
+    // ── CREDIT GATE ──────────────────────────────────────────────────
+    // Student must have a paid subscription with credits before they can
+    // activate learning mode. This prevents the free-enrollment exploit.
+    const student = await this.prisma.students.findUnique({
+      where: { id: dto.student_id },
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const creditStatus = this.creditsService.getCreditStatus(student);
+    if (!creditStatus.canBook) {
+      throw new ForbiddenException(
+        JSON.stringify({
+          error: 'insufficient_credits',
+          mode: creditStatus.mode,
+          message: 'You need an active subscription to activate Learning Mode. Please purchase a plan first.',
+        }),
+      );
+    }
+    // ─────────────────────────────────────────────────────────────────
+
     return this.prisma.$transaction(async (tx) => {
       // 1. Auto-assignment logic if tutor_id is missing
       let tutorId = dto.tutor_id;
       if (!tutorId) {
         const stud = await tx.students.findUnique({ where: { id: dto.student_id } });
         tutorId = stud?.trial_tutor_id || undefined;
-        
+
         if (!tutorId) {
-          // Fallback to first active tutor for program
           const best = await tx.tutors.findFirst({
             where: { program_id: dto.program_id, is_active: true, tutor_approved: true }
           });
@@ -40,7 +61,7 @@ export class EnrollmentsService {
           curriculum_id: dto.curriculum_id,
           subject_ids: dto.subject_ids,
           schedule_preset: dto.schedule_preset,
-          schedule_days: dto.schedule_days.map(d => parseInt(d as any)), // Ensure Int[]
+          schedule_days: dto.schedule_days.map(d => parseInt(d as any)),
           start_time: dto.start_time,
           status: 'active',
         },
@@ -55,7 +76,7 @@ export class EnrollmentsService {
         },
       });
 
-      // 3. Generate initial sessions
+      // 3. Generate initial sessions (credit-checked inside)
       await this.generateSessionsForEnrollment(enrollment, tx);
 
       return enrollment;
@@ -89,7 +110,7 @@ export class EnrollmentsService {
   async generateWeeklySessions() {
     this.logger.log('Starting weekly session generation...');
     const activeEnrollments = await this.prisma.enrollments.findMany({
-      where: { 
+      where: {
         status: 'active',
         OR: [
           { pause_until: null },
@@ -114,19 +135,41 @@ export class EnrollmentsService {
 
     let dayCounter = 0;
     for (const dayIndex of enrollment.schedule_days) {
+      // ── CREDIT CHECK per session ──────────────────────────────────
+      // Re-fetch student inside the loop so we see the latest credit
+      // balance after each deduction (avoids race where all sessions
+      // are created before any deduction is applied).
+      const student = await prisma.students.findUnique({
+        where: { id: enrollment.student_id },
+      });
+      if (!student) break;
+
+      const creditsRemaining = student.subscription_credits ?? 0;
+      if (creditsRemaining <= 0) {
+        this.logger.warn(
+          `Enrollment ${enrollment.id}: student ${enrollment.student_id} has 0 subscription credits — stopping session generation`,
+        );
+        // Pause the enrollment so the cron skips it next week too
+        await prisma.enrollments.update({
+          where: { id: enrollment.id },
+          data: { status: 'paused' },
+        });
+        break;
+      }
+      // ─────────────────────────────────────────────────────────────
+
       let sessionStart = addDays(startOfNextWeek, dayIndex % 7);
       sessionStart = setHours(sessionStart, hours);
       sessionStart = setMinutes(sessionStart, minutes);
-      
+
       const sessionEnd = new Date(sessionStart.getTime() + 60 * 60 * 1000);
 
-      // Skip if a booking already exists for this enrollment on this slot (prevents cron double-fire)
+      // Skip if booking already exists for this slot (prevents cron double-fire)
       const existing = await prisma.bookings.findFirst({
         where: { enrollment_id: enrollment.id, requested_start: sessionStart },
       });
       if (existing) { dayCounter++; continue; }
 
-      // Distribute subjects across days to avoid N*D multiplication
       const subjectId = enrollment.subject_ids[dayCounter % enrollment.subject_ids.length];
 
       await this.bookingsService.createScheduledBooking({
@@ -140,6 +183,14 @@ export class EnrollmentsService {
         end: sessionEnd,
         enrollment_id: enrollment.id,
       }, tx);
+
+      // Deduct 1 subscription credit for this auto-scheduled session
+      await prisma.students.update({
+        where: { id: enrollment.student_id },
+        data: { subscription_credits: { decrement: 1 } },
+      });
+
+      this.logger.log(`Scheduled session for enrollment ${enrollment.id}, deducted 1 credit (${creditsRemaining - 1} remaining)`);
 
       dayCounter++;
     }
