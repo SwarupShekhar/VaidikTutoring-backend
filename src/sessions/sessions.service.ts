@@ -884,18 +884,14 @@ export class SessionsService {
         if (session.start_time && session.end_time) {
             durationHours = (new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 3600000;
         }
-        
+
         await this.prisma.students.update({
             where: { id: session.bookings.student_id },
-            data: {
-                total_hours_learned: { increment: durationHours }
-            }
+            data: { total_hours_learned: { increment: durationHours } }
         });
 
-        // Update streak
+        // Update streak + badges
         await this.studentsService.updateStreak(session.bookings.student_id);
-
-        // Check badges
         await this.checkBadges(session.bookings.student_id);
     }
 
