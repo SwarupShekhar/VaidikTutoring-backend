@@ -317,17 +317,22 @@ export class PaymentsService {
       where: { razorpay_payment_id: payment.id },
     });
 
-    if (purchase && purchase.status !== 'PAID') {
-      await this.prisma.purchases.update({
-        where: { id: purchase.id },
-        data: { status: 'PAID' },
-      });
+    if (!purchase) return;
 
-      // Also grant credits if webhook arrives before verify endpoint
-      if (purchase.user_id && purchase.package_id) {
-        await this.creditsService.grantCredits(purchase.user_id, purchase.package_id);
-      }
+    // Already fully verified by the frontend verify endpoint — skip to avoid double grant
+    if (purchase.status === 'PAID' && purchase.verified_at) {
+      this.logger.log(`Payment ${payment.id} already verified via frontend, skipping webhook grant`);
+      return;
+    }
 
+    await this.prisma.purchases.update({
+      where: { id: purchase.id },
+      data: { status: 'PAID', verified_at: purchase.verified_at ?? new Date() },
+    });
+
+    // Only grant credits if this is the first time we're marking it PAID
+    if (purchase.user_id && purchase.package_id) {
+      await this.creditsService.grantCredits(purchase.user_id, purchase.package_id);
       this.logger.log(`Payment captured for purchase ${purchase.id} via webhook, credits granted`);
     }
   }

@@ -12,6 +12,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { StudentsModule } from '../students/students.module';
 import { AzureModule } from '../azure/azure.module';
 import { CreditsModule } from '../credits/credits.module';
+import { TutorStatusGuard } from '../auth/tutor-status.guard';
 
 @Module({
   imports: [
@@ -27,7 +28,7 @@ import { CreditsModule } from '../credits/credits.module';
     forwardRef(() => StudentsModule),
   ],
   controllers: [SessionsController],
-  providers: [SessionsService, SessionsGateway],
+  providers: [SessionsService, SessionsGateway, TutorStatusGuard],
   exports: [SessionsService, SessionsGateway],
 })
 export class SessionsModule { }

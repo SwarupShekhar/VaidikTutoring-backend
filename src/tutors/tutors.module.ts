@@ -4,12 +4,12 @@ import { TutorsController } from './tutors.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { BookingsModule } from '../bookings/bookings.module';
 import { AuthModule } from '../auth/auth.module';
+import { TutorStatusGuard } from '../auth/tutor-status.guard';
 
 @Module({
-  imports: [PrismaModule, BookingsModule, AuthModule], // BookingsModule needed for service? Or import service directly?
-  // TutorsController uses BookingsService, so we need BookingsModule to export it.
+  imports: [PrismaModule, BookingsModule, AuthModule],
   controllers: [TutorsController],
-  providers: [TutorsService],
+  providers: [TutorsService, TutorStatusGuard],
   exports: [TutorsService],
 })
 export class TutorsModule { }

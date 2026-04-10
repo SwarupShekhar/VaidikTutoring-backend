@@ -431,8 +431,8 @@ export class AdminService {
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password_hash: _ph, ...userSafe } = result;
-        // Return generated password so admin can see/share it manually if needed
-        return { user: userSafe, temporaryPassword: finalPassword };
+        // Password is sent via email only — never expose in API response
+        return { user: userSafe, message: 'Temporary password sent to tutor via email' };
     }
 
     async getStudents(page: number = 1, limit: number = 1000) {

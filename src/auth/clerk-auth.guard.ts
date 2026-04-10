@@ -80,6 +80,12 @@ export class ClerkAuthGuard implements CanActivate {
                     const fallbackFirstName = emailClaim.split('@')[0];
                     this.logger.log(`Creating new user for ${emailClaim} with role ${role}`);
 
+                    // Only mark email verified if Clerk explicitly confirms it
+                    const clerkEmailVerified = claims.email_verified === true ||
+                        (claims.primary_email_address_id && claims.email_addresses?.find(
+                            (e: any) => e.id === claims.primary_email_address_id
+                        )?.verification?.status === 'verified');
+
                     dbUser = await this.prisma.users.create({
                         data: {
                             email: emailClaim,
@@ -87,7 +93,7 @@ export class ClerkAuthGuard implements CanActivate {
                             first_name: claims.first_name || claims.given_name || fallbackFirstName,
                             last_name: claims.last_name || claims.family_name || '',
                             password_hash: 'clerk_auth',
-                            email_verified: true,
+                            email_verified: !!clerkEmailVerified,
                         },
                     });
 

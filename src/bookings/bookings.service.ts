@@ -386,6 +386,15 @@ export class BookingsService {
           chosenTutor.id
         );
 
+        // Re-check tutor is still active (status may change between fetch and assign)
+        const tutorStatus = await tx.tutors.findUnique({
+          where: { id: chosenTutor.id },
+          select: { is_active: true, tutor_approved: true },
+        });
+        if (!tutorStatus?.is_active || !tutorStatus?.tutor_approved) {
+          throw new ConflictException('Tutor is no longer available');
+        }
+
         // Double-check conflict inside transaction for safety
         const isStillBusy = await tx.bookings.findFirst({
           where: {
