@@ -49,12 +49,21 @@ export class CreditsService {
   }
 
   /**
-   * Get the credit status for a student.
+   * Get the credit status for a student. Now async to check live booking counts.
    */
-  getCreditStatus(student: any): CreditStatus {
+  async getCreditStatus(student: any): Promise<CreditStatus> {
     const now = new Date();
 
-    // 1. Check for Learning Mode Enrollment
+    // 1. Calculate live trial session usage from DB to ensure 100% accuracy
+    const liveSessionsUsed = await this.prisma.bookings.count({
+      where: {
+        student_id: student.id,
+        is_trial_session: true,
+        status: { not: 'cancelled' },
+      },
+    });
+
+    // 2. Check for Learning Mode Enrollment
     if (student.enrollment_status === 'learning') {
       const creditsRemaining = student.subscription_credits || 0;
       return {
@@ -62,13 +71,13 @@ export class CreditsService {
         creditsRemaining,
         trialExpiresAt: null,
         daysLeft: null,
-        sessionsUsed: student.trial_sessions_used || 0,
-        canBook: creditsRemaining > 0, // Must still have credits even in learning mode
+        sessionsUsed: liveSessionsUsed,
+        canBook: creditsRemaining > 0,
         plan: student.subscription_plan as any,
       };
     }
 
-    // 2. Check for paid subscription
+    // 3. Check for paid subscription
     if (
       student.subscription_plan &&
       student.subscription_ends &&
@@ -79,32 +88,44 @@ export class CreditsService {
         creditsRemaining: student.subscription_credits || 0,
         trialExpiresAt: null,
         daysLeft: null,
-        sessionsUsed: student.trial_sessions_used || 0,
+        sessionsUsed: liveSessionsUsed,
         canBook: (student.subscription_credits || 0) > 0,
         plan: student.subscription_plan as any,
       };
     }
 
-    // 2. Check if trial is expired or exhausted
-    if (
-      !student.is_trial_active ||
-      (student.trial_expires_at && new Date(student.trial_expires_at) < now)
-    ) {
-      // If it was deactivated because of session limits or credits
-      const isExhausted = (student.trial_credits || 0) <= 0 || (student.trial_sessions_used || 0) >= 3;
-      
+    // 4. Check if trial session limit is reached (3 sessions max)
+    if (liveSessionsUsed >= 3) {
       return {
-        mode: isExhausted ? 'trial_exhausted' : 'trial_expired',
+        mode: 'trial_exhausted',
         creditsRemaining: Math.max(0, student.trial_credits || 0),
         trialExpiresAt: student.trial_expires_at?.toISOString() || null,
-        daysLeft: 0,
-        sessionsUsed: student.trial_sessions_used || 0,
+        daysLeft: student.trial_expires_at
+          ? Math.max(0, Math.ceil((new Date(student.trial_expires_at).getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
+          : null,
+        sessionsUsed: liveSessionsUsed,
         canBook: false,
         plan: null,
       };
     }
 
-    // 3. Check if trial credits are exhausted
+    // 5. Check if trial is expired
+    if (
+      !student.is_trial_active ||
+      (student.trial_expires_at && new Date(student.trial_expires_at) < now)
+    ) {
+      return {
+        mode: 'trial_expired',
+        creditsRemaining: Math.max(0, student.trial_credits || 0),
+        trialExpiresAt: student.trial_expires_at?.toISOString() || null,
+        daysLeft: 0,
+        sessionsUsed: liveSessionsUsed,
+        canBook: false,
+        plan: null,
+      };
+    }
+
+    // 6. Check if trial credits are exhausted
     if ((student.trial_credits || 0) <= 0) {
       return {
         mode: 'trial_exhausted',
@@ -113,13 +134,13 @@ export class CreditsService {
         daysLeft: student.trial_expires_at
           ? Math.max(0, Math.ceil((new Date(student.trial_expires_at).getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
           : null,
-        sessionsUsed: student.trial_sessions_used || 0,
+        sessionsUsed: liveSessionsUsed,
         canBook: false,
         plan: null,
       };
     }
 
-    // 4. Trial is active
+    // 7. Trial is active
     const daysLeft = student.trial_expires_at
       ? Math.max(0, Math.ceil((new Date(student.trial_expires_at).getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
       : null;
@@ -129,7 +150,7 @@ export class CreditsService {
       creditsRemaining: student.trial_credits || 0,
       trialExpiresAt: student.trial_expires_at?.toISOString() || null,
       daysLeft,
-      sessionsUsed: student.trial_sessions_used || 0,
+      sessionsUsed: liveSessionsUsed,
       canBook: true,
       plan: null,
     };
