@@ -54,17 +54,25 @@ import { BackupModule } from './backup/backup.module';
         }
 
         try {
-          console.log(`[Cache] Connecting to Redis: ${redisUrl.split('@').pop()} (Family: 4)`);
-          
+          // Parse the URL manually because ioredis ignores the `url` config field
+          // (it only accepts URLs as a constructor argument, not as an option)
+          const parsed = new URL(redisUrl);
+          const host = parsed.hostname;
+          const port = parseInt(parsed.port, 10) || 6379;
+          const password = decodeURIComponent(parsed.password);
+
+          console.log(`[Cache] Connecting to Redis: ${host}:${port} (Family: 4)`);
+
           const store = await redisStore({
-            url: redisUrl,
+            host,
+            port,
+            password,
             family: 4,
             ttl: 60 * 60 * 1000,
-            // Add a command timeout to prevent hanging
             commandTimeout: 5000,
           });
 
-          // Access the underlying ioredis client and attach error handler
+          // Attach error/ready handlers to prevent unhandled error crashes
           const client = store.client;
           client.on('error', (err) => {
             console.error('[Cache] Redis Client Error:', err.message);
