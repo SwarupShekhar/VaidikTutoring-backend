@@ -513,7 +513,19 @@ export class AdminService {
 
     async getBookings(page: number = 1, limit: number = 50) {
         const skip = (page - 1) * limit;
+        const now = new Date();
 
+        // 1. Auto-expire unallocated bookings whose requested_start is in the past
+        await this.prisma.bookings.updateMany({
+            where: {
+                assigned_tutor_id: null,
+                status: { in: ['requested', 'pending', 'open'] },
+                requested_start: { lt: now },
+            },
+            data: { status: 'expired' },
+        });
+
+        // 2. Fetch bookings
         const [bookings, total] = await Promise.all([
             this.prisma.bookings.findMany({
                 skip,
