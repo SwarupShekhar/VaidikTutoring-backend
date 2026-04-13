@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { RemindersService } from './reminders.service';
+import { AdminAlertsService } from './admin-alerts.service';
 import { EmailModule } from '../email/email.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
@@ -10,7 +11,7 @@ import { NotificationsGateway } from './notifications.gateway';
 @Module({
   imports: [EmailModule, PrismaModule, AuthModule],
   controllers: [NotificationsController],
-  providers: [RemindersService, NotificationsService, NotificationsGateway],
-  exports: [RemindersService, NotificationsService, NotificationsGateway],
+  providers: [RemindersService, AdminAlertsService, NotificationsService, NotificationsGateway],
+  exports: [RemindersService, AdminAlertsService, NotificationsService, NotificationsGateway],
 })
 export class NotificationsModule { }

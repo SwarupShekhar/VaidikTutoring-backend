@@ -58,6 +58,10 @@ export class NotificationsGateway implements OnGatewayConnection {
         this.server.to('room:admins').emit('support:new_ticket', { ticketId, userName, message });
     }
 
+    notifyAdmin(event: string, payload: any) {
+        this.server.to('room:admins').emit(event, payload);
+    }
+
     @SubscribeMessage('join_admin_room')
     handleJoinAdminRoom(client: Socket, payload: { role: string }) {
         if (payload.role === 'admin') {

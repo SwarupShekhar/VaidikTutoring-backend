@@ -338,4 +338,51 @@ export class BlogsService {
 
         return { message: 'Blog deleted successfully', id: result.id };
     }
+
+    async getInternalLinks() {
+        // 1. Core Site Pages
+        const sitePages = [
+            { title: 'Homepage', url: '/' },
+            { title: 'Pricing', url: '/pricing' },
+            { title: 'Methodology', url: '/methodology' },
+            { title: 'About Us', url: '/about' },
+            { title: 'Demo Booking', url: '/demo' },
+        ];
+
+        // 2. Curriculum Pillars (Adding these for more granular linking)
+        const curricula = await this.prisma.curricula.findMany({
+            select: { id: true, name: true }
+        });
+        const curriculaPages = curricula.map(c => ({
+            title: `${c.name} Tutoring`,
+            url: `/${c.id.toLowerCase()}-online-tutoring`
+        }));
+
+        // 3. Published Blogs
+        const publishedBlogs = await this.prisma.blogs.findMany({
+            where: { status: 'PUBLISHED' },
+            select: {
+                title: true,
+                slug: true,
+            },
+            orderBy: { created_at: 'desc' },
+            take: 50 // Limit for performance
+        });
+
+        const blogPosts = publishedBlogs.map(blog => ({
+            title: blog.title,
+            url: `/blogs/${blog.slug}`
+        }));
+
+        const response: Record<string, { title: string; url: string }[]> = {
+            'Site Pages': sitePages,
+            'Curriculum Pillars': curriculaPages,
+            'Blog Posts': blogPosts,
+        };
+
+        // Filter out empty categories to keep UI clean
+        return Object.fromEntries(
+            Object.entries(response).filter(([_, items]) => items.length > 0)
+        );
+    }
 }

@@ -39,6 +39,13 @@ export class BlogsController {
         return this.blogsService.findAllPublished(pageNum, limitNum, category); // Return only published
     }
 
+    // Protected: Get list of internal links for the editor
+    @UseGuards(JwtAuthGuard)
+    @Get('admin/blogs/internal-links')
+    async getInternalLinks() {
+        return this.blogsService.getInternalLinks();
+    }
+
     // Public: Get single blog by ID or Slug (with 301 redirect for UUIDs)
     @UseInterceptors(BlogRedirectInterceptor)
     @Get('blogs/:idOrSlug')
