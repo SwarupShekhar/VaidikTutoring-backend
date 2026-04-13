@@ -6,13 +6,13 @@ import { NotificationsService } from '../notifications/notifications.service';
 @Injectable()
 export class SupportService {
   private readonly logger = new Logger(SupportService.name);
-  private readonly adminEmail = process.env.ADMIN_SUPPORT_EMAIL || 'support@vaidiktutoring.com';
+  private readonly adminEmail = process.env.ADMIN_SUPPORT_EMAIL || 'swarupshekhar.vaidikedu@gmail.com';
 
   constructor(
     private readonly emailService: EmailService,
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
-  ) {}
+  ) { }
 
   async submitRequest(userId: string, message: string, context?: any) {
     this.logger.log(`Support request from user ${userId}`);
