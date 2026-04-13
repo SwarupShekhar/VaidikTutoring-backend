@@ -19,13 +19,37 @@ export class BookingsCleanupService {
         const now = new Date();
 
         try {
-            const result = await this.prisma.bookings.updateMany({
+            // 1. Mark unassigned bookings that have passed their starting time as 'expired'
+            const expiredResult = await this.prisma.bookings.updateMany({
                 where: {
+                    assigned_tutor_id: null,
+                    requested_start: {
+                        lt: now,
+                    },
+                    status: {
+                        notIn: ['expired', 'cancelled', 'archived'],
+                    },
+                },
+                data: {
+                    status: 'expired',
+                },
+            });
+
+            if (expiredResult.count > 0) {
+                this.logger.log(`Expired ${expiredResult.count} unassigned past bookings.`);
+            }
+
+            // 2. Mark assigned bookings that have passed their end time as 'archived'
+            const archivedResult = await this.prisma.bookings.updateMany({
+                where: {
+                    assigned_tutor_id: {
+                        not: null,
+                    },
                     requested_end: {
                         lt: now,
                     },
                     status: {
-                        notIn: ['archived', 'cancelled'], // Don't touch already final statuses if needed, but 'archived' is our target
+                        notIn: ['archived', 'cancelled'],
                     },
                 },
                 data: {
@@ -33,10 +57,12 @@ export class BookingsCleanupService {
                 },
             });
 
-            if (result.count > 0) {
-                this.logger.log(`Archived ${result.count} past bookings.`);
-            } else {
-                this.logger.log('No past bookings found to archive.');
+            if (archivedResult.count > 0) {
+                this.logger.log(`Archived ${archivedResult.count} completed past bookings.`);
+            }
+
+            if (expiredResult.count === 0 && archivedResult.count === 0) {
+                this.logger.log('No past bookings found to process.');
             }
         } catch (error) {
             this.logger.error('Failed to run archivePastBookings job', error);
