@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import Razorpay from 'razorpay';
 import * as crypto from 'crypto';
 import { CreditsService } from '../credits/credits.service';
+import { AdminAlertsService } from '../notifications/admin-alerts.service';
 
 export interface CreateOrderResponse {
   orderId: string;
@@ -32,6 +33,7 @@ export class PaymentsService {
     private prisma: PrismaService,
     private config: ConfigService,
     private creditsService: CreditsService,
+    private adminAlerts: AdminAlertsService,
   ) {
     // Lazy initialization - only create Razorpay instance when credentials are available
     this.initializeRazorpay();
@@ -350,6 +352,13 @@ export class PaymentsService {
           failure_reason: payment.error_description || payment.error_reason || 'Payment failed',
         },
       });
+      // Alert Admins Proactively
+      await this.adminAlerts.notifyPaymentFailure(
+        purchase.razorpay_order_id || 'UNKNOWN',
+        purchase.user_id || 'No User',
+        purchase.amount_cents || 0,
+        payment.error_description || payment.error_reason || 'Payment failed'
+      );
       this.logger.log(`Payment failed for purchase ${purchase.id}`);
     }
   }

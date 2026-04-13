@@ -125,4 +125,32 @@ export class NotificationsService {
     // Real-time alert
     this.gateway.notifyParentSessionNote(parentId, childId, tutorName);
   }
+
+  /**
+   * Universal method to alert all active admins
+   */
+  async notifyAdmins(type: string, payload: { message: string; [key: string]: any }) {
+    try {
+      // 1. Persist to DB for all admins
+      const admins = await this.prisma.users.findMany({
+        where: { role: 'admin', is_active: true },
+        select: { id: true },
+      });
+
+      for (const admin of admins) {
+        await this.create(admin.id, type, payload);
+      }
+
+      // 2. Real-time broadcast
+      this.gateway.notifyAdmin('admin:alert', {
+        type,
+        ...payload,
+        created_at: new Date(),
+      });
+      
+      this.logger.log(`Admin alert sent: ${type} - ${payload.message}`);
+    } catch (e) {
+      this.logger.error(`Error notifying admins: ${e.message}`);
+    }
+  }
 }
