@@ -8,8 +8,8 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { CreateBookingDto } from './create-booking.dto.js';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateBookingDto } from './create-booking.dto';
 import { EmailService } from '../email/email.service';
 import { subMinutes } from 'date-fns';
 import { CreditsService } from '../credits/credits.service';

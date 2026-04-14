@@ -1,8 +1,8 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { CreateEnrollmentDto } from './create-enrollment.dto.js';
-import { BookingsService } from '../bookings/bookings.service.js';
-import { CreditsService } from '../credits/credits.service.js';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateEnrollmentDto } from './create-enrollment.dto';
+import { BookingsService } from '../bookings/bookings.service';
+import { CreditsService } from '../credits/credits.service';
 import { Cron } from '@nestjs/schedule';
 import { addDays, setHours, setMinutes, startOfWeek } from 'date-fns';
 

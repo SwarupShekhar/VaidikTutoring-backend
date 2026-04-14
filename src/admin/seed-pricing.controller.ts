@@ -1,6 +1,6 @@
 import { Controller, Post, Get, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
+import { PrismaService } from '../prisma/prisma.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @Controller('admin/seed-pricing')
 @UseGuards(JwtAuthGuard)

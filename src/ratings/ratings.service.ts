@@ -4,8 +4,8 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
-import { CreateRatingDto } from './dto/create-rating.dto.js';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateRatingDto } from './dto/create-rating.dto';
 
 function gradeToNumber(grade: string | null | undefined): number {
   if (!grade) return 99;

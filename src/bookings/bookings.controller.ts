@@ -10,14 +10,14 @@ import {
   Patch,
   BadRequestException,
 } from '@nestjs/common';
-import { BookingsService } from './bookings.service.js';
-import { CreateBookingDto } from './create-booking.dto.js';
-import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
-import { Roles } from '../common/decorators/roles.decorators.js';
-import { RolesGuard } from '../common/guards/roles.guard.js';
-import { EmailVerifiedGuard } from '../auth/email-verified.guard.js';
-import { PasswordChangeGuard } from '../auth/password-change.guard.js';
-import { TutorStatusGuard } from '../auth/tutor-status.guard.js';
+import { BookingsService } from './bookings.service';
+import { CreateBookingDto } from './create-booking.dto';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
+import { Roles } from '../common/decorators/roles.decorators';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { EmailVerifiedGuard } from '../auth/email-verified.guard';
+import { PasswordChangeGuard } from '../auth/password-change.guard';
+import { TutorStatusGuard } from '../auth/tutor-status.guard';
 
 @Controller('bookings')
 export class BookingsController {

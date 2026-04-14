@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
-import { PhoneVerificationController } from './phone-verification.controller.js';
-import { PhoneVerificationService } from './phone-verification.service.js';
-import { PrismaModule } from '../prisma/prisma.module.js';
-import { AuthModule } from '../auth/auth.module.js';
+import { PhoneVerificationController } from './phone-verification.controller';
+import { PhoneVerificationService } from './phone-verification.service';
+import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [PrismaModule, AuthModule],

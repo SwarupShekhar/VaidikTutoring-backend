@@ -1,9 +1,9 @@
 import { Body, Controller, Post, Get, BadRequestException, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { AuthService } from './auth.service.js';
-import { signupSchema } from './schemas/signup.schema.js';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
-import { ClerkAuthGuard } from './clerk-auth.guard.js';
+import { AuthService } from './auth.service';
+import { signupSchema } from './schemas/signup.schema';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from './clerk-auth.guard';
 
 @Controller('auth')
 export class AuthController {

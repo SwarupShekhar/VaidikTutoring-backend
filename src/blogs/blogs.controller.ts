@@ -17,11 +17,11 @@ import {
     NotFoundException,
     Redirect,
 } from '@nestjs/common';
-import { BlogsService } from './blogs.service.js';
-import { CreateBlogDto } from './dto/create-blog.dto.js';
-import { UpdateBlogDto } from './dto/update-blog.dto.js';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
-import { BlogRedirectInterceptor } from './blog-redirect.interceptor.js';
+import { BlogsService } from './blogs.service';
+import { CreateBlogDto } from './dto/create-blog.dto';
+import { UpdateBlogDto } from './dto/update-blog.dto';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { BlogRedirectInterceptor } from './blog-redirect.interceptor';
 
 @Controller()
 export class BlogsController {

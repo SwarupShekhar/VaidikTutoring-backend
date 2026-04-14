@@ -16,10 +16,34 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
+  afterAll(async () => {
+    await app.close();
+  });
+
   it('/ (GET)', () => {
     return request(app.getHttpServer())
       .get('/')
       .expect(200)
-      .expect('Hello World!');
+      .expect('StudyHours API v1 - Online');
+  });
+
+  it('/health (GET)', () => {
+    return request(app.getHttpServer())
+      .get('/health')
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.status).toBe('ok');
+        expect(res.body.timestamp).toBeDefined();
+      });
+  });
+
+  it('/health/db (GET)', () => {
+    return request(app.getHttpServer())
+      .get('/health/db')
+      .expect(200)
+      .expect((res) => {
+        // Success or failure depends on DB connectivity, but status should be one of these
+        expect(['connected', 'disconnected']).toContain(res.body.status);
+      });
   });
 });

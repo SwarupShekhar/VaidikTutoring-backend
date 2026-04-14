@@ -2,10 +2,10 @@ import {
   Controller, Post, Body, UseGuards, Req,
   BadRequestException,
 } from '@nestjs/common';
-import { PhoneVerificationService } from './phone-verification.service.js';
-import { SendOtpDto } from './dto/send-otp.dto.js';
-import { VerifyOtpDto } from './dto/verify-otp.dto.js';
-import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
+import { PhoneVerificationService } from './phone-verification.service';
+import { SendOtpDto } from './dto/send-otp.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 
 @Controller('phone-verification')
 @UseGuards(ClerkAuthGuard)

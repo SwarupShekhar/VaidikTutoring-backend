@@ -1,16 +1,16 @@
 import { Module } from '@nestjs/common';
-import { BookingsService } from './bookings.service.js';
-import { BookingsController } from './bookings.controller.js';
-import { PrismaModule } from '../prisma/prisma.module.js';
-import { EmailModule } from '../email/email.module.js';
-import { AuthModule } from '../auth/auth.module.js';
-import { CreditsModule } from '../credits/credits.module.js';
+import { BookingsService } from './bookings.service';
+import { BookingsController } from './bookings.controller';
+import { PrismaModule } from '../prisma/prisma.module';
+import { EmailModule } from '../email/email.module';
+import { AuthModule } from '../auth/auth.module';
+import { CreditsModule } from '../credits/credits.module';
 
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AzureModule } from '../azure/azure.module';
 
-import { BookingsCleanupService } from './bookings.cleanup.service.js';
-import { TutorStatusGuard } from '../auth/tutor-status.guard.js';
+import { BookingsCleanupService } from './bookings.cleanup.service';
+import { TutorStatusGuard } from '../auth/tutor-status.guard';
 
 @Module({
   imports: [PrismaModule, EmailModule, NotificationsModule, AuthModule, CreditsModule, AzureModule],
