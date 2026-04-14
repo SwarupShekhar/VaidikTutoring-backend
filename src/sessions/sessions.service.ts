@@ -878,6 +878,21 @@ export class SessionsService {
         data: { status }
     });
 
+    // Audit Log for Activity Pulse
+    try {
+        await this.prisma.audit_logs.create({
+            data: {
+                action: `SESSION_${status.toUpperCase()}`,
+                details: {
+                    sessionId,
+                    studentName: session.bookings?.students ? `${session.bookings.students.first_name} ${session.bookings.students.last_name || ''}`.trim() : 'Unknown'
+                }
+            }
+        });
+    } catch (e) {
+        console.error('Failed to audit session status update', e);
+    }
+
     if (status === 'completed' && session.bookings?.student_id) {
         // Update total hours learned and completed sessions
         let durationHours = 1; // Default

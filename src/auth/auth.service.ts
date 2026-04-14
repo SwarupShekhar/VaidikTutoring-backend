@@ -285,8 +285,28 @@ export class AuthService {
 
     if (!valid) throw new UnauthorizedException('Invalid password');
 
-    // Ensure verified? The prompt says "Allow: Login". blocking is for other actions.
-    // So logic remains same here.
+    // Update last_login_at
+    await this.prisma.users.update({
+      where: { id: user.id },
+      data: { last_login_at: new Date() },
+    });
+
+    // Audit Log for Activity Pulse
+    try {
+      await this.prisma.audit_logs.create({
+        data: {
+          action: 'USER_LOGGED_IN',
+          actor_user_id: user.id,
+          details: { 
+            email: user.email, 
+            role: user.role, 
+            name: `${user.first_name || ''} ${user.last_name || ''}`.trim() 
+          }
+        }
+      });
+    } catch (e) {
+      this.logger.error('Failed to audit login', e);
+    }
 
     const token = this.jwt.sign({
       sub: user.id,

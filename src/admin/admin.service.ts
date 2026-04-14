@@ -59,6 +59,43 @@ export class AdminService {
         this.logger.log(`Cleanup completed. ${deletedCount} recordings removed.`);
         return { success: true, count: deletedCount };
     }
+
+    async getActiveSessions() {
+        return this.prisma.sessions.findMany({
+            where: {
+                status: { notIn: ['completed', 'cancelled'] },
+                start_time: {
+                    lt: new Date(),
+                    gt: new Date(Date.now() - 3 * 60 * 60 * 1000) // last 3 hours
+                },
+                end_time: null,
+            },
+            include: {
+                bookings: {
+                    include: {
+                        subjects: true,
+                        students: true,
+                        tutors: { include: { users: true } },
+                    }
+                }
+            },
+            orderBy: { start_time: 'desc' }
+        });
+    }
+
+    async getRecentActivity() {
+        return this.prisma.audit_logs.findMany({
+            take: 20,
+            orderBy: { created_at: 'desc' },
+            select: {
+                id: true,
+                action: true,
+                created_at: true,
+                details: true,
+                actor_user_id: true,
+            }
+        });
+    }
     
     async getAllocationQueue() {
         const now = new Date();
@@ -189,7 +226,10 @@ export class AdminService {
             });
             this.logger.debug(`Raw user sample: ${allUsers.length} found`);
 
-            const [studentsCount, parentsCount, tutorsCount, upcomingSessionsCount, pendingAllocations] =
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+            const [studentsCount, parentsCount, tutorsCount, upcomingSessionsCount, pendingAllocations, activeNowCount, inactiveTutorsCount] =
                 await Promise.all([
                     this.prisma.users.count({
                         where: { role: 'student' },
@@ -218,9 +258,29 @@ export class AdminService {
                             ],
                         },
                     }),
+                    this.prisma.sessions.count({
+                        where: {
+                            status: { notIn: ['completed', 'cancelled'] },
+                            start_time: {
+                                lt: new Date(),
+                                gt: new Date(Date.now() - 2 * 60 * 60 * 1000) // last 2 hours
+                            },
+                            end_time: null,
+                        }
+                    }),
+                    this.prisma.users.count({
+                        where: {
+                            role: 'tutor',
+                            is_active: true,
+                            OR: [
+                                { last_login_at: { lt: sevenDaysAgo } },
+                                { last_login_at: null, created_at: { lt: sevenDaysAgo } }
+                            ]
+                        }
+                    })
                 ]);
 
-            this.logger.debug(`Stats: students=${studentsCount} parents=${parentsCount} tutors=${tutorsCount}`);
+            this.logger.debug(`Stats: students=${studentsCount} parents=${parentsCount} tutors=${tutorsCount} activeNow=${activeNowCount} inactiveTutors=${inactiveTutorsCount}`);
 
             const statsResult = {
                 students: studentsCount,
@@ -228,6 +288,8 @@ export class AdminService {
                 tutors: tutorsCount,
                 upcomingSessions: upcomingSessionsCount,
                 pendingAllocations,
+                activeNow: activeNowCount,
+                inactiveTutors: inactiveTutorsCount,
             };
 
             // Cache for 5 minutes (300000 ms)
@@ -991,6 +1053,59 @@ export class AdminService {
         }
 
         return { success: true, message: 'Password reset and emailed to tutor' };
+    }
+
+    async nudgeTutor(tutorId: string) {
+        const tutor = await this.prisma.tutors.findUnique({
+            where: { id: tutorId },
+            include: { users: { select: { email: true, first_name: true } } },
+        });
+
+        if (!tutor) throw new BadRequestException('Tutor not found');
+
+        const frontend = process.env.FRONTEND_URL || 'https://vaidiktutoring.vercel.app';
+        const loginUrl = `${frontend.replace(/\/$/, '')}/login`;
+
+        const html = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+        <h2 style="color: #1e3a8a; margin-bottom: 20px;">Hello ${tutor.users.first_name ?? 'there'}!</h2>
+        <p style="font-size: 16px; line-height: 1.6; color: #475569;">This is a friendly check-in from the <strong>StudyHours</strong> administration team.</p>
+        <p style="font-size: 16px; line-height: 1.6; color: #475569;">We noticed it's been a while since your last activity on the platform. We want to ensure everything is going well and that you have everything you need to be successful.</p>
+        <p style="font-size: 16px; line-height: 1.6; color: #475569;">If you're ready to start taking students or have any questions about setting up your profile, please log in to your dashboard:</p>
+        <div style="margin: 35px 0; text-align: center;">
+          <a href="${loginUrl}" style="background-color: #3b82f6; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block;">Go to Dashboard</a>
+        </div>
+        <p style="font-size: 14px; color: #64748b; margin-top: 30px;">Best regards,<br/>The StudyHours Team</p>
+        <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
+        <p style="font-size: 12px; color: #94a3b8; text-align: center;">Vaidik Tutoring Services © 2026. All rights reserved.</p>
+      </div>
+    `;
+
+        try {
+            await this.email.sendMail({
+                to: tutor.users.email,
+                subject: 'Checking in from StudyHours',
+                text: `Hi ${tutor.users.first_name || ''}, we're checking in to see how everything is going at StudyHours.`,
+                html,
+            });
+
+            // Log it
+            await this.prisma.audit_logs.create({
+                data: {
+                    actor_user_id: null, // Admin ID would be better if passed
+                    action: 'TUTOR_NUDGED',
+                    object_type: 'tutor',
+                    object_id: tutorId,
+                    details: { email: tutor.users.email }
+                }
+            });
+
+        } catch (e) {
+            this.logger.error('Failed to send nudge email', e);
+            throw new BadRequestException('Failed to send nudge email');
+        }
+
+        return { success: true, message: 'Nudge email sent to tutor' };
     }
 
     private safeIso(d: Date | null | undefined): string | null {
