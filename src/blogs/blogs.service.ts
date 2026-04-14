@@ -16,13 +16,16 @@ export class BlogsService {
         // Admin gets PUBLISHED immediately, Tutor gets PENDING
         const initialStatus = user.role === 'admin' ? 'PUBLISHED' : 'PENDING';
 
-        // Generate Slug from Title
-        let slug = createBlogDto.title
-            .toLowerCase()
-            .trim()
-            .replace(/[^\w\s-]/g, '')
-            .replace(/[\s_-]+/g, '-')
-            .replace(/^-+|-+$/g, '');
+        // Slug Handling: Use provided slug or generate from title
+        let slug = createBlogDto.slug;
+        if (!slug) {
+            slug = createBlogDto.title
+                .toLowerCase()
+                .trim()
+                .replace(/[^\w\s-]/g, '')
+                .replace(/[\s_-]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+        }
 
         // Ensure uniqueness
         const existing = await this.prisma.blogs.findUnique({ where: { slug } });
@@ -38,6 +41,10 @@ export class BlogsService {
                 image_url: createBlogDto.imageUrl,
                 category: createBlogDto.category,
                 image_alt: createBlogDto.imageAlt,
+                seo_title: createBlogDto.seoTitle,
+                seo_description: createBlogDto.seoDescription,
+                target_keyword: createBlogDto.targetKeyword,
+                related_blog_ids: createBlogDto.related_blog_ids || [],
                 slug,
                 status: initialStatus,
                 published_at: createBlogDto.publishedAt ? new Date(createBlogDto.publishedAt) : new Date(),
@@ -55,6 +62,10 @@ export class BlogsService {
                 image_url: blog.image_url,
                 category: blog.category,
                 image_alt: blog.image_alt,
+                seo_title: blog.seo_title,
+                seo_description: blog.seo_description,
+                target_keyword: blog.target_keyword,
+                related_blog_ids: blog.related_blog_ids,
                 summary: 'Initial version',
                 author_id: user.sub || user.userId,
             }
@@ -162,26 +173,32 @@ export class BlogsService {
 
     async update(id: string, updateBlogDto: any, user: any) {
         const data: any = {};
-        if (updateBlogDto.title) {
-            data.title = updateBlogDto.title;
-            // Optionally update slug if title changes
-            let slug = updateBlogDto.title
-                .toLowerCase()
-                .trim()
-                .replace(/[^\w\s-]/g, '')
-                .replace(/[\s_-]+/g, '-')
-                .replace(/^-+|-+$/g, '');
-
-            const existing = await this.prisma.blogs.findFirst({ 
-                where: { 
-                    slug,
-                    id: { not: id }
-                } 
-            });
-            if (existing) {
-                slug = `${slug}-${Date.now()}`;
+        if (updateBlogDto.title || updateBlogDto.slug) {
+            let slug = updateBlogDto.slug;
+            
+            // If no slug provided but title is, regenerate it
+            if (!slug && updateBlogDto.title) {
+                slug = updateBlogDto.title
+                    .toLowerCase()
+                    .trim()
+                    .replace(/[^\w\s-]/g, '')
+                    .replace(/[\s_-]+/g, '-')
+                    .replace(/^-+|-+$/g, '');
             }
-            data.slug = slug;
+
+            if (slug) {
+                const existing = await this.prisma.blogs.findFirst({ 
+                    where: { 
+                        slug,
+                        id: { not: id }
+                    } 
+                });
+                if (existing) {
+                    slug = `${slug}-${Date.now()}`;
+                }
+                data.slug = slug;
+            }
+            if (updateBlogDto.title) data.title = updateBlogDto.title;
         }
         if (updateBlogDto.excerpt) data.excerpt = updateBlogDto.excerpt;
         if (updateBlogDto.content) data.content = updateBlogDto.content;
@@ -196,6 +213,10 @@ export class BlogsService {
         }
         if (updateBlogDto.category) data.category = updateBlogDto.category;
         if (updateBlogDto.imageAlt !== undefined) data.image_alt = updateBlogDto.imageAlt;
+        if (updateBlogDto.seoTitle !== undefined) data.seo_title = updateBlogDto.seoTitle;
+        if (updateBlogDto.seoDescription !== undefined) data.seo_description = updateBlogDto.seoDescription;
+        if (updateBlogDto.targetKeyword !== undefined) data.target_keyword = updateBlogDto.targetKeyword;
+        if (updateBlogDto.related_blog_ids !== undefined) data.related_blog_ids = updateBlogDto.related_blog_ids;
         if (updateBlogDto.publishedAt) data.published_at = new Date(updateBlogDto.publishedAt);
         if (updateBlogDto.status) data.status = updateBlogDto.status;
 
@@ -223,6 +244,10 @@ export class BlogsService {
                 image_url: blog.image_url,
                 category: blog.category,
                 image_alt: blog.image_alt,
+                seo_title: blog.seo_title,
+                seo_description: blog.seo_description,
+                target_keyword: blog.target_keyword,
+                related_blog_ids: blog.related_blog_ids,
                 summary: updateBlogDto.summary || 'Content update',
                 author_id: user.sub || user.userId,
             }
@@ -260,6 +285,11 @@ export class BlogsService {
                 content: version.content,
                 image_url: version.image_url,
                 category: version.category,
+                image_alt: version.image_alt,
+                seo_title: version.seo_title,
+                seo_description: version.seo_description,
+                target_keyword: version.target_keyword,
+                related_blog_ids: version.related_blog_ids,
             }
         });
 
@@ -272,6 +302,11 @@ export class BlogsService {
                 content: version.content,
                 image_url: version.image_url,
                 category: version.category,
+                image_alt: version.image_alt,
+                seo_title: version.seo_title,
+                seo_description: version.seo_description,
+                target_keyword: version.target_keyword,
+                related_blog_ids: version.related_blog_ids,
                 summary: `Restored to version from ${new Date(version.created_at).toLocaleString()}`,
                 author_id: user.sub || user.userId,
             }
