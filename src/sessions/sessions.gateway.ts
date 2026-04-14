@@ -75,18 +75,51 @@ export class SessionsGateway
     @MessageBody() data: { sessionId: string; userId: string },
   ) {
     try {
-      // Verify user has access to this session or booking
-      // 1. Resolve canonical Session ID or Booking ID to ensure everyone is in the same room
+      // 1. Resolve canonical Session ID or Booking ID
       let finalSessionId = this.sessionMap.get(data.sessionId);
       if (!finalSessionId) {
           finalSessionId = await this.sessionsService.ensureSessionId(data.sessionId);
           this.sessionMap.set(data.sessionId, finalSessionId);
       }
 
+      // 2. Resolve session details
+      const session = await this.prisma.sessions.findUnique({
+        where: { id: finalSessionId },
+        include: { bookings: { include: { tutors: true } } }
+      });
+
+      if (!session) {
+          throw new Error('Session not found');
+      }
+
       await client.join(`session:${finalSessionId}`);
       this.logger.log(`User ${data.userId} joined session room: session:${finalSessionId}`);
 
-      // 1. Sync active poll state for late joiners
+      // 3. Determine if the joiner is the tutor
+      const isTutor = session.bookings?.tutors?.user_id === data.userId;
+
+      // 4. GAP FIX: Update session status to 'in_progress' if the tutor joins a 'scheduled' session
+      if (isTutor && session.status === 'scheduled') {
+        await this.prisma.sessions.update({
+          where: { id: finalSessionId },
+          data: { status: 'in_progress' }
+        });
+        this.logger.log(`Session ${finalSessionId} marked in_progress (tutor joined)`);
+        session.status = 'in_progress'; // Update local object for return
+      }
+
+      // 5. Audit join for activity pulse
+      try {
+          await this.prisma.audit_logs.create({
+            data: {
+              action: 'SESSION_JOINED',
+              actor_user_id: data.userId,
+              details: { sessionId: finalSessionId, isTutor }
+            }
+          });
+      } catch (e) { /* ignore */ }
+
+      // 6. Handle active poll state for late joiners
       const poll = this.pollState.get(finalSessionId);
       if (poll && poll.active) {
         client.emit('poll:launched', {
@@ -94,22 +127,7 @@ export class SessionsGateway
           options: poll.options
         });
 
-        // 2. If the joiner is the tutor, also send current live results
-        const booking = await this.sessionsService.resolveBookingToSession(data.sessionId);
-        // We need to find the session to get the tutor info if resolveBooking failed
-        let isTutor = false;
-        if (booking && booking.assigned_tutor_id) {
-          const tutor = await this.prisma.tutors.findUnique({ where: { id: booking.assigned_tutor_id } });
-          if (tutor && tutor.user_id === data.userId) isTutor = true;
-        } else {
-          // Try resolving via session ID directly
-          const session = await this.prisma.sessions.findUnique({
-            where: { id: finalSessionId },
-            include: { bookings: { include: { tutors: true } } }
-          });
-          if (session?.bookings?.tutors?.user_id === data.userId) isTutor = true;
-        }
-
+        // If the joiner is the tutor, also send current live results
         if (isTutor) {
           const results = poll.options.map((_: any, idx: number) => {
             return Object.values(poll.responses).filter(v => v === idx).length;
@@ -121,16 +139,11 @@ export class SessionsGateway
         }
       }
 
-      // 3. Resolve session and booking to get start time and duration
-      const session = await this.prisma.sessions.findUnique({
-        where: { id: finalSessionId },
-        include: { bookings: true }
-      });
-
-      const sessionStartTime = (session?.start_time || session?.created_at || new Date()).getTime();
+      // 7. Calculate return data
+      const sessionStartTime = (session.start_time || session.created_at || new Date()).getTime();
       
       let sessionDuration = 60; // Default
-      if (session?.bookings?.requested_start && session?.bookings?.requested_end) {
+      if (session.bookings?.requested_start && session.bookings?.requested_end) {
         const start = new Date(session.bookings.requested_start).getTime();
         const end = new Date(session.bookings.requested_end).getTime();
         sessionDuration = Math.round((end - start) / (1000 * 60));
@@ -144,7 +157,6 @@ export class SessionsGateway
       };
     } catch (error) {
       this.logger.error(`Failed to join session: ${error.message}`);
-      // Security: Disconnect unauthorized client
       client.disconnect(true);
       return { success: false, error: error.message };
     }

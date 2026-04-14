@@ -92,6 +92,34 @@ export class AdminController {
     }
   }
 
+  @Get('recent-activity')
+  async getRecentActivity(@Req() req: any) {
+    try {
+      const actor = req.user;
+      if (!actor || actor.role !== 'admin') {
+        throw new UnauthorizedException('Only admins can access activity logs.');
+      }
+      return await this.adminService.getRecentActivity();
+    } catch (e) {
+      this.logger.error('GET /admin/recent-activity failed', e);
+      throw e;
+    }
+  }
+
+  @Get('active-sessions')
+  async getActiveSessions(@Req() req: any) {
+    try {
+      const actor = req.user;
+      if (!actor || actor.role !== 'admin') {
+        throw new UnauthorizedException('Only admins can view active sessions.');
+      }
+      return await this.adminService.getActiveSessions();
+    } catch (e) {
+      this.logger.error('GET /admin/active-sessions failed', e);
+      throw e;
+    }
+  }
+
   @Get('tutors')
   async getTutors(
     @Req() req: any,
@@ -250,6 +278,14 @@ export class AdminController {
     const actor = req.user;
     if (!actor || actor.role !== 'admin') throw new UnauthorizedException('Admin only');
     return this.adminService.resetTutorPassword(id);
+  }
+
+  @Post('tutors/:id/nudge')
+  @HttpCode(HttpStatus.OK)
+  async nudgeTutor(@Req() req: any, @Param('id') id: string) {
+    const actor = req.user;
+    if (!actor || actor.role !== 'admin') throw new UnauthorizedException('Admin only');
+    return this.adminService.nudgeTutor(id);
   }
 
   @Post('tutors/:id/suspend')

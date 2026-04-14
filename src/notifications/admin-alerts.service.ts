@@ -22,26 +22,38 @@ export class AdminAlertsService {
     this.logger.log('Running tutor inactivity check...');
     const sevenDaysAgo = subDays(new Date(), 7);
 
-    // Find tutors who joined over 7 days ago but might need attention
-    // FIXME: Add 'last_login' field to users table to track true inactivity
+    // Smart check: Inactive if (last_login_at < 7 days ago) OR (never logged in AND created_at < 7 days ago)
     const inactiveTutors = await this.prisma.users.findMany({
       where: {
         role: 'tutor',
         is_active: true,
-        created_at: { lt: sevenDaysAgo }
+        OR: [
+          {
+            last_login_at: { lt: sevenDaysAgo }
+          },
+          {
+            last_login_at: null,
+            created_at: { lt: sevenDaysAgo }
+          }
+        ]
       },
       select: { 
         id: true, 
         first_name: true, 
         last_name: true, 
-        created_at: true 
+        created_at: true,
+        last_login_at: true
       }
     });
 
     for (const tutor of inactiveTutors) {
       const tutorName = `${tutor.first_name || ''} ${tutor.last_name || ''}`.trim() || 'Unnamed Tutor';
+      const lastActivity = tutor.last_login_at 
+        ? `last seen on ${tutor.last_login_at.toDateString()}` 
+        : `joined on ${tutor.created_at?.toDateString()} but has NEVER logged in`;
+
       await this.notifications.notifyAdmins('tutor_inactivity', {
-        message: `System Alert: Tutor ${tutorName} joined on ${tutor.created_at?.toDateString()}. Please verify their recent activity.`,
+        message: `System Alert: Tutor ${tutorName} is inactive (${lastActivity}).`,
         tutorId: tutor.id,
         tutorName: tutorName,
         severity: 'warning'
