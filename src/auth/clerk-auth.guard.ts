@@ -1,9 +1,9 @@
 
 import { CanActivate, ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { verifyToken, clerkClient } from '@clerk/clerk-sdk-node';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
-import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata.js';
+import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata';
 
 @Injectable()
 export class ClerkAuthGuard implements CanActivate {

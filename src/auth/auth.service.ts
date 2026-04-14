@@ -5,11 +5,11 @@ import {
   ConflictException,
   BadRequestException,
 } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../email/email.service';
-import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata.js';
+import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata';
 import { CreditsService } from '../credits/credits.service';
 import * as crypto from 'crypto';
 

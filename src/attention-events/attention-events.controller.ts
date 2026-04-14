@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Req } from '@nestjs/common';
-import { AttentionEventsService } from './attention-events.service.js';
+import { AttentionEventsService } from './attention-events.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @Controller('sessions')

@@ -14,11 +14,11 @@ import {
   Query,
   Patch,
 } from '@nestjs/common';
-import { AdminService } from './admin.service.js';
-import { SyncClerkMetadataService } from './sync-clerk-metadata.js';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
-import { RolesGuard } from '../common/guards/roles.guard.js';
-import { Roles } from '../common/decorators/roles.decorators.js';
+import { AdminService } from './admin.service';
+import { SyncClerkMetadataService } from './sync-clerk-metadata';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorators';
 import {
   IsEmail,
   IsOptional,

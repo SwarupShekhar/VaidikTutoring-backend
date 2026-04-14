@@ -10,8 +10,8 @@ import {
   Patch,
   NotFoundException,
 } from '@nestjs/common';
-import { StudentsService } from './students.service.js';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
+import { StudentsService } from './students.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CreditsService } from '../credits/credits.service';
 
 // Assuming you have an AuthGuard or similar to get the user

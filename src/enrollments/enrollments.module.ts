@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { EnrollmentsService } from './enrollments.service.js';
-import { EnrollmentsController } from './enrollments.controller.js';
-import { PrismaModule } from '../prisma/prisma.module.js';
-import { BookingsModule } from '../bookings/bookings.module.js';
-import { CreditsModule } from '../credits/credits.module.js';
+import { EnrollmentsService } from './enrollments.service';
+import { EnrollmentsController } from './enrollments.controller';
+import { PrismaModule } from '../prisma/prisma.module';
+import { BookingsModule } from '../bookings/bookings.module';
+import { CreditsModule } from '../credits/credits.module';
 
 @Module({
   imports: [PrismaModule, BookingsModule, CreditsModule],

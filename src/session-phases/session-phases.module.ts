@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
-import { SessionPhasesService } from './session-phases.service.js';
-import { SessionPhasesController } from './session-phases.controller.js';
-import { PrismaModule } from '../prisma/prisma.module.js';
-import { AuthModule } from '../auth/auth.module.js';
+import { SessionPhasesService } from './session-phases.service';
+import { SessionPhasesController } from './session-phases.controller';
+import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
     imports: [PrismaModule, AuthModule],

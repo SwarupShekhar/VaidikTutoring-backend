@@ -1,6 +1,6 @@
 import { Controller, Post, Body, Param, UseGuards, Get } from '@nestjs/common';
-import { SessionPhasesService } from './session-phases.service.js';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
+import { SessionPhasesService } from './session-phases.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @Controller('sessions')
 export class SessionPhasesController {

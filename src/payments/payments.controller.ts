@@ -11,7 +11,7 @@ import { PaymentsService } from './payments.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
-import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 // Extend Request type to include user from Clerk auth

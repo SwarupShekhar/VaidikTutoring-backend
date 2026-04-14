@@ -9,9 +9,9 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { RatingsService } from './ratings.service.js';
-import { CreateRatingDto } from './dto/create-rating.dto.js';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
+import { RatingsService } from './ratings.service';
+import { CreateRatingDto } from './dto/create-rating.dto';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @Controller('ratings')
 @UseGuards(JwtAuthGuard)

@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { BlogsService } from './blogs.service.js';
-import { BlogsController } from './blogs.controller.js';
-import { PrismaModule } from '../prisma/prisma.module.js';
-import { AuthModule } from '../auth/auth.module.js';
-import { StorageModule } from '../storage/storage.module.js';
+import { BlogsService } from './blogs.service';
+import { BlogsController } from './blogs.controller';
+import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
     imports: [PrismaModule, AuthModule, StorageModule],

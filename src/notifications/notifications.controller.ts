@@ -1,6 +1,6 @@
 import { Controller, Get, Patch, Post, Param, Req, UseGuards } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
-import { ClerkAuthGuard } from '../auth/clerk-auth.guard.js';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 
 @Controller('notifications')
 @UseGuards(ClerkAuthGuard)
