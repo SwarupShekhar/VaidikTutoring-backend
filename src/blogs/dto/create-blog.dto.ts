@@ -25,6 +25,25 @@ export class CreateBlogDto {
     @IsOptional()
     imageAlt?: string;
 
+    @IsString()
+    @IsOptional()
+    slug?: string;
+
+    @IsString()
+    @IsOptional()
+    seoTitle?: string;
+
+    @IsString()
+    @IsOptional()
+    seoDescription?: string;
+
+    @IsString()
+    @IsOptional()
+    targetKeyword?: string;
+
+    @IsOptional()
+    related_blog_ids?: string[];
+
     @IsDateString()
     @IsOptional()
     publishedAt?: string;
