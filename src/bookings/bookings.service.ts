@@ -993,7 +993,8 @@ export class BookingsService {
 
   // Get single booking by ID with full details including session
   async getBookingById(bookingId: string, user: any) {
-    const booking = await this.prisma.bookings.findUnique({
+    // 1. Try to find by Booking ID
+    let booking = await this.prisma.bookings.findUnique({
       where: { id: bookingId },
       include: {
         subjects: true,
@@ -1035,8 +1036,61 @@ export class BookingsService {
       },
     });
 
+    // 2. If not found, try to find a session with this ID and get its booking
     if (!booking) {
-      throw new NotFoundException('Booking not found');
+      const session = await this.prisma.sessions.findUnique({
+        where: { id: bookingId },
+        include: {
+          bookings: {
+            include: {
+              subjects: true,
+              students: {
+                select: {
+                  id: true,
+                  user_id: true,
+                  parent_user_id: true,
+                  first_name: true,
+                  last_name: true,
+                  grade: true,
+                  interests: true,
+                  recent_focus: true,
+                  struggle_areas: true,
+                },
+              },
+              tutors: {
+                include: {
+                  users: {
+                    select: {
+                      id: true,
+                      first_name: true,
+                      last_name: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+              sessions: {
+                orderBy: { start_time: 'desc' },
+                take: 1,
+                include: {
+                  session_recordings: {
+                    take: 1,
+                    orderBy: { created_at: 'desc' }
+                  }
+                }
+              },
+            },
+          },
+        },
+      });
+
+      if (session?.bookings) {
+        booking = session.bookings as any;
+      }
+    }
+
+    if (!booking) {
+      throw new NotFoundException('Booking or Session not found');
     }
 
     // Check authorization: user must be the student, parent, assigned tutor, or admin
