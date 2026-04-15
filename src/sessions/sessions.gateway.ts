@@ -8,7 +8,7 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger, UseGuards } from '@nestjs/common';
+import { Logger, UseGuards, NotFoundException } from '@nestjs/common';
 import { SessionsService } from './sessions.service';
 import { AttentionEventsService } from '../attention-events/attention-events.service';
 import { SessionPhasesService } from '../session-phases/session-phases.service';
@@ -47,9 +47,12 @@ export class SessionsGateway
   server: Server;
 
   private readonly logger = new Logger(SessionsGateway.name);
-  private whiteboardState = new Map<string, any>(); // Cache for late joiners (SessionId -> Elements)
-  private pollState = new Map<string, any>(); // Cache for active polls { question, options, responses: {}, active: true }
-  private sessionMap = new Map<string, string>(); // Performance cache to avoid DB lookups on every draw stroke
+  private whiteboardState = new Map<string, any>(); // Cache for elements
+  private slidesState = new Map<string, string[]>(); // Cache for PDF slides
+  private filesState = new Map<string, any>(); // Cache for binary files
+  private penAccessState = new Map<string, Set<string>>(); // Cache for student pen access (SessionId -> Set of StudentIds)
+  private pollState = new Map<string, any>(); // Cache for active polls
+  private sessionMap = new Map<string, string>(); // Performance cache
 
   constructor(
     private readonly sessionsService: SessionsService,
@@ -89,7 +92,7 @@ export class SessionsGateway
       });
 
       if (!session) {
-          throw new Error('Session not found');
+        throw new NotFoundException('Booking or Session not found');
       }
 
       await client.join(`session:${finalSessionId}`);
@@ -119,7 +122,25 @@ export class SessionsGateway
           });
       } catch (e) { /* ignore */ }
 
-      // 6. Handle active poll state for late joiners
+      // 7. Handle whiteboard state for late joiners
+      const lastUpdate = this.whiteboardState.get(finalSessionId);
+      if (lastUpdate) {
+        client.emit('whiteboard.receiveUpdate', lastUpdate);
+      }
+
+      // 8. Handle slides state for late joiners
+      const slidesArray = this.slidesState.get(finalSessionId);
+      if (slidesArray) {
+        client.emit('whiteboard.receiveSlides', slidesArray);
+      }
+
+      // 9. Handle files state for late joiners
+      const files = this.filesState.get(finalSessionId);
+      if (files) {
+        client.emit('whiteboard.receiveFiles', files);
+      }
+
+      // 10. Handle active poll state for late joiners
       const poll = this.pollState.get(finalSessionId);
       if (poll && poll.active) {
         client.emit('poll:launched', {
@@ -139,7 +160,13 @@ export class SessionsGateway
         }
       }
 
-      // 7. Calculate return data
+      // 10. Handle pen access for late joiners
+      const accessSet = this.penAccessState.get(finalSessionId);
+      if (accessSet && accessSet.has(data.userId)) {
+        client.emit('whiteboard.penAccessUpdated', { studentId: data.userId, hasAccess: true });
+      }
+
+      // 11. Calculate return data
       const sessionStartTime = (session.start_time || session.created_at || new Date()).getTime();
       
       let sessionDuration = 60; // Default
@@ -230,6 +257,9 @@ export class SessionsGateway
   ) {
     try {
       const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      const payloadSize = JSON.stringify(payload.update).length / 1024; // in KB
+      
+      this.logger.debug(`Whiteboard update for ${finalSessionId}: ${payloadSize.toFixed(2)} KB`);
 
       // Strip files from regular updates to reduce payload size
       // Only elements are needed for real-time stroke sync
@@ -258,6 +288,11 @@ export class SessionsGateway
     try {
       const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
 
+      // Update cache
+      let currentFiles = this.filesState.get(finalSessionId) || {};
+      currentFiles = { ...currentFiles, ...payload.files };
+      this.filesState.set(finalSessionId, currentFiles);
+
       // Broadcast heavy binary data
       this.logger.log(`Syncing ${Object.keys(payload.files || {}).length} files for session ${finalSessionId}`);
       client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.receiveFiles', payload.files);
@@ -277,12 +312,13 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; slides: string[] },
   ) {
     try {
-      let finalSessionId = payload.sessionId;
-      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
-      if (booking && booking.sessions.length > 0) {
-        finalSessionId = booking.sessions[0].id;
-      }
-
+      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      const slideCount = payload.slides?.length || 0;
+      const totalSize = JSON.stringify(payload.slides).length / (1024 * 1024); // in MB
+      
+      this.logger.log(`Syncing ${slideCount} slides for session ${finalSessionId} (${totalSize.toFixed(2)} MB)`);
+      
+      this.slidesState.set(finalSessionId, payload.slides);
       client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.receiveSlides', payload.slides);
       return { success: true };
     } catch (error) {
@@ -300,20 +336,29 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; studentId: string; hasAccess: boolean },
   ) {
     try {
-      let finalSessionId = payload.sessionId;
-      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
-      if (booking && booking.sessions.length > 0) {
-        finalSessionId = booking.sessions[0].id;
+      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      
+      // Update cache
+      let accessSet = this.penAccessState.get(finalSessionId);
+      if (!accessSet) {
+        accessSet = new Set<string>();
+        this.penAccessState.set(finalSessionId, accessSet);
+      }
+
+      if (payload.hasAccess) {
+        accessSet.add(payload.studentId);
+      } else {
+        accessSet.delete(payload.studentId);
       }
 
       client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.penAccessUpdated', {
         studentId: payload.studentId,
-        hasAccess: payload.hasAccess
+        hasAccess: payload.hasAccess,
       });
       return { success: true };
     } catch (error) {
-      this.logger.error(`Failed to toggle pen access: ${error.message}`);
-      return { success: false, error: error.message };
+      this.logger.error(`Pen access toggle failed: ${error.message}`);
+      return { success: false };
     }
   }
 
@@ -415,21 +460,40 @@ export class SessionsGateway
   @SubscribeMessage('viewport:sync')
   async handleViewportSync(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { sessionId: string; scrollX: number; scrollY: number; zoom: number },
+    @MessageBody() payload: { sessionId: string; centerX: number; centerY: number; zoom: number },
   ) {
     try {
       const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
-      
+
       // Broadcast to everyone ELSE in the room (the students)
       client.broadcast.to(`session:${finalSessionId}`).emit('viewport:update', {
-        scrollX: payload.scrollX,
-        scrollY: payload.scrollY,
+        centerX: payload.centerX,
+        centerY: payload.centerY,
         zoom: payload.zoom
       });
 
       return { success: true };
     } catch (error) {
       this.logger.error(`Viewport sync failed: ${error.message}`);
+      return { success: false };
+    }
+  }
+
+  /**
+   * Handle Whiteboard Sync Request (student requests current state from tutor)
+   */
+  @SubscribeMessage('whiteboard.requestSync')
+  handleWhiteboardRequestSync(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { sessionId: string },
+  ) {
+    try {
+      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      // Broadcast sync request to the room so tutor responds
+      client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.syncRequest');
+      return { success: true };
+    } catch (error) {
+      this.logger.error(`Whiteboard sync request failed: ${error.message}`);
       return { success: false };
     }
   }
