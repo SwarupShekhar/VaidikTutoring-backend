@@ -22,6 +22,10 @@ export class TutorsController {
 
   @Get('stats')
   async getStats(@Req() req: any) {
+    // Update last_seen timestamp when tutor accesses dashboard
+    this.tutorsService.updateLastSeen(req.user.userId).catch(err =>
+      console.error('Failed to update last_seen:', err.message)
+    );
     return this.tutorsService.getTutorStats(req.user.userId);
   }
 
@@ -29,6 +33,11 @@ export class TutorsController {
   async getBookings(@Req() req: any) {
     if (req.user.role !== 'tutor' && req.user.role !== 'admin')
       throw new UnauthorizedException('Access denied.');
+
+    // Update last_seen timestamp when tutor accesses bookings
+    this.tutorsService.updateLastSeen(req.user.userId).catch(err =>
+      console.error('Failed to update last_seen:', err.message)
+    );
 
     const bookings = await this.bookingsService.forTutor(req.user.userId);
 

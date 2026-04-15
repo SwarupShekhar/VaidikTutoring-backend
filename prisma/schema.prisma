@@ -51,21 +51,22 @@ model audit_logs {
 }
 
 model bookings {
-  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  student_id        String?    @db.Uuid
-  package_id        String?    @db.Uuid
-  subject_id        String?
-  curriculum_id     String?
-  requested_start   DateTime?  @db.Timestamptz(6)
-  requested_end     DateTime?  @db.Timestamptz(6)
-  status            String?
-  assigned_tutor_id String?    @db.Uuid
-  note              String?
-  created_at        DateTime?  @default(now()) @db.Timestamptz(6)
-  program_id        String?    @db.Uuid
-  credit_cost       Int        @default(0)
-  is_trial_session  Boolean    @default(false)
-  is_free_session   Boolean    @default(false)
+  id                        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  student_id                String?    @db.Uuid
+  package_id                String?    @db.Uuid
+  subject_id                String?
+  curriculum_id             String?
+  requested_start           DateTime?  @db.Timestamptz(6)
+  requested_end             DateTime?  @db.Timestamptz(6)
+  status                    String?
+  assigned_tutor_id         String?    @db.Uuid
+  note                      String?
+  created_at                DateTime?  @default(now()) @db.Timestamptz(6)
+  program_id                String?    @db.Uuid
+  credit_cost               Int        @default(0)
+  is_trial_session          Boolean    @default(false)
+  is_free_session           Boolean    @default(false)
+  fallback_broadcasted_at   DateTime?  @db.Timestamptz(6)
   tutors            tutors?    @relation(fields: [assigned_tutor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   curricula         curricula? @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   packages          packages?  @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -377,6 +378,7 @@ model tutors {
   tutor_review_notes String?
   created_at         DateTime?      @default(now()) @db.Timestamptz(6)
   program_id         String?        @db.Uuid
+  last_seen          DateTime?      @db.Timestamptz(6)
   bookings           bookings[]
   tutor_shifts       tutor_shifts[]
   tutor_ratings      tutor_ratings[]

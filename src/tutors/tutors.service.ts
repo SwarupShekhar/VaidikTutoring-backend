@@ -120,4 +120,26 @@ export class TutorsService {
       }
     };
   }
+
+  /**
+   * Update tutor's last_seen timestamp (used for online status tracking)
+   * Call this when tutor accesses dashboard, performs actions, or logs in
+   */
+  async updateLastSeen(userId: string) {
+    try {
+      const tutor = await this.prisma.tutors.findFirst({
+        where: { user_id: userId },
+      });
+
+      if (!tutor) return;
+
+      await this.prisma.tutors.update({
+        where: { id: tutor.id },
+        data: { last_seen: new Date() },
+      });
+    } catch (error) {
+      // Silently fail - this is a non-critical background update
+      console.error(`Failed to update last_seen for user ${userId}:`, error.message);
+    }
+  }
 }
