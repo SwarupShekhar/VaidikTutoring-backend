@@ -913,24 +913,20 @@ export class SessionsService {
     return updated;
   }
 
-  // FIX 3: Unified method to end a session (mark as completed, record actual end time)
+  // FIX 3: Unified method to end a session (mark as completed)
   async endSession(sessionId: string, userId: string) {
     const session = await this.prisma.sessions.findUnique({
       where: { id: sessionId },
-      include: { bookings: { include: { students: true } } }
+      include: { bookings: true }
     });
 
     if (!session) {
       throw new NotFoundException('Session not found');
     }
 
-    // Verify user has access to this session (tutor, student, parent, or admin)
     const user = await this.prisma.users.findUnique({
       where: { id: userId },
-      include: {
-        tutors: true,
-        students: { include: { parent_rel: true } }
-      }
+      include: { tutors: true }
     });
 
     if (!user) {
@@ -939,24 +935,39 @@ export class SessionsService {
 
     // Permission checks: user must be tutor, the student, parent of student, or admin
     const isAdmin = user.role === 'admin';
-    const isTutor = user.tutors && user.tutors.length > 0;
-    const isStudent = user.students && user.students.length > 0 &&
-                      user.students.some(s => s.id === session.bookings.student_id);
-    const isParent = user.students && user.students.some(s => s.parent_user_id === userId);
+    const isTutor = user.role === 'tutor' || (user.tutors && user.tutors.length > 0);
+
+    // Check if user is the student in this session
+    const isStudent = user.role === 'student' && session.bookings?.student_id && user.id === userId;
+    if (isStudent) {
+      const student = await this.prisma.students.findUnique({
+        where: { user_id: userId }
+      });
+      if (!student || student.id !== session.bookings.student_id) {
+        throw new ForbiddenException('You are not the student in this session');
+      }
+    }
+
+    // Check if user is the parent of the student
+    let isParent = false;
+    if (user.role === 'parent' && session.bookings?.student_id) {
+      const student = await this.prisma.students.findUnique({
+        where: { id: session.bookings.student_id }
+      });
+      isParent = student && student.parent_user_id === userId;
+    }
 
     if (!isAdmin && !isTutor && !isStudent && !isParent) {
       throw new ForbiddenException('You do not have access to this session');
     }
 
-    // Mark session as completed and record the actual end time
+    // Mark session as completed
     const updated = await this.prisma.sessions.update({
       where: { id: sessionId },
       data: {
-        status: 'completed',
-        // Note: end_time is the scheduled end time, we're not changing it
-        // If you want to track actual end time, consider adding an ended_at field to the schema
+        status: 'completed'
       },
-      include: { bookings: { include: { students: true } } }
+      include: { bookings: true }
     });
 
     // Update student progress (hours learned, streak, badges)
