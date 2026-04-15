@@ -250,6 +250,18 @@ export class SessionsController {
     return this.sessionsService.updateSessionStatus(id, body.status);
   }
 
+  // FIX 3: Unified endpoint to end a session
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @Post(':id/end')
+  async endSession(
+    @Param('id') id: string,
+    @Req() req: any,
+  ) {
+    // Anyone in the session (tutor, student, parent, admin) can end it
+    // The service method will verify access
+    return this.sessionsService.endSession(id, req.user.userId);
+  }
+
   @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
   // Assumes you have Roles and RolesGuard imported and applied at class or method level
   // Actually, RolesGuard needs to be added here.
