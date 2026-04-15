@@ -147,10 +147,40 @@ export class NotificationsService {
         ...payload,
         created_at: new Date(),
       });
-      
+
       this.logger.log(`Admin alert sent: ${type} - ${payload.message}`);
     } catch (e) {
       this.logger.error(`Error notifying admins: ${e.message}`);
+    }
+  }
+
+  /**
+   * Notify tutor about unclaimed booking (15-minute fallback)
+   * Sends real-time toast notification to tutor dashboard
+   */
+  notifyTutorBookingFallback(
+    tutorUserId: string,
+    studentName: string,
+    subjectName: string,
+    startTime: Date,
+  ) {
+    try {
+      const timeStr = startTime
+        ? new Date(startTime).toLocaleTimeString()
+        : 'Scheduled time';
+
+      this.gateway.broadcastToTutor(tutorUserId, 'booking:unclaimed_fallback', {
+        message: `⏰ A session with ${studentName} (${subjectName}) at ${timeStr} is still available!`,
+        studentName,
+        subjectName,
+        startTime: startTime?.toISOString(),
+        type: 'warning', // Toast type for frontend styling
+        autoClose: 8000, // Auto-close after 8 seconds
+      });
+
+      this.logger.log(`Fallback notification sent to tutor ${tutorUserId}`);
+    } catch (e) {
+      this.logger.error(`Error sending fallback notification: ${e.message}`);
     }
   }
 }

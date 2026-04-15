@@ -69,4 +69,15 @@ export class NotificationsGateway implements OnGatewayConnection {
             this.logger.debug(`Admin client ${client.id} joined admin room`);
         }
     }
+
+    /**
+     * Send real-time notification to a specific tutor (for dashboard toast)
+     * Used for 15-minute fallback unclaimed booking notifications
+     */
+    broadcastToTutor(tutorUserId: string, eventName: string, payload: any) {
+        this.server.to(`user-${tutorUserId}`).emit(eventName, payload);
+        this.logger.debug(
+            `Notification sent to tutor ${tutorUserId}: ${eventName}`,
+        );
+    }
 }

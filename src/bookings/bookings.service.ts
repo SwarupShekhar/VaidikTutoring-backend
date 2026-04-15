@@ -350,11 +350,25 @@ export class BookingsService {
   // 4. Notifications
   async autoAssignTutor(booking: any) {
     // 1. Fetch ALL active tutors with their skills AND filtering by Program ID
+    // ONLINE STATUS CHECK: Only assign tutors who were active within configured threshold
+    const ONLINE_THRESHOLD_MINUTES = parseInt(
+      process.env.TUTOR_ONLINE_THRESHOLD_MINUTES || '30',
+      10,
+    );
+    const onlineThresholdAgo = new Date(
+      Date.now() - ONLINE_THRESHOLD_MINUTES * 60 * 1000,
+    );
+
     const tutors = await this.prisma.tutors.findMany({
       where: {
         is_active: true,
         tutor_approved: true, // Only approved tutors can be auto-assigned
-        program_id: booking.program_id // STRICT SCOPING: Only assign tutors in the same program
+        program_id: booking.program_id, // STRICT SCOPING: Only assign tutors in the same program
+        // Online status check: last_seen within configured threshold (default 30 minutes)
+        OR: [
+          { last_seen: { gte: onlineThresholdAgo } }, // Recently seen
+          { last_seen: null }, // For tutors who haven't had last_seen set yet (backward compatibility)
+        ],
       },
       include: { users: true },
     });
@@ -624,6 +638,12 @@ export class BookingsService {
           assigned_tutor_id: tutor.id,
           status: 'confirmed',
         },
+      });
+
+      // Update tutor's last_seen to mark activity on claim
+      await tx.tutors.update({
+        where: { id: tutor.id },
+        data: { last_seen: new Date() },
       });
 
       // Create/Update Session

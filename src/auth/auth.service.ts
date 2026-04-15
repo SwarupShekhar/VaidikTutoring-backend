@@ -4,6 +4,9 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  Inject,
+  forwardRef,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
@@ -11,6 +14,7 @@ import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../email/email.service';
 import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata';
 import { CreditsService } from '../credits/credits.service';
+import { TutorsService } from '../tutors/tutors.service';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -23,6 +27,9 @@ export class AuthService {
     private emailService: EmailService,
     private syncClerkService: SyncClerkMetadataService,
     private creditsService: CreditsService,
+    @Inject(forwardRef(() => TutorsService))
+    @Optional()
+    private tutorsService?: TutorsService,
   ) { }
 
   private async logAudit(action: string, userId: string | null, details: any = {}) {
@@ -291,16 +298,23 @@ export class AuthService {
       data: { last_login_at: new Date() },
     });
 
+    // Update tutor's last_seen timestamp for online status tracking
+    if (user.role === 'tutor' && this.tutorsService) {
+      this.tutorsService.updateLastSeen(user.id).catch(err =>
+        this.logger.warn(`Failed to update tutor last_seen on login: ${err.message}`)
+      );
+    }
+
     // Audit Log for Activity Pulse
     try {
       await this.prisma.audit_logs.create({
         data: {
           action: 'USER_LOGGED_IN',
           actor_user_id: user.id,
-          details: { 
-            email: user.email, 
-            role: user.role, 
-            name: `${user.first_name || ''} ${user.last_name || ''}`.trim() 
+          details: {
+            email: user.email,
+            role: user.role,
+            name: `${user.first_name || ''} ${user.last_name || ''}`.trim()
           }
         }
       });
