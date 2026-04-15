@@ -938,13 +938,13 @@ export class SessionsService {
     const isTutor = user.role === 'tutor' || (user.tutors && user.tutors.length > 0);
 
     // Check if user is the student in this session
-    const isStudent = user.role === 'student' && session.bookings?.student_id && user.id === userId;
-    if (isStudent) {
+    let isStudent = false;
+    if (user.role === 'student' && session.bookings?.student_id) {
       const student = await this.prisma.students.findUnique({
         where: { user_id: userId }
       });
-      if (!student || student.id !== session.bookings.student_id) {
-        throw new ForbiddenException('You are not the student in this session');
+      if (student && student.id === session.bookings.student_id) {
+        isStudent = true;
       }
     }
 
@@ -954,7 +954,9 @@ export class SessionsService {
       const student = await this.prisma.students.findUnique({
         where: { id: session.bookings.student_id }
       });
-      isParent = student && student.parent_user_id === userId;
+      if (student && student.parent_user_id === userId) {
+        isParent = true;
+      }
     }
 
     if (!isAdmin && !isTutor && !isStudent && !isParent) {
