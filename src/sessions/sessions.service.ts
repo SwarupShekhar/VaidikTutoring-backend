@@ -913,6 +913,77 @@ export class SessionsService {
     return updated;
   }
 
+  // FIX 3: Unified method to end a session (mark as completed, record actual end time)
+  async endSession(sessionId: string, userId: string) {
+    const session = await this.prisma.sessions.findUnique({
+      where: { id: sessionId },
+      include: { bookings: { include: { students: true } } }
+    });
+
+    if (!session) {
+      throw new NotFoundException('Session not found');
+    }
+
+    // Verify user has access to this session (tutor, student, parent, or admin)
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      include: {
+        tutors: true,
+        students: { include: { parent_rel: true } }
+      }
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Permission checks: user must be tutor, the student, parent of student, or admin
+    const isAdmin = user.role === 'admin';
+    const isTutor = user.tutors && user.tutors.length > 0;
+    const isStudent = user.students && user.students.length > 0 &&
+                      user.students.some(s => s.id === session.bookings.student_id);
+    const isParent = user.students && user.students.some(s => s.parent_user_id === userId);
+
+    if (!isAdmin && !isTutor && !isStudent && !isParent) {
+      throw new ForbiddenException('You do not have access to this session');
+    }
+
+    // Mark session as completed and record the actual end time
+    const updated = await this.prisma.sessions.update({
+      where: { id: sessionId },
+      data: {
+        status: 'completed',
+        // Note: end_time is the scheduled end time, we're not changing it
+        // If you want to track actual end time, consider adding an ended_at field to the schema
+      },
+      include: { bookings: { include: { students: true } } }
+    });
+
+    // Update student progress (hours learned, streak, badges)
+    if (updated.bookings?.student_id) {
+      let durationHours = 1; // Default to 1 hour
+      if (updated.start_time && updated.end_time) {
+        durationHours = (new Date(updated.end_time).getTime() - new Date(updated.start_time).getTime()) / 3600000;
+      }
+
+      await this.prisma.students.update({
+        where: { id: updated.bookings.student_id },
+        data: { total_hours_learned: { increment: durationHours } }
+      });
+
+      // Update streak + badges
+      await this.studentsService.updateStreak(updated.bookings.student_id);
+      await this.checkBadges(updated.bookings.student_id);
+    }
+
+    return {
+      success: true,
+      sessionId: updated.id,
+      status: updated.status,
+      message: 'Session ended successfully'
+    };
+  }
+
   /**
    * Resolves a provided ID (which could be a Session ID or a Booking ID) to an actual Session record.
    * If a Booking ID is provided and no session exists, it creates one.
