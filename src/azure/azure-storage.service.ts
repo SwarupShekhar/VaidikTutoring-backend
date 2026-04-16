@@ -12,6 +12,8 @@ export class AzureStorageService implements OnModuleInit {
   private readonly SNAPSHOTS_CONTAINER = 'whiteboard-snapshots';
   private readonly SLIDES_CONTAINER = 'session-slides';
   private readonly NOTES_CONTAINER = 'class-notes';
+  private readonly VAULT_CONTAINER = 'vault-assets';
+
 
   constructor() {
     const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
@@ -29,7 +31,14 @@ export class AzureStorageService implements OnModuleInit {
   }
 
   private async ensureContainers() {
-    const containers = [this.RECORDINGS_CONTAINER, this.SNAPSHOTS_CONTAINER, this.SLIDES_CONTAINER, this.NOTES_CONTAINER];
+    const containers = [
+      this.RECORDINGS_CONTAINER, 
+      this.SNAPSHOTS_CONTAINER, 
+      this.SLIDES_CONTAINER, 
+      this.NOTES_CONTAINER,
+      this.VAULT_CONTAINER
+    ];
+
     for (const container of containers) {
       const containerClient = this.blobServiceClient.getContainerClient(container);
       const exists = await containerClient.exists();
@@ -143,4 +152,27 @@ export class AzureStorageService implements OnModuleInit {
     }
     return blobs;
   }
+
+  async uploadVaultAsset(buffer: Buffer, mimeType: string, originalName: string): Promise<string> {
+    const containerClient = this.blobServiceClient.getContainerClient(this.VAULT_CONTAINER);
+    const blobName = `admin/${Date.now()}-${originalName}`;
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    await blockBlobClient.uploadData(buffer, {
+      blobHTTPHeaders: { blobContentType: mimeType }
+    });
+    return blobName;
+  }
+
+  async generateShortLivedSas(blobName: string): Promise<string> {
+    const containerClient = this.blobServiceClient.getContainerClient(this.VAULT_CONTAINER);
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    const expiresOn = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    
+    const sasUrl = await blockBlobClient.generateSasUrl({
+      permissions: BlobSASPermissions.parse('r'),
+      expiresOn
+    });
+    return sasUrl;
+  }
 }
+
