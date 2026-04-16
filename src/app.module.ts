@@ -39,6 +39,7 @@ import { DailyModule } from './daily/daily.module';
 import { PhoneVerificationModule } from './phone-verification/phone-verification.module';
 import { SupportModule } from './support/support.module';
 import { BackupModule } from './backup/backup.module';
+import { VaultModule } from './vault/vault.module';
 
 @Module({
   imports: [
@@ -121,6 +122,7 @@ import { BackupModule } from './backup/backup.module';
     DailyModule,
     SupportModule,
     BackupModule,
+    VaultModule,
     ServeStaticModule.forRoot({
 
       rootPath: path.join(process.cwd(), 'public'),
