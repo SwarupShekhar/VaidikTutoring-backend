@@ -16,6 +16,7 @@ import {
   FileTypeValidator,
   UnauthorizedException,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -187,9 +188,7 @@ export class SessionsController {
   ) {
     // Typically only Tutors or Admins record attendance
     if (req.user.role !== 'admin' && req.user.role !== 'tutor') {
-      // Additional check: is this tutor assigned to this session?
-      // Service logic handles specific permission checks usually, or here.
-      // Let's defer to service or throw if not staff.
+      throw new ForbiddenException('Only staff can record attendance');
     }
     return this.sessionsService.recordAttendance(id, body.studentId, body.present, body.minutesAttended);
   }
@@ -247,7 +246,7 @@ export class SessionsController {
     if (req.user.role !== 'tutor' && req.user.role !== 'admin') {
       throw new UnauthorizedException('Only tutors or admins can update session status');
     }
-    return this.sessionsService.updateSessionStatus(id, body.status);
+    return this.sessionsService.updateSessionStatus(id, body.status, req.user.userId);
   }
 
   // FIX 3: Unified endpoint to end a session
@@ -279,7 +278,7 @@ export class SessionsController {
     @Param('id') id: string,
     @Req() req: any
   ) {
-    return this.sessionsService.getWhiteboardSnapshotSasUrl(id, req.user.id);
+    return this.sessionsService.getWhiteboardSnapshotSasUrl(id, req.user.userId);
   }
 
   @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
@@ -299,17 +298,15 @@ export class SessionsController {
   @Get('stickers/:studentId')
   async getStickers(@Param('studentId') studentId: string, @Req() req: any) {
     const user = req.user;
+    const student = await this.prisma.students.findUnique({ where: { id: studentId } });
+    if (!student) throw new NotFoundException('Student not found');
 
     // Auth logic: User or Parent can see theirs/child's. Admin can see all.
     if (user.role === 'admin') return this.sessionsService.getStickers(studentId);
 
-    if (user.role === 'student' && user.userId === studentId) return this.sessionsService.getStickers(studentId);
+    if (user.role === 'student' && student.user_id === user.userId) return this.sessionsService.getStickers(studentId);
 
-    if (user.role === 'parent') {
-        // Verify child
-        const child = await this.prisma.students.findUnique({ where: { user_id: studentId } });
-        if (child?.parent_user_id === user.userId) return this.sessionsService.getStickers(studentId);
-    }
+    if (user.role === 'parent' && student.parent_user_id === user.userId) return this.sessionsService.getStickers(studentId);
 
     throw new ForbiddenException('You do not have access to these stickers');
   }

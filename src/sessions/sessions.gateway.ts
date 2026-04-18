@@ -590,6 +590,24 @@ export class SessionsGateway
     try {
       // 1. Update Phase
       await this.sessionPhasesService.advancePhase(payload.sessionId, payload.phase);
+      
+      // GAP FIX: Persist phase to database for state recovery on participant refresh
+      try {
+          await this.prisma.sessions.update({
+            where: { id: payload.sessionId },
+            data: { 
+              current_phase: payload.phase,
+              // Optionally append to history log
+              phase_history: {
+                push: { phase: payload.phase, timestamp: new Date() }
+              }
+            }
+          });
+      } catch (e) {
+          this.logger.error(`Failed to persist phase update: ${e.message}`);
+      }
+
+      console.log(`[Phase] Updated to ${payload.phase} for session ${payload.sessionId}`);
 
       // 2. Broadcast to everyone
       this.server.to(`session:${payload.sessionId}`).emit('session.phase.updated', {
@@ -751,6 +769,25 @@ export class SessionsGateway
       const results = poll.options.map((_: any, idx: number) => {
         return Object.values(poll.responses).filter(v => v === idx).length;
       });
+
+      // GAP FIX: Persist poll results to Audit Logs for session reporting
+      try {
+          await this.prisma.audit_logs.create({
+            data: {
+              action: 'SESSION_POLL_COMPLETED',
+              actor_user_id: payload.userId,
+              details: {
+                sessionId: finalSessionId,
+                question: poll.question,
+                options: poll.options,
+                results,
+                totalResponses: Object.keys(poll.responses).length
+              }
+            }
+          });
+      } catch (e) {
+          this.logger.error(`Failed to audit poll completion: ${e.message}`);
+      }
 
       // Broadcast final results to EVERYONE
       this.server.to(`session:${finalSessionId}`).emit('poll:closed', {
