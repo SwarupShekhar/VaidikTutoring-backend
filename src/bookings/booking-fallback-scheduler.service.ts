@@ -44,28 +44,32 @@ export class BookingFallbackSchedulerService {
         Date.now() - ONLINE_THRESHOLD_MINUTES * 60 * 1000,
       );
 
-      // Find assignments older than fallback timeout that haven't been joined (no session status = 'in_progress')
-      const unclaimedBookings = await this.prisma.bookings.findMany({
+      // Find assignments older than fallback timeout
+      const potentialBookings = await this.prisma.bookings.findMany({
         where: {
-          assigned_tutor_id: { not: null }, // Has assigned tutor
-          status: 'confirmed', // Still confirmed but tutor hasn't joined
-          created_at: { lte: fallbackTimeoutAgo }, // Created older than threshold
-          sessions: {
-            none: { status: 'in_progress' }, // No active session yet
-          },
-          // Only broadcast if never broadcasted OR last broadcast was older than cooldown
+          assigned_tutor_id: { not: null },
+          status: 'confirmed',
+          created_at: { lte: fallbackTimeoutAgo },
           OR: [
             { fallback_broadcasted_at: null },
             { fallback_broadcasted_at: { lte: broadcastCooldown } },
           ],
         },
         include: {
+          sessions: {
+            where: { status: 'in_progress' },
+          },
           tutors: { include: { users: true } },
           students: true,
           subjects: true,
           program: true,
         },
       });
+
+      // Manually filter bookings that have no active session
+      const unclaimedBookings = potentialBookings.filter(
+        (b) => b.sessions.length === 0,
+      );
 
       if (unclaimedBookings.length === 0) {
         return; // No unclaimed bookings needing broadcast

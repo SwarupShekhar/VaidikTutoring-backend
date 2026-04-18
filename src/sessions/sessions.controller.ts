@@ -339,7 +339,10 @@ export class SessionsController {
 
   @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
   @Post(':id/shared-pdf')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(FileInterceptor('file', { 
+    storage: memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 } // Increase limit to 50MB for annotated whiteboard PDFs
+  }))
   async sharePdf(
     @Param('id') sessionId: string,
     @UploadedFile() file: Express.Multer.File,

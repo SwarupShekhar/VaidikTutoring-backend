@@ -40,6 +40,7 @@ import { PhoneVerificationModule } from './phone-verification/phone-verification
 import { SupportModule } from './support/support.module';
 import { BackupModule } from './backup/backup.module';
 import { VaultModule } from './vault/vault.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -123,6 +124,7 @@ import { VaultModule } from './vault/vault.module';
     SupportModule,
     BackupModule,
     VaultModule,
+    HealthModule,
     ServeStaticModule.forRoot({
 
       rootPath: path.join(process.cwd(), 'public'),

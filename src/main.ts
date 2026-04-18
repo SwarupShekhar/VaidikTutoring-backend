@@ -11,6 +11,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { SentryFilter } from './common/filters/sentry.filter';
 import helmet from 'helmet';
 import compression from 'compression';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 // Custom Socket adapter to increase max payload size for drawings with images
 class ExtendedIoAdapter extends IoAdapter {
@@ -101,6 +102,18 @@ async function bootstrap() {
   
   // Enable graceful shutdown for Prisma / Render
   app.enableShutdownHooks();
+
+  // 📝 Setup Swagger API Documentation
+  const config = new DocumentBuilder()
+    .setTitle('Vaidik Tutoring API')
+    .setDescription('The API documentation for Vaidik Tutoring systems. Provides endpoints for session management, billing, and user profiles.')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .addTag('sessions', 'Session and Whiteboard operations')
+    .addTag('auth', 'Authentication and Authorization')
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document);
 
   await app.listen(port, '0.0.0.0');
   logger.log(`Application is running on: ${await app.getUrl()}`);
