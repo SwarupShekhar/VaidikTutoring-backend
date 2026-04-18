@@ -84,22 +84,45 @@ export class SessionPhasesService {
         const alerts: string[] = [];
         let status = 'HEALTHY';
 
-        // Rule 1: WARM_CONNECT too short (less than 2 minutes in a real scenario)
-        // Here we can check if it exists at all first.
-        if (!history.find(h => h.phase === 'WARM_CONNECT')) {
+        // Rule 1: WARM_CONNECT too short (less than 1 minute in a real scenario)
+        const warmConnect = history.find(h => h.phase === 'WARM_CONNECT');
+        if (!warmConnect) {
             alerts.push('Session did not experience Warm Connect phase');
             status = 'PEDAGOGY_GAP';
         }
 
-        // Rule 2: MICRO_TEACH without ACTIVE_RESPONSE
-        const hasTeach = history.find(h => h.phase === 'MICRO_TEACH');
-        const hasResponse = history.find(h => h.phase === 'ACTIVE_RESPONSE');
-        if (hasTeach && !hasResponse) {
+        // Rule 2: MICRO_TEACH duration check (> 15 mins)
+        let totalTeachTime = 0;
+        let totalResponseTime = 0;
+
+        history.forEach((h, i) => {
+            const next = history[i+1];
+            const end = next ? new Date(next.timestamp) : new Date();
+            const start = new Date(h.timestamp);
+            const durationMs = end.getTime() - start.getTime();
+
+            if (h.phase === 'MICRO_TEACH') totalTeachTime += durationMs;
+            if (h.phase === 'ACTIVE_RESPONSE') totalResponseTime += durationMs;
+        });
+
+        if (totalTeachTime > 15 * 60000) {
+            alerts.push('Instructional (Teach) phase exceeded 15 minutes. Consider more student interaction.');
+            status = 'NEEDS_IMPROVEMENT';
+        }
+
+        // Rule 3: Teach vs Response balance
+        if (totalTeachTime > 0 && totalResponseTime < (totalTeachTime * 0.5)) {
+            alerts.push('Student participation (Active Response) is low compared to teaching time.');
+            status = 'NEEDS_IMPROVEMENT';
+        }
+
+        // Rule 4: MICRO_TEACH without ACTIVE_RESPONSE
+        if (totalTeachTime > 0 && totalResponseTime === 0) {
             alerts.push('Instruction (Teach) phase active without student response loops');
             status = 'PEDAGOGY_GAP';
         }
 
-        // Rule 3: Missing REFLECT
+        // Rule 5: Missing REFLECT
         if (session.status === 'completed' && !history.find(h => h.phase === 'REFLECT')) {
             alerts.push('Session ended without Reflection phase');
             status = 'PEDAGOGY_GAP';

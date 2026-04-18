@@ -419,8 +419,9 @@ export class SessionsService {
 
   // ==================== RECORDINGS ====================
 
-  async getRecordings(sessionId: string, userId: string) {
-    // Verify user has access to this session
+  async getRecordings(idOrBookingId: string, userId: string) {
+    // Verify user has access to this session & resolve ID
+    const sessionId = await this.ensureSessionId(idOrBookingId);
     await this.verifySessionAccess(sessionId, userId);
 
     return this.prisma.session_recordings.findMany({
@@ -438,13 +439,14 @@ export class SessionsService {
   }
 
   async uploadRecording(
-    sessionId: string,
+    idOrBookingId: string,
     userId: string,
     buffer: Buffer,
     mimeType: string,
     fileSize?: number,
     duration?: number,
   ) {
+    const sessionId = await this.ensureSessionId(idOrBookingId);
     const session = await this.prisma.sessions.findUnique({
       where: { id: sessionId },
       include: { bookings: true },
@@ -493,8 +495,9 @@ export class SessionsService {
     });
   }
 
-  async generateRecordingSasUrl(sessionId: string, recordingId: string, userId: string): Promise<any> {
+  async generateRecordingSasUrl(idOrBookingId: string, recordingId: string, userId: string): Promise<any> {
     // 1. Resolve access
+    const sessionId = await this.ensureSessionId(idOrBookingId);
     const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (user?.role !== 'admin') {
       await this.verifySessionAccess(sessionId, userId);
@@ -531,7 +534,8 @@ export class SessionsService {
     };
   }
 
-  async recordAttendance(sessionId: string, studentId: string, present: boolean, minutesAttended?: number) {
+  async recordAttendance(idOrBookingId: string, studentId: string, present: boolean, minutesAttended?: number) {
+    const sessionId = await this.ensureSessionId(idOrBookingId);
     const session = await this.prisma.sessions.findUnique({ where: { id: sessionId } });
     if (!session) throw new NotFoundException('Session not found');
 
@@ -542,7 +546,8 @@ export class SessionsService {
       update: {
         present,
         minutesAttended,
-        ...(present && { leftAt: null }), // Clear leftAt if they are back
+        ...(present === false && { leftAt: new Date() }),
+        ...(present === true && { leftAt: null }),
       },
       create: {
         sessionId,
@@ -550,6 +555,7 @@ export class SessionsService {
         present,
         minutesAttended,
         joinedAt: present ? new Date() : null,
+        ...(present === false && { leftAt: new Date() }),
       },
     });
   }
@@ -557,13 +563,14 @@ export class SessionsService {
   // ==================== HELPER METHODS ====================
 
   /**
-   * Verify that a user has access to a session
+   * Verified that a user has access to a session
    * Access is granted if user is:
    * - The parent of the student
    * - The student themselves
    * - The assigned tutor
    */
-  public async verifySessionAccess(sessionId: string, userId: string) {
+  public async verifySessionAccess(idOrBookingId: string, userId: string) {
+    const sessionId = await this.ensureSessionId(idOrBookingId);
     const session = await this.prisma.sessions.findUnique({
       where: { id: sessionId },
       include: {
@@ -633,7 +640,14 @@ export class SessionsService {
     });
   }
 
-  private checkBookingAccess(booking: any, userId: string): boolean {
+  private async checkBookingAccess(booking: any, userId: string): Promise<boolean> {
+    // 0. check if user is admin
+    const userRole = await this.prisma.users.findUnique({
+        where: { id: userId },
+        select: { role: true }
+    });
+    if (userRole?.role === 'admin') return true;
+
     const student = booking.students;
     const tutor = booking.tutors;
 
@@ -646,25 +660,15 @@ export class SessionsService {
     // Check if user is the tutor
     const isTutor = tutor?.user_id === userId;
 
-    // Check if user is admin (optional, handled by Guards usually but safe to add)
-    // We don't have easy role check here without fetching User, assuming Guard handled Role.
-    // Actually, Admin needs access too.
-    // If the caller needs Admin check, they should handle it.
-    // But for safety, strict ownership is better.
-    // Let's rely on the calling Controller Guard for Admin bypass if needed.
-    // But wait, if an Admin calls this, it will fail 403.
-    // So we should realistically check if the user is an Admin?
-    // The previous verifySessionAccess didn't check for Admin.
-
     if (!isParent && !isStudent && !isTutor) {
-      // Allow passing for now, or throw? The original code threw Forbidden.
       throw new ForbiddenException('Access denied to this session');
     }
 
     return true;
   }
 
-  async getAdminSummary(sessionId: string) {
+  async getAdminSummary(idOrBookingId: string) {
+    const sessionId = await this.ensureSessionId(idOrBookingId);
     const session = await this.prisma.sessions.findUnique({
       where: { id: sessionId },
       include: {
@@ -861,31 +865,39 @@ export class SessionsService {
   }
 
 
-  async updateSessionStatus(sessionId: string, status: string) {
+  async updateSessionStatus(idOrBookingId: string, status: string, userId?: string) {
+    const sessionId = await this.ensureSessionId(idOrBookingId);
     const session = await this.prisma.sessions.findUnique({
         where: { id: sessionId },
         include: { bookings: { include: { students: true } } }
     });
     if (!session) throw new NotFoundException('Session not found');
 
-    // If it's already completed and we're trying to set it to completed again, just return
-    if (session.status === 'completed' && status === 'completed') {
-        return session;
-    }
-
+    // Perform the update
     const updated = await this.prisma.sessions.update({
         where: { id: sessionId },
         data: { status }
     });
+
+    if (status === 'completed' && session.bookings?.student_id) {
+        await this.handleSessionCompletion(
+            sessionId,
+            session.bookings.student_id,
+            session.start_time || undefined,
+            session.end_time || new Date()
+        );
+    }
 
     // Audit Log for Activity Pulse
     try {
         await this.prisma.audit_logs.create({
             data: {
                 action: `SESSION_${status.toUpperCase()}`,
+                actor_user_id: userId || '00000000-0000-0000-0000-000000000000', // System fallback
                 details: {
                     sessionId,
-                    studentName: session.bookings?.students ? `${session.bookings.students.first_name} ${session.bookings.students.last_name || ''}`.trim() : 'Unknown'
+                    studentName: session.bookings?.students ? `${session.bookings.students.first_name} ${session.bookings.students.last_name || ''}`.trim() : 'Unknown',
+                    triggeredBy: userId ? 'user' : 'webhook'
                 }
             }
         });
@@ -893,28 +905,29 @@ export class SessionsService {
         console.error('Failed to audit session status update', e);
     }
 
-    if (status === 'completed' && session.bookings?.student_id) {
-        // Update total hours learned and completed sessions
-        let durationHours = 1; // Default
-        if (session.start_time && session.end_time) {
-            durationHours = (new Date(session.end_time).getTime() - new Date(session.start_time).getTime()) / 3600000;
-        }
-
-        await this.prisma.students.update({
-            where: { id: session.bookings.student_id },
-            data: { total_hours_learned: { increment: durationHours } }
-        });
-
-        // Update streak + badges
-        await this.studentsService.updateStreak(session.bookings.student_id);
-        await this.checkBadges(session.bookings.student_id);
-    }
-
     return updated;
   }
 
+  private async handleSessionCompletion(sessionId: string, studentId: string, startTime?: Date, endTime?: Date) {
+    // Update total hours learned and completed sessions
+    let durationHours = 1; // Default
+    if (startTime && endTime) {
+        durationHours = (new Date(endTime).getTime() - new Date(startTime).getTime()) / 3600000;
+    }
+
+    await this.prisma.students.update({
+        where: { id: studentId },
+        data: { total_hours_learned: { increment: durationHours } }
+    });
+
+    // Update streak + badges
+    await this.studentsService.updateStreak(studentId);
+    await this.checkBadges(studentId);
+  }
+
   // FIX 3: Unified method to end a session (mark as completed)
-  async endSession(sessionId: string, userId: string) {
+  async endSession(idOrBookingId: string, userId: string) {
+    const sessionId = await this.ensureSessionId(idOrBookingId);
     const session = await this.prisma.sessions.findUnique({
       where: { id: sessionId },
       include: { bookings: true }
@@ -967,27 +980,32 @@ export class SessionsService {
     const updated = await this.prisma.sessions.update({
       where: { id: sessionId },
       data: {
-        status: 'completed'
+        status: 'completed',
+        end_time: session.end_time || new Date()
       },
       include: { bookings: true }
     });
 
-    // Update student progress (hours learned, streak, badges)
+    // Update student progress using unified logic
     if (updated.bookings?.student_id) {
-      let durationHours = 1; // Default to 1 hour
-      if (updated.start_time && updated.end_time) {
-        durationHours = (new Date(updated.end_time).getTime() - new Date(updated.start_time).getTime()) / 3600000;
-      }
-
-      await this.prisma.students.update({
-        where: { id: updated.bookings.student_id },
-        data: { total_hours_learned: { increment: durationHours } }
-      });
-
-      // Update streak + badges
-      await this.studentsService.updateStreak(updated.bookings.student_id);
-      await this.checkBadges(updated.bookings.student_id);
+        await this.handleSessionCompletion(
+            sessionId,
+            updated.bookings.student_id,
+            updated.start_time || undefined,
+            updated.end_time || new Date()
+        );
     }
+
+    // Audit Log for ending session
+    try {
+        await this.prisma.audit_logs.create({
+            data: {
+                action: 'SESSION_COMPLETED',
+                actor_user_id: userId,
+                details: { sessionId }
+            }
+        });
+    } catch (e) {}
 
     return {
       success: true,
@@ -1079,7 +1097,7 @@ export class SessionsService {
   // ==================== CLASS NOTES ====================
 
   async shareNote(
-    sessionId: string,
+    idOrBookingId: string,
     userId: string,
     title: string,
     noteType: string,
@@ -1088,7 +1106,10 @@ export class SessionsService {
     originalName?: string,
     content?: string,
   ) {
-    // Verify session exists
+    // 1. Resolve to canonical Session ID
+    const sessionId = await this.ensureSessionId(idOrBookingId);
+
+    // 2. Verify session exists
     const session = await this.prisma.sessions.findUnique({
       where: { id: sessionId },
       include: { bookings: true },
@@ -1118,8 +1139,9 @@ export class SessionsService {
     });
   }
 
-  async getSessionNotes(sessionId: string, userId: string) {
-    await this.verifySessionOrBookingAccess(sessionId, userId);
+  async getSessionNotes(idOrBookingId: string, userId: string) {
+    await this.verifySessionOrBookingAccess(idOrBookingId, userId);
+    const sessionId = await this.ensureSessionId(idOrBookingId);
     return this.prisma.class_notes.findMany({
       where: { session_id: sessionId },
       orderBy: { created_at: 'desc' },
