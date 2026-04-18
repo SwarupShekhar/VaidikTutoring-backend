@@ -508,7 +508,27 @@ export class StudentsService {
     });
     if (!student) throw new NotFoundException('Student not found');
 
-    const sessionIds = student.bookings.flatMap(b => b.sessions.map(s => s.id));
+    // If user is a parent, find ALL their students' notes
+    const parent = await this.prisma.users.findUnique({
+      where: { id: userId },
+      include: { students_students_parent_user_idTousers: true }
+    });
+
+    let studentIds: string[] = [];
+    if (student) {
+      studentIds = [student.id];
+    } else if (parent && parent.students_students_parent_user_idTousers.length > 0) {
+      studentIds = parent.students_students_parent_user_idTousers.map(s => s.id);
+    } else {
+      throw new NotFoundException('Student or Parent profile not found');
+    }
+
+    const bookings = await this.prisma.bookings.findMany({
+      where: { student_id: { in: studentIds } },
+      include: { sessions: true }
+    });
+
+    const sessionIds = bookings.flatMap(b => b.sessions.map(s => s.id));
 
     return this.prisma.class_notes.findMany({
       where: { session_id: { in: sessionIds } },
