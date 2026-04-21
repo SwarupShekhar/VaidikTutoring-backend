@@ -13,7 +13,9 @@ import {
   UnauthorizedException,
   Query,
   Patch,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AdminService } from './admin.service';
 import { SyncClerkMetadataService } from './sync-clerk-metadata';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -89,6 +91,19 @@ export class AdminController {
     } catch (e) {
       this.logger.error('GET /admin/stats failed', e);
       throw e;
+    }
+  }
+
+  @Get('reports/finance')
+  async getFinanceReport(@Res() res: Response) {
+    try {
+      const csv = await this.adminService.getFinanceReport();
+      res.header('Content-Type', 'text/csv');
+      res.attachment(`finance_report_${new Date().toISOString().split('T')[0]}.csv`);
+      return res.send(csv);
+    } catch (e) {
+      this.logger.error('GET /admin/reports/finance failed', e);
+      return res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('Failed to generate report');
     }
   }
 

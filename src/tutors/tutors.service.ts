@@ -104,6 +104,17 @@ export class TutorsService {
       ? Math.min(Math.round((attentionEvents.filter(e => ['PRAISE', 'EXPLANATION'].includes(e.type)).length / totalEvents) * 100), 100)
       : 0;
 
+    // Fetch ratings for this tutor
+    const ratings = await this.prisma.tutor_ratings.findMany({
+      where: { tutor_id: tutor.user_id },
+      select: { score: true }
+    });
+
+    const reviewsCount = ratings.length;
+    const averageRating = reviewsCount > 0
+      ? ratings.reduce((sum, r) => sum + r.score, 0) / reviewsCount
+      : 0;
+
     return {
       todayCount,
       completedCount: completedSessions.length,
@@ -111,8 +122,8 @@ export class TutorsService {
       earnings,
       availableCount: availableJobs,
       quality: {
-        rating: 5.0, // Default for now until Review system is built
-        reviewsCount: 0,
+        rating: averageRating,
+        reviewsCount,
         engagement: engagementScore,
         punctuality: 100, // Placeholder until attendance tracking is fully implemented
         techScore: 90,    // Placeholder for now
