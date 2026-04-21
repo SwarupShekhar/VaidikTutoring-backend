@@ -126,6 +126,7 @@ export class AdminService {
                         first_name: true,
                         last_name: true,
                         grade: true,
+                        enrollment_status: true,
                         users_students_user_idTousers: {
                             select: { first_name: true, last_name: true }
                         }
@@ -144,6 +145,7 @@ export class AdminService {
                 ? `${b.students.first_name} ${b.students.last_name || ''}`.trim()
                 : `${b.students?.users_students_user_idTousers?.first_name || 'Student'} ${b.students?.users_students_user_idTousers?.last_name || ''}`.trim(),
             studentGrade: b.students?.grade,
+            enrollmentStatus: b.students?.enrollment_status,
             curriculumName: b.curricula?.name,
             subjectName: b.subjects?.name,
             requestedStart: b.requested_start,
@@ -219,68 +221,103 @@ export class AdminService {
         this.logger.debug('Fetching stats from DB...');
 
         try {
-            // DIAGNOSTICS: Check if we can see ANY users at all
-            const allUsers = await this.prisma.users.findMany({
-                select: { id: true, email: true, role: true, is_active: true },
-                take: 10
-            });
-            this.logger.debug(`Raw user sample: ${allUsers.length} found`);
-
-            const sevenDaysAgo = new Date();
+            const now = new Date();
+            const sevenDaysAgo = new Date(now);
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-            const [studentsCount, parentsCount, tutorsCount, upcomingSessionsCount, pendingAllocations, activeNowCount, inactiveTutorsCount] =
-                await Promise.all([
-                    this.prisma.users.count({
-                        where: { role: 'student' },
-                    }),
-                    this.prisma.users.count({
-                        where: { role: 'parent' },
-                    }),
-                    this.prisma.users.count({
-                        where: { role: 'tutor' },
-                    }),
-                    this.prisma.sessions.count({
-                        where: {
-                            start_time: {
-                                gt: new Date(),
-                            },
-                            status: 'scheduled',
-                        },
-                    }),
-                    this.prisma.bookings.count({
-                        where: {
-                            assigned_tutor_id: null,
-                            status: { in: ['requested', 'pending', 'open'] },
-                            OR: [
-                                { requested_start: { gte: new Date() } },
-                                { requested_start: null },
-                            ],
-                        },
-                    }),
-                    this.prisma.sessions.count({
-                        where: {
-                            status: { notIn: ['completed', 'cancelled'] },
-                            start_time: {
-                                lt: new Date(),
-                                gt: new Date(Date.now() - 2 * 60 * 60 * 1000) // last 2 hours
-                            },
-                            end_time: null,
-                        }
-                    }),
-                    this.prisma.users.count({
-                        where: {
-                            role: 'tutor',
-                            is_active: true,
-                            OR: [
-                                { last_login_at: { lt: sevenDaysAgo } },
-                                { last_login_at: null, created_at: { lt: sevenDaysAgo } }
-                            ]
-                        }
-                    })
-                ]);
+            const fortyEightHoursFromNow = new Date(now);
+            fortyEightHoursFromNow.setDate(fortyEightHoursFromNow.getDate() + 2);
 
-            this.logger.debug(`Stats: students=${studentsCount} parents=${parentsCount} tutors=${tutorsCount} activeNow=${activeNowCount} inactiveTutors=${inactiveTutorsCount}`);
+            const [
+                studentsCount,
+                parentsCount,
+                tutorsCount,
+                upcomingSessionsCount,
+                pendingAllocations,
+                activeNowCount,
+                inactiveTutorsCount,
+                revenueStats,
+                enrollmentStats,
+                recentFailures,
+                upcomingExpirations,
+                completedSessions,
+                totalSessions,
+                masteryStats
+            ] = await Promise.all([
+                this.prisma.users.count({ where: { role: 'student' } }),
+                this.prisma.users.count({ where: { role: 'parent' } }),
+                this.prisma.users.count({ where: { role: 'tutor' } }),
+                this.prisma.sessions.count({
+                    where: {
+                        start_time: { gt: now },
+                        status: 'scheduled',
+                    },
+                }),
+                this.prisma.bookings.count({
+                    where: {
+                        assigned_tutor_id: null,
+                        status: { in: ['requested', 'pending', 'open'] },
+                        OR: [
+                            { requested_start: { gte: now } },
+                            { requested_start: null },
+                        ],
+                    },
+                }),
+                this.prisma.sessions.count({
+                    where: {
+                        status: { notIn: ['completed', 'cancelled'] },
+                        start_time: {
+                            lt: now,
+                            gt: new Date(now.getTime() - 2 * 60 * 60 * 1000)
+                        },
+                        end_time: null,
+                    }
+                }),
+                this.prisma.users.count({
+                    where: {
+                        role: 'tutor',
+                        is_active: true,
+                        OR: [
+                            { last_login_at: { lt: sevenDaysAgo } },
+                            { last_login_at: null, created_at: { lt: sevenDaysAgo } }
+                        ]
+                    }
+                }),
+                // Revenue Stats (Multi-currency aware)
+                this.prisma.purchases.groupBy({
+                    by: ['currency'],
+                    where: { status: 'PAID' },
+                    _sum: { amount_cents: true }
+                }),
+                // Enrollment Stats
+                this.prisma.students.groupBy({
+                    by: ['enrollment_status'],
+                    _count: { id: true }
+                }),
+                // Recent Payment Failures (24h)
+                this.prisma.purchases.count({
+                    where: {
+                        status: 'FAILED',
+                        created_at: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) }
+                    }
+                }),
+                // Upcoming Expirations (48h)
+                this.prisma.students.count({
+                    where: {
+                        subscription_ends: {
+                            gte: now,
+                            lte: fortyEightHoursFromNow
+                        }
+                    }
+                }),
+                // Phase 2: Success Metrics (Attendance Rate)
+                this.prisma.sessions.count({ where: { status: 'completed' } }),
+                this.prisma.sessions.count({ where: { status: { in: ['completed', 'cancelled', 'scheduled'] } } }),
+                // Phase 2: Mastery Metrics (Average Points)
+                this.prisma.progress_points.aggregate({ _avg: { points: true } }),
+            ]);
+
+            const attendanceRate = totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 100;
 
             const statsResult = {
                 students: studentsCount,
@@ -290,6 +327,20 @@ export class AdminService {
                 pendingAllocations,
                 activeNow: activeNowCount,
                 inactiveTutors: inactiveTutorsCount,
+                revenue: revenueStats.map(r => ({
+                    currency: r.currency,
+                    total: r._sum.amount_cents || 0
+                })),
+                enrollment: enrollmentStats.reduce((acc, curr) => {
+                    acc[curr.enrollment_status] = curr._count.id;
+                    return acc;
+                }, {} as Record<string, number>),
+                recentFailures,
+                upcomingExpirations,
+                success: {
+                    attendanceRate: Math.round(attendanceRate),
+                    avgMastery: Math.round(masteryStats._avg.points || 0),
+                }
             };
 
             // Cache for 5 minutes (300000 ms)
@@ -1106,6 +1157,32 @@ export class AdminService {
         }
 
         return { success: true, message: 'Nudge email sent to tutor' };
+    }
+
+    async getFinanceReport() {
+        const purchases = await this.prisma.purchases.findMany({
+            include: {
+                users: {
+                    select: { first_name: true, last_name: true, email: true }
+                },
+                packages: {
+                    select: { name: true }
+                }
+            },
+            orderBy: { created_at: 'desc' },
+            take: 2000 
+        });
+
+        const header = 'Date,PurchaseID,User,Email,Package,Amount,Currency,Status\n';
+        const rows = purchases.map(p => {
+            const date = p.created_at ? p.created_at.toISOString().split('T')[0] : '';
+            const userName = `${p.users?.first_name || ''} ${p.users?.last_name || ''}`.trim() || 'N/A';
+            const pkgName = p.packages?.name?.replace(/,/g, '') || 'N/A';
+            const amount = (p.amount_cents || 0) / 100;
+            return `${date},${p.id},"${userName}","${p.users?.email || ''}","${pkgName}",${amount},${p.currency},${p.status}`;
+        }).join('\n');
+
+        return header + rows;
     }
 
     private safeIso(d: Date | null | undefined): string | null {

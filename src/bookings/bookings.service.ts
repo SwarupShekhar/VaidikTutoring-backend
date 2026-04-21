@@ -478,12 +478,12 @@ export class BookingsService {
         startTime: booking.requested_start,
       },
     );
-    // Real-time (User Spec)
-    this.notificationsService.notifyTutorAllocation(
-      chosenTutor.user_id,
-      booking.student_id ? 'Student' : 'A Student', // We might need to fetch student name if not here
-      booking.requested_start ? booking.requested_start.toString() : 'Scheduled Time'
-    );
+    // Real-time (User Spec) - Commented out to delay alerts by 15 minutes unless admin allocates first
+    // this.notificationsService.notifyTutorAllocation(
+    //   chosenTutor.user_id,
+    //   booking.student_id ? 'Student' : 'A Student', // We might need to fetch student name if not here
+    //   booking.requested_start ? booking.requested_start.toString() : 'Scheduled Time'
+    // );
 
     // Student Notification
     if (booking.student_id) {

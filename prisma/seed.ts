@@ -88,15 +88,38 @@ async function main() {
 
     // 3. Packages (Regional Tiered Pricing)
     const packagesList = [
-        // US Region
-        { id: 'da36d75d-8e6d-4786-9a25-9de7890f5d5e', name: 'Foundation (US)', hours: 8, price: 199, currency: 'USD', region: 'US' },
-        { id: '8d89045b-3814-4632-95f7-873b8852e690', name: 'Mastery (US)', hours: 16, price: 349, currency: 'USD', region: 'US' },
-        { id: '5952f418-477c-4749-8086-5389476b7bd1', name: 'Elite (US)', hours: 24, price: 499, currency: 'USD', region: 'US' },
-        
+        // Global Region
+        { id: '47a32d16-64e0-4965-983b-3d0b84f331ad', name: 'Foundation (Global)', hours: 8, price: 149, currency: 'USD', region: 'global' },
+        { id: '9b8c2d16-64e0-4965-983b-3d0b84f331ae', name: 'Mastery (Global)', hours: 16, price: 249, currency: 'USD', region: 'global' },
+        { id: 'b3d42d16-64e0-4965-983b-3d0b84f331af', name: 'Elite (Global)', hours: 24, price: 375, currency: 'USD', region: 'global' },
+
         // UK Region
-        { id: 'f47385ef-963d-4299-bb6e-2f54297a73e3', name: 'Foundation (UK)', hours: 8, price: 149, currency: 'GBP', region: 'UK' },
-        { id: '76fb2bd0-96f3-47ad-9a00-50284b7f4337', name: 'Mastery (UK)', hours: 16, price: 249, currency: 'GBP', region: 'UK' },
-        { id: '6f48a101-3820-4180-8b1e-25ba3194a0d9', name: 'Elite (UK)', hours: 24, price: 375, currency: 'GBP', region: 'UK' },
+        { id: 'f47385ef-963d-4299-bb6e-2f54297a73e3', name: 'Foundation (UK)', hours: 8, price: 149, currency: 'GBP', region: 'uk' },
+        { id: '76fb2bd0-96f3-47ad-9a00-50284b7f4337', name: 'Mastery (UK)', hours: 16, price: 249, currency: 'GBP', region: 'uk' },
+        { id: '6f48a101-3820-4180-8b1e-25ba3194a0d9', name: 'Elite (UK)', hours: 24, price: 375, currency: 'GBP', region: 'uk' },
+
+        // Middle East / US
+        { id: 'da36d75d-8e6d-4786-9a25-9de7890f5d5e', name: 'Foundation (ME)', hours: 8, price: 199, currency: 'USD', region: 'middleeast' },
+        { id: '8d89045b-3814-4632-95f7-873b8852e690', name: 'Mastery (ME)', hours: 16, price: 349, currency: 'USD', region: 'middleeast' },
+        { id: '5952f418-477c-4749-8086-5389476b7bd1', name: 'Elite (ME)', hours: 24, price: 499, currency: 'USD', region: 'middleeast' },
+
+        // Australia Region
+        { id: 'e1f22d16-64e0-4965-983b-3d0b84f331b0', name: 'Foundation (AU)', hours: 8, price: 250, currency: 'AUD', region: 'australia' },
+        { id: 'f2a32d16-64e0-4965-983b-3d0b84f331b1', name: 'Mastery (AU)', hours: 16, price: 450, currency: 'AUD', region: 'australia' },
+        { id: 'a3b42d16-64e0-4965-983b-3d0b84f331b2', name: 'Elite (AU)', hours: 24, price: 650, currency: 'AUD', region: 'australia' },
+
+        // Singapore Region
+        { id: 'c1d22d16-64e0-4965-983b-3d0b84f331b3', name: 'Foundation (SG)', hours: 8, price: 280, currency: 'SGD', region: 'singapore' },
+        { id: 'd2e32d16-64e0-4965-983b-3d0b84f331b4', name: 'Mastery (SG)', hours: 16, price: 520, currency: 'SGD', region: 'singapore' },
+        { id: 'e3f42d16-64e0-4965-983b-3d0b84f331b5', name: 'Elite (SG)', hours: 24, price: 750, currency: 'SGD', region: 'singapore' },
+
+        // South Africa Region
+        { id: '6a7b2d16-64e0-4965-983b-3d0b84f331b6', name: 'Foundation (ZA)', hours: 8, price: 1500, currency: 'ZAR', region: 'southafrica' },
+        { id: '7b8c2d16-64e0-4965-983b-3d0b84f331b7', name: 'Mastery (ZA)', hours: 16, price: 2800, currency: 'ZAR', region: 'southafrica' },
+        { id: '8c9d2d16-64e0-4965-983b-3d0b84f331b8', name: 'Elite (ZA)', hours: 24, price: 4200, currency: 'ZAR', region: 'southafrica' },
+
+        // Testing Package
+        { id: 'c7b32d16-64e0-4965-983b-3d0b84f33200', name: 'Testing Package', hours: 1, price: 1, currency: 'USD', region: 'global' },
     ];
 
     console.log(`Upserting ${packagesList.length} regional packages...`);
