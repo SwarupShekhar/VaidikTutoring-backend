@@ -235,9 +235,14 @@ export class PaymentsService {
 
       this.logger.log(`Payment verified for order ${orderId}, purchase ${purchase.id}, credits granted`);
 
-      // Find the student linked to this parent (user)
+      // Find the student: parent buying for child, or student buying directly
       const student = await this.prisma.students.findFirst({
-        where: { parent_user_id: purchase.user_id },
+        where: {
+          OR: [
+            { parent_user_id: purchase.user_id },
+            { user_id: purchase.user_id },
+          ],
+        },
       });
 
       return {
