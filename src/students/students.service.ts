@@ -121,6 +121,19 @@ export class StudentsService {
     });
   }
 
+  async findUniqueById(id: string) {
+    return this.prisma.students.findUnique({
+      where: { id },
+      include: {
+        bookings: {
+          select: { id: true, package_id: true, assigned_tutor_id: true },
+          orderBy: { created_at: 'desc' },
+          take: 1,
+        },
+      },
+    });
+  }
+
   async findByUserId(userId: string) {
     const student = await this.prisma.students.findFirst({
       where: { user_id: userId },
