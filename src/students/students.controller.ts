@@ -84,6 +84,14 @@ export class StudentsController {
     }));
   }
 
+  @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  async getById(@Param('id') id: string) {
+    const student = await this.studentsService.findUniqueById(id);
+    if (!student) throw new NotFoundException('Student not found');
+    return student;
+  }
+
   @Get(':id/enrollment-status')
   @UseGuards(JwtAuthGuard)
   async getEnrollmentStatus(@Param('id') id: string, @Req() req: any) {
