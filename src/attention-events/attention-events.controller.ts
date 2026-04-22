@@ -1,18 +1,18 @@
 import { Controller, Get, Post, Body, Param, UseGuards, Req } from '@nestjs/common';
 import { AttentionEventsService } from './attention-events.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 
 @Controller('sessions')
 export class AttentionEventsController {
     constructor(private readonly attentionEventsService: AttentionEventsService) { }
 
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Get(':id/attention-summary')
     async getSummary(@Param('id') id: string, @Req() req: any) {
         return this.attentionEventsService.getSummary(id);
     }
 
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Post(':id/attention-event')
     async createEvent(
         @Param('id') sessionId: string,

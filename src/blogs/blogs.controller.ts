@@ -20,7 +20,7 @@ import {
 import { BlogsService } from './blogs.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 import { BlogRedirectInterceptor } from './blog-redirect.interceptor';
 
 @Controller()
@@ -40,7 +40,7 @@ export class BlogsController {
     }
 
     // Protected: Get list of internal links for the editor
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Get('admin/blogs/internal-links')
     async getInternalLinks() {
         return this.blogsService.getInternalLinks();
@@ -77,7 +77,7 @@ export class BlogsController {
     }
 
     // Protected: Get single blog for editing
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Get('admin/blogs/:id')
     async findOneForAdmin(@Param('id') id: string) {
         const blog = await this.blogsService.findOneById(id);
@@ -88,7 +88,7 @@ export class BlogsController {
     }
 
     // Protected: Create new blog
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Post('admin/blogs')
     async create(@Req() req: any, @Body() createBlogDto: CreateBlogDto) {
         const user = req.user;
@@ -99,7 +99,7 @@ export class BlogsController {
     }
 
     // Protected: Get ALL blogs (Admin Dashboard)
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Get('admin/blogs')
     async findAll(
         @Req() req: any,
@@ -116,7 +116,7 @@ export class BlogsController {
     }
     
     // Protected: Update blog (Admin/Tutor)
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Patch('admin/blogs/:id')
     async update(
         @Req() req: any,
@@ -139,7 +139,7 @@ export class BlogsController {
     }
 
     // Protected: Get version history (Admin/Tutor)
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Get('admin/blogs/:id/versions')
     async getVersions(@Req() req: any, @Param('id') id: string) {
         const user = req.user;
@@ -154,7 +154,7 @@ export class BlogsController {
     }
 
     // Protected: Restore version (Admin/Tutor)
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Post('admin/blogs/:id/versions/:versionId/restore')
     async restoreVersion(
         @Req() req: any,
@@ -173,7 +173,7 @@ export class BlogsController {
     }
 
     // Protected: Approve/Reject (Admin Only)
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Patch('admin/blogs/:id/status')
     async updateStatus(
         @Req() req: any,
@@ -187,7 +187,7 @@ export class BlogsController {
     }
 
     // Protected: Delete Blog (Admin Only)
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Delete('admin/blogs/:id')
     async remove(@Req() req: any, @Param('id') id: string) {
         if (req.user.role !== 'admin') {
@@ -197,7 +197,7 @@ export class BlogsController {
     }
 
     // Emergency: Check blog data status (Admin Only)
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Get('admin/blogs/emergency-check')
     async emergencyCheck(@Req() req: any) {
         if (req.user.role !== 'admin') {

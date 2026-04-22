@@ -2,7 +2,7 @@ import { Body, Controller, Post, Get, BadRequestException, UseGuards, Req, Unaut
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { signupSchema } from './schemas/signup.schema';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 import { ClerkAuthGuard } from './clerk-auth.guard';
 
 @Controller('auth')
@@ -24,7 +24,7 @@ export class AuthController {
   }
 
   @Post('resend-verification')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   resendVerification(@Req() req: any) {
     return this.auth.resendVerification(req.user.userId || req.user.sub || req.user.id);
   }
@@ -62,13 +62,13 @@ export class AuthController {
   }
 
   @Post('change-password')
-  @UseGuards(JwtAuthGuard) // Must be logged in to change
+  @UseGuards(ClerkAuthGuard) // Must be logged in to change
   changePassword(@Body() body: any, @Req() req: any) {
     if (!body.password) throw new BadRequestException('Password is required');
     return this.auth.changePassword(req.user.userId || req.user.sub, body.password);
   }
   @Get('profile')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async getProfile(@Req() req: any) {
     const userId = req.user?.sub || req.user?.userId;
     if (!userId) throw new UnauthorizedException('User not authenticated');
@@ -76,7 +76,7 @@ export class AuthController {
   }
 
   @Post('fix-admin-role')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async fixAdminRole(@Req() req: any, @Body('email') email: string) {
     const actor = req.user;
     if (!actor || actor.role !== 'admin') {

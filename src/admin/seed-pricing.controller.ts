@@ -1,9 +1,9 @@
 import { Controller, Post, Get, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 
 @Controller('admin/seed-pricing')
-@UseGuards(JwtAuthGuard)
+@UseGuards(ClerkAuthGuard)
 export class SeedPricingController {
   constructor(private prisma: PrismaService) {}
 
