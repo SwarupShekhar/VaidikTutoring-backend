@@ -38,6 +38,33 @@ export class EnrollmentsService {
     // ─────────────────────────────────────────────────────────────────
 
     return this.prisma.$transaction(async (tx) => {
+      // Resolve program_id — required by DB but may be absent from payload
+      let programId = dto.program_id;
+      if (!programId) {
+        const fallbackProgram = await tx.program.findFirst({ where: { status: 'active' } });
+        if (!fallbackProgram) {
+          throw new BadRequestException('No active program found. Please ask an admin to create a program first.');
+        }
+        programId = fallbackProgram.id;
+      }
+
+      // Resolve package_id from student's latest paid purchase if not provided
+      let packageId = dto.package_id;
+      if (!packageId) {
+        const stud = await tx.students.findUnique({ where: { id: dto.student_id } });
+        if (stud?.user_id) {
+          const latestPurchase = await tx.purchases.findFirst({
+            where: { user_id: stud.user_id, status: 'PAID' },
+            orderBy: { created_at: 'desc' },
+          });
+          packageId = latestPurchase?.package_id ?? undefined;
+        }
+        if (!packageId) {
+          const fallbackPkg = await tx.packages.findFirst({ where: { active: true } });
+          packageId = fallbackPkg?.id ?? undefined;
+        }
+      }
+
       // 1. Auto-assignment logic if tutor_id is missing
       let tutorId = dto.tutor_id;
       if (!tutorId) {
@@ -46,7 +73,7 @@ export class EnrollmentsService {
 
         if (!tutorId) {
           const best = await tx.tutors.findFirst({
-            where: { program_id: dto.program_id, is_active: true, tutor_approved: true }
+            where: { program_id: programId, is_active: true, tutor_approved: true }
           });
           tutorId = best?.id;
         }
@@ -56,8 +83,8 @@ export class EnrollmentsService {
         data: {
           student_id: dto.student_id,
           tutor_id: tutorId ?? undefined,
-          program_id: dto.program_id,
-          package_id: dto.package_id,
+          program_id: programId,
+          package_id: packageId,
           curriculum_id: dto.curriculum_id,
           subject_ids: dto.subject_ids,
           schedule_preset: dto.schedule_preset,
@@ -71,7 +98,7 @@ export class EnrollmentsService {
       await tx.students.update({
         where: { id: dto.student_id },
         data: {
-          program_id: dto.program_id,
+          program_id: programId,
           enrollment_status: 'learning',
         },
       });
@@ -90,12 +117,12 @@ export class EnrollmentsService {
 
     if (!student) throw new NotFoundException('Student not found');
 
+    // If student has no program yet, return all active tutors
+    const tutorWhere: any = { is_active: true, tutor_approved: true };
+    if (student.program_id) tutorWhere.program_id = student.program_id;
+
     const tutors = await this.prisma.tutors.findMany({
-      where: {
-        program_id: student.program_id,
-        is_active: true,
-        tutor_approved: true,
-      },
+      where: tutorWhere,
       include: { users: true },
     });
 

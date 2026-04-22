@@ -40,6 +40,14 @@ ALTER TABLE "app"."bookings" DROP CONSTRAINT IF EXISTS "bookings_package_id_fkey
 ALTER TABLE "app"."package_items" DROP CONSTRAINT IF EXISTS "package_items_package_id_fkey";
 ALTER TABLE "app"."purchases" DROP CONSTRAINT IF EXISTS "purchases_package_id_fkey";
 ALTER TABLE "app"."user_credits" DROP CONSTRAINT IF EXISTS "user_credits_package_id_fkey";
+ALTER TABLE "app"."enrollments" DROP CONSTRAINT IF EXISTS "enrollments_package_id_fkey";
+
+-- Step 4.5: Convert referencing columns to UUID
+ALTER TABLE "app"."bookings" ALTER COLUMN "package_id" TYPE UUID USING "package_id"::UUID;
+ALTER TABLE "app"."package_items" ALTER COLUMN "package_id" TYPE UUID USING "package_id"::UUID;
+ALTER TABLE "app"."purchases" ALTER COLUMN "package_id" TYPE UUID USING "package_id"::UUID;
+ALTER TABLE "app"."user_credits" ALTER COLUMN "package_id" TYPE UUID USING "package_id"::UUID;
+ALTER TABLE "app"."enrollments" ALTER COLUMN "package_id" TYPE UUID USING "package_id"::UUID;
 
 -- Step 5: Drop old primary key
 ALTER TABLE "app"."packages" DROP CONSTRAINT "packages_pkey";

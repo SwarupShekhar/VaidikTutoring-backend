@@ -12,20 +12,20 @@ export class CreateEnrollmentDto {
   student_id: string;
 
   @IsString()
-  @IsNotEmpty()
-  program_id: string;
+  @IsOptional()
+  program_id?: string;
 
   @IsString()
-  @IsNotEmpty()
-  package_id: string;
+  @IsOptional()
+  package_id?: string;
 
   @IsString()
   @IsOptional()
   tutor_id?: string;
 
   @IsString()
-  @IsNotEmpty()
-  curriculum_id: string;
+  @IsOptional()
+  curriculum_id?: string;
 
   @IsArray()
   @IsString({ each: true })

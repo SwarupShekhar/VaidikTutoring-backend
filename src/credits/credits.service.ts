@@ -303,6 +303,17 @@ export class CreditsService {
     // Payment verification assumed to be done by verifiedPurchaseId check above
     // Real-world: Could verify verifiedPurchaseId against DB status here again
 
+    const planMappings = {
+      foundation: { programId: 'foundation-program-id', packageId: 'us-foundation-package-id' },
+      mastery: { programId: 'mastery-program-id', packageId: 'us-mastery-package-id' },
+      elite: { programId: 'elite-program-id', packageId: 'us-elite-package-id' },
+    };
+    
+    const mapping = planMappings[plan];
+    if (!mapping) {
+      throw new BadRequestException('Invalid plan mapping');
+    }
+
     const updated = await this.prisma.students.update({
       where: { id: studentId },
       data: {
@@ -312,6 +323,8 @@ export class CreditsService {
         subscription_ends: ends,
         is_trial_active: false, // trial ends when subscription starts
         enrollment_status: 'learning', // Move to learning mode
+        program_id: mapping.programId,
+        package_id: mapping.packageId,
       },
     });
 
