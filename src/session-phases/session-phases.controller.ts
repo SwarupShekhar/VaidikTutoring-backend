@@ -1,6 +1,6 @@
 import { Controller, Post, Body, Param, UseGuards, Get } from '@nestjs/common';
 import { SessionPhasesService } from './session-phases.service';
-import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 
 @Controller('sessions')
 export class SessionPhasesController {

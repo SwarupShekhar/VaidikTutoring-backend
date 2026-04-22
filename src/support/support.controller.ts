@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Patch, Body, Param, UseGuards, Req, Query, ForbiddenException } from '@nestjs/common';
 import { SupportService } from './support.service';
-import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 
 @Controller('support')
 @UseGuards(ClerkAuthGuard)

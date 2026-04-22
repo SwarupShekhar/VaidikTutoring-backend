@@ -20,6 +20,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { SessionsService } from './sessions.service';
 import { DailyService } from '../daily/daily.service';
 import { PrismaService } from '../prisma/prisma.service';

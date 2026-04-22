@@ -2,7 +2,6 @@ import { Body, Controller, Post, Get, BadRequestException, UseGuards, Req, Unaut
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { signupSchema } from './schemas/signup.schema';
-import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 import { ClerkAuthGuard } from './clerk-auth.guard';
 
 @Controller('auth')

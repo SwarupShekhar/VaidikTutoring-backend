@@ -13,7 +13,6 @@ import { CreditsService } from './credits.service';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { Roles } from '../common/decorators/roles.decorators';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('credits')
