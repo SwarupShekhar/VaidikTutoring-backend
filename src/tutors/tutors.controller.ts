@@ -6,14 +6,14 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { BookingsService } from '../bookings/bookings.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { EmailVerifiedGuard } from '../auth/email-verified.guard';
 import { TutorStatusGuard } from '../auth/tutor-status.guard';
 import { PasswordChangeGuard } from '../auth/password-change.guard';
 import { TutorsService } from './tutors.service';
 
 @Controller('tutor')
-@UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
+@UseGuards(ClerkAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
 export class TutorsController {
   constructor(
     private readonly bookingsService: BookingsService,

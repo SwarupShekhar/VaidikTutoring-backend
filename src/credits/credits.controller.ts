@@ -13,7 +13,7 @@ import { CreditsService } from './credits.service';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { Roles } from '../common/decorators/roles.decorators';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('credits')
@@ -45,7 +45,7 @@ export class CreditsController {
    * GET /credits/trial-status — new trial credit status for students
    */
   @Get('trial-status')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async getTrialCreditStatus(@Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new BadRequestException('User not authenticated');
@@ -76,7 +76,7 @@ export class CreditsController {
    * intentionally disabled — use POST /payments/verify instead.
    */
   @Post('subscribe')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async subscribe(@Req() req: any, @Body() body: { plan: string }) {
     // SECURITY: Direct subscription without payment is disabled.
     // All subscriptions must go through the Razorpay payment flow at POST /payments/create-order
@@ -90,7 +90,7 @@ export class CreditsController {
    * POST /credits/admin/grant/:studentId — admin grants credits
    */
   @Post('admin/grant/:studentId')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async adminGrantCredits(
     @Param('studentId') studentId: string,
     @Body() body: { credits: number; note: string },

@@ -1,11 +1,11 @@
 import { Controller, Post, Get, Body, Req, UseGuards, ForbiddenException, Param } from '@nestjs/common';
 import { ParentService } from './parent.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorators';
 
 @Controller('parent')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(ClerkAuthGuard, RolesGuard)
 @Roles('parent')
 export class ParentController {
     constructor(private readonly parentService: ParentService) { }

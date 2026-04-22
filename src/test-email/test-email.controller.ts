@@ -1,11 +1,11 @@
 import { Controller, Get, Logger, UseGuards } from '@nestjs/common';
 import nodemailer from 'nodemailer';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorators';
 
 @Controller('test-email')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(ClerkAuthGuard, RolesGuard)
 @Roles('admin')
 export class TestEmailController {
   private logger = new Logger(TestEmailController.name);

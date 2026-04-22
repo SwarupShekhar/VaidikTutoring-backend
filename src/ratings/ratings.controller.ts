@@ -11,10 +11,10 @@ import {
 } from '@nestjs/common';
 import { RatingsService } from './ratings.service';
 import { CreateRatingDto } from './dto/create-rating.dto';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 
 @Controller('ratings')
-@UseGuards(JwtAuthGuard)
+@UseGuards(ClerkAuthGuard)
 export class RatingsController {
   constructor(private readonly ratingsService: RatingsService) {}
 

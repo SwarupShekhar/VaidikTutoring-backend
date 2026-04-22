@@ -32,6 +32,7 @@ import { SessionPhasesModule } from './session-phases/session-phases.module';
 import { SubjectsModule } from './subjects/subjects.module';
 import { PaymentsModule } from './payments/payments.module';
 import { CreditsModule } from './credits/credits.module';
+import { EnrollmentsModule } from './enrollments/enrollments.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { MediaModule } from './media/media.module';
 import { StorageModule } from './storage/storage.module';
@@ -100,6 +101,7 @@ import { HealthModule } from './health/health.module';
     TutorsModule,
     BookingsModule,
     SessionsModule,
+    EnrollmentsModule,
     InviteModule,
     TestEmailModule,
     EmailModule,

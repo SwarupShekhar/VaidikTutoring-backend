@@ -19,7 +19,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { SessionsService } from './sessions.service';
 import { DailyService } from '../daily/daily.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -46,7 +46,7 @@ export class SessionsController {
     return this.sessionsService.create(dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   @Get()
   async findAll(@Req() req: any) {
     const userId = req.user.userId;
@@ -54,7 +54,7 @@ export class SessionsController {
   }
 
   // Generate downloadable ICS invite
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   @Get(':id/invite')
   async getInvite(@Param('id') id: string, @Res() res: Response) {
     const ics = await this.sessionsService.generateIcsInvite(id);
@@ -67,7 +67,7 @@ export class SessionsController {
     res.send(ics);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   @Post(':id/recordings')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   async uploadRecording(
@@ -98,7 +98,7 @@ export class SessionsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   @Get(':id/recordings/:recordingId/stream')
   async streamRecording(
     @Param('id') id: string,
@@ -108,13 +108,13 @@ export class SessionsController {
     return this.sessionsService.generateRecordingSasUrl(id, recordingId, req.user.userId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   @Get(':id/messages')
   getMessages(@Param('id') id: string, @Req() req: any) {
     return this.sessionsService.getMessages(id, req.user.userId);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   @Post(':id/messages')
   postMessage(
     @Param('id') id: string,
@@ -126,7 +126,7 @@ export class SessionsController {
 
   // ==================== RECORDINGS ====================
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   @Get(':id/recordings')
   async getRecordings(@Param('id') id: string, @Req() req: any) {
     return this.sessionsService.getRecordings(id, req.user.userId);
@@ -175,7 +175,7 @@ export class SessionsController {
     return this.sessionsService.validateJoinToken(body.sessionId, body.token);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   @Post(':id/attendance')
   async recordAttendance(
     @Param('id') id: string,
@@ -193,7 +193,7 @@ export class SessionsController {
     return this.sessionsService.recordAttendance(id, body.studentId, body.present, body.minutesAttended);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   @Post(':id/slides')
   @UseInterceptors(FileInterceptor('file', { 
     storage: memoryStorage(),

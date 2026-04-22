@@ -10,7 +10,7 @@ import {
     FileTypeValidator,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 import { StorageService } from '../storage/storage.service';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -19,7 +19,7 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
 export class MediaController {
     constructor(private readonly storageService: StorageService) { }
 
-    @UseGuards(JwtAuthGuard)
+    @UseGuards(ClerkAuthGuard)
     @Post('upload')
     @UseInterceptors(FileInterceptor('file'))
     async uploadFile(

@@ -11,7 +11,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { StudentsService } from './students.service';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { CreditsService } from '../credits/credits.service';
 
 // Assuming you have an AuthGuard or similar to get the user
@@ -25,7 +25,7 @@ export class StudentsController {
   ) { }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async create(@Body() body: any, @Req() req: any) {
     // Ideally use a DTO class for body
     // req.user is populated by JwtStrategy, which returns { userId, email, role }
@@ -39,7 +39,7 @@ export class StudentsController {
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async getMyProfile(@Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
@@ -54,7 +54,7 @@ export class StudentsController {
   }
 
   @Get('me/progress-summary')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async getMyProgressSummary(@Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
@@ -64,7 +64,7 @@ export class StudentsController {
   }
 
   @Get('parent')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async findAllByParent(@Req() req: any) {
     const parentUserId = req.user?.userId;
     if (!parentUserId) throw new Error('User not authenticated');
@@ -85,7 +85,7 @@ export class StudentsController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async getById(@Param('id') id: string) {
     const student = await this.studentsService.findUniqueById(id);
     if (!student) throw new NotFoundException('Student not found');
@@ -93,7 +93,7 @@ export class StudentsController {
   }
 
   @Get(':id/enrollment-status')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async getEnrollmentStatus(@Param('id') id: string, @Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
@@ -101,7 +101,7 @@ export class StudentsController {
   }
 
   @Get(':id/progress-summary')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async getProgressSummary(@Param('id') id: string, @Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
@@ -109,7 +109,7 @@ export class StudentsController {
   }
 
   @Post(':id/update-streak')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async updateStreak(@Param('id') id: string, @Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
@@ -117,7 +117,7 @@ export class StudentsController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async delete(@Param('id') id: string, @Req() req: any) {
     const parentUserId = req.user?.userId;
     if (!parentUserId) throw new Error('User not authenticated');
@@ -126,7 +126,7 @@ export class StudentsController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async update(@Param('id') id: string, @Body() body: any, @Req() req: any) {
     const userId = req.user?.userId;
     const role = req.user?.role;
@@ -136,7 +136,7 @@ export class StudentsController {
   }
 
   @Get('me/notes')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async getMyNotes(@Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
@@ -144,7 +144,7 @@ export class StudentsController {
   }
 
   @Get('me/sessions')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   async getMySessions(@Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');

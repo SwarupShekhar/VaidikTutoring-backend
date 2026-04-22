@@ -12,10 +12,10 @@ import {
 import { ProgramsService } from './programs.service';
 import { CreateProgramDto } from './dto/create-program.dto';
 import { UpdateProgramDto } from './dto/update-program.dto';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 
 @Controller('admin/programs')
-@UseGuards(JwtAuthGuard)
+@UseGuards(ClerkAuthGuard)
 export class ProgramsController {
     constructor(private readonly programsService: ProgramsService) { }
 

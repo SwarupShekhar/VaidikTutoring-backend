@@ -18,7 +18,7 @@ import {
 import { Response } from 'express';
 import { AdminService } from './admin.service';
 import { SyncClerkMetadataService } from './sync-clerk-metadata';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorators';
 import {
@@ -70,7 +70,7 @@ class AllocateTutorDto {
 }
 
 @Controller('admin')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(ClerkAuthGuard, RolesGuard)
 @Roles('admin')
 export class AdminController {
   private readonly logger = new Logger(AdminController.name);
