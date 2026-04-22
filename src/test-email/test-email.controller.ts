@@ -1,6 +1,6 @@
 import { Controller, Get, Logger, UseGuards } from '@nestjs/common';
 import nodemailer from 'nodemailer';
-import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorators';
 

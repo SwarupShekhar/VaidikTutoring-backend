@@ -18,7 +18,7 @@ import {
 import { Response } from 'express';
 import { AdminService } from './admin.service';
 import { SyncClerkMetadataService } from './sync-clerk-metadata';
-import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorators';
 import {

@@ -1,6 +1,6 @@
 import { Controller, Post, Get, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 
 @Controller('admin/seed-pricing')
 @UseGuards(ClerkAuthGuard)

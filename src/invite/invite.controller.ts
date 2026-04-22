@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Res, UseGuards, Req } from '@nestjs/common';
 import { InviteService } from './invite.service';
 import { Response, Request } from 'express';
-import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 
 @Controller('bookings')
 export class InviteController {

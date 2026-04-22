@@ -20,7 +20,7 @@ import {
 import { BlogsService } from './blogs.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
-import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { BlogRedirectInterceptor } from './blog-redirect.interceptor';
 
 @Controller()

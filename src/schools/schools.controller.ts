@@ -1,6 +1,6 @@
 import { Controller, Get, Param, UseGuards, UnauthorizedException, Req } from '@nestjs/common';
 import { SchoolsService } from './schools.service';
-import { ClerkAuthGuard } from '../../auth/clerk-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 
 @Controller('admin/schools')
 @UseGuards(ClerkAuthGuard)
