@@ -4,7 +4,6 @@ import { AdminService } from './admin.service';
 import { SeedPricingController } from './seed-pricing.controller';
 import { SyncClerkMetadataService } from './sync-clerk-metadata';
 import { PrismaModule } from '../prisma/prisma.module';
-import { JwtModule } from '@nestjs/jwt';
 import { EmailModule } from '../email/email.module';
 import { AzureModule } from '../azure/azure.module';
 
@@ -12,7 +11,6 @@ import { AzureModule } from '../azure/azure.module';
 @Module({
   imports: [
     PrismaModule,
-    JwtModule.register({ secret: process.env.JWT_SECRET || 'secret' }),
     EmailModule,
     AzureModule,
   ],
