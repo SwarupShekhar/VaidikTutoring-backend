@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, Global } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
@@ -10,6 +10,7 @@ import { CreditsModule } from '../credits/credits.module';
 import { JwtStrategy } from './jwt.strategy';
 import { ClerkAuthGuard } from './clerk-auth.guard';
 
+@Global()
 @Module({
   imports: [
     PrismaModule,
