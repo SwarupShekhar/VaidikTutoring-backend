@@ -578,6 +578,16 @@ export class AdminService {
                             name: true,
                         },
                     },
+                    trial_tutor: {
+                        include: {
+                            users: {
+                                select: {
+                                    first_name: true,
+                                    last_name: true,
+                                }
+                            }
+                        }
+                    }
                 },
                 orderBy: {
                     created_at: 'desc',
@@ -604,6 +614,12 @@ export class AdminService {
             birth_date: this.safeIso(student.birth_date),
             curriculum: student.curricula?.name || null,
             created_at: this.safeIso(student.created_at),
+            enrollment_status: student.enrollment_status,
+            subscription_plan: student.subscription_plan,
+            subscription_credits: student.subscription_credits,
+            assigned_tutor_name: student.trial_tutor?.users 
+                ? `${student.trial_tutor.users.first_name} ${student.trial_tutor.users.last_name || ''}`.trim()
+                : null,
             parent: student.users_students_parent_user_idTousers
                 ? {
                     id: student.users_students_parent_user_idTousers.id,
