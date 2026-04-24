@@ -1,9 +1,12 @@
-import { Controller, Post, Body, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Controller, Post, Body, Logger, Inject, forwardRef, UseGuards } from '@nestjs/common';
 import { AzureStorageService } from '../azure/azure-storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SessionsService } from '../sessions/sessions.service';
 import { DailyService } from './daily.service';
+import { DailyWebhookGuard } from './daily-webhook.guard';
+import { ConfigService } from '@nestjs/config';
 
+@UseGuards(DailyWebhookGuard)
 @Controller('webhooks/daily')
 export class DailyWebhookController {
   private readonly logger = new Logger(DailyWebhookController.name);
@@ -14,6 +17,7 @@ export class DailyWebhookController {
     @Inject(forwardRef(() => SessionsService))
     private readonly sessionsService: SessionsService,
     private readonly dailyService: DailyService,
+    private readonly config: ConfigService,
   ) {}
 
   @Post()
@@ -88,7 +92,7 @@ export class DailyWebhookController {
 
   private async completeSession(sessionId: string) {
     try {
-      await this.sessionsService.updateSessionStatus(sessionId, 'completed');
+      await this.sessionsService.updateSessionStatus(sessionId, 'completed', 'system');
     } catch (error) {
       this.logger.error(`Failed to mark session ${sessionId} as completed: ${error.message}`);
     }

@@ -140,6 +140,6 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(RawBodyMiddleware)
-      .forRoutes('payments');
+      .forRoutes('payments', 'webhooks');
   }
 }

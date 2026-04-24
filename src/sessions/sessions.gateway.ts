@@ -53,6 +53,7 @@ export class SessionsGateway
   private penAccessState = new Map<string, Set<string>>(); // Cache for student pen access (SessionId -> Set of StudentIds)
   private pollState = new Map<string, any>(); // Cache for active polls
   private sessionMap = new Map<string, string>(); // Performance cache
+  private clientSessionMap = new Map<string, string>(); // client.id → sessionId
 
   constructor(
     private readonly sessionsService: SessionsService,
@@ -67,6 +68,18 @@ export class SessionsGateway
 
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
+    const sessionId = this.clientSessionMap.get(client.id);
+    this.clientSessionMap.delete(client.id);
+    if (!sessionId) return;
+    const room = this.server.sockets.adapter.rooms.get(`session:${sessionId}`);
+    if (!room || room.size === 0) {
+        this.whiteboardState.delete(sessionId);
+        this.slidesState.delete(sessionId);
+        this.filesState.delete(sessionId);
+        this.penAccessState.delete(sessionId);
+        this.pollState.delete(sessionId);
+        this.logger.log(`Cleaned up session state for ${sessionId} (last client left)`);
+    }
   }
 
   /**
@@ -84,6 +97,7 @@ export class SessionsGateway
           finalSessionId = await this.sessionsService.ensureSessionId(data.sessionId);
           this.sessionMap.set(data.sessionId, finalSessionId);
       }
+      this.clientSessionMap.set(client.id, finalSessionId);
 
       // 2. Resolve session details
       const session = await this.prisma.sessions.findUnique({
@@ -593,15 +607,17 @@ export class SessionsGateway
       
       // GAP FIX: Persist phase to database for state recovery on participant refresh
       try {
+          const existing = await this.prisma.sessions.findUnique({
+            where: { id: payload.sessionId },
+            select: { phase_history: true },
+          });
+          const history: any[] = Array.isArray(existing?.phase_history) ? existing.phase_history as any[] : [];
           await this.prisma.sessions.update({
             where: { id: payload.sessionId },
-            data: { 
+            data: {
               current_phase: payload.phase,
-              // Optionally append to history log
-              phase_history: {
-                push: { phase: payload.phase, timestamp: new Date() }
-              }
-            }
+              phase_history: [...history, { phase: payload.phase, timestamp: new Date().toISOString() }],
+            },
           });
       } catch (e) {
           this.logger.error(`Failed to persist phase update: ${e.message}`);

@@ -29,7 +29,6 @@ import { UploadRecordingDto } from './dto/upload-recording.dto';
 import { Response } from 'express';
 import { EmailVerifiedGuard } from '../auth/email-verified.guard';
 import { PasswordChangeGuard } from '../auth/password-change.guard';
-import { TutorStatusGuard } from '../auth/tutor-status.guard';
 import { memoryStorage } from 'multer';
 
 @Controller('sessions')
@@ -135,7 +134,7 @@ export class SessionsController {
 
 
 
-  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, TutorStatusGuard)
+  @UseGuards(ClerkAuthGuard)
   @Get(':id/daily-token')
   async getDailyToken(@Param('id') idOrBookingId: string, @Req() req: any) {
     const user = req.user;

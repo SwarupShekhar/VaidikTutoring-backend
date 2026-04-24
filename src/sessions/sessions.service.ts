@@ -879,7 +879,7 @@ export class SessionsService {
         data: { status }
     });
 
-    if (status === 'completed' && session.bookings?.student_id) {
+    if (status === 'completed' && session.status !== 'completed' && session.bookings?.student_id) {
         await this.handleSessionCompletion(
             sessionId,
             session.bookings.student_id,
@@ -908,7 +908,7 @@ export class SessionsService {
     return updated;
   }
 
-  private async handleSessionCompletion(sessionId: string, studentId: string, startTime?: Date, endTime?: Date) {
+  async handleSessionCompletion(sessionId: string, studentId: string, startTime?: Date, endTime?: Date) {
     // Update total hours learned and completed sessions
     let durationHours = 1; // Default
     if (startTime && endTime) {
@@ -935,6 +935,15 @@ export class SessionsService {
 
     if (!session) {
       throw new NotFoundException('Session not found');
+    }
+
+    if (session.status === 'completed') {
+      return {
+        success: true,
+        sessionId: session.id,
+        status: session.status,
+        message: 'Session already completed',
+      };
     }
 
     const user = await this.prisma.users.findUnique({
@@ -977,14 +986,28 @@ export class SessionsService {
     }
 
     // Mark session as completed
-    const updated = await this.prisma.sessions.update({
-      where: { id: sessionId },
-      data: {
-        status: 'completed',
-        end_time: session.end_time || new Date()
-      },
-      include: { bookings: true }
-    });
+    let updated;
+    try {
+      updated = await this.prisma.sessions.update({
+        where: { id: sessionId, status: { not: 'completed' } },
+        data: {
+          status: 'completed',
+          end_time: session.end_time || new Date()
+        },
+        include: { bookings: true }
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2025') {
+        const existing = await this.prisma.sessions.findUnique({ where: { id: sessionId }, include: { bookings: true } });
+        return {
+          success: true,
+          sessionId: sessionId,
+          status: 'completed',
+          message: 'Session already completed',
+        };
+      }
+      throw e;
+    }
 
     // Update student progress using unified logic
     if (updated.bookings?.student_id) {
