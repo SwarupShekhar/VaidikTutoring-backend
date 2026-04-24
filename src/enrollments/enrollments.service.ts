@@ -158,68 +158,77 @@ export class EnrollmentsService {
   private async generateSessionsForEnrollment(enrollment: any, tx?: any) {
     const prisma = tx || this.prisma;
     const [hours, minutes] = enrollment.start_time.split(':').map(Number);
-    const startOfNextWeek = addDays(startOfWeek(new Date(), { weekStartsOn: 0 }), 7);
+    const now = new Date();
+    
+    // We want to ensure sessions are scheduled for both the remainder of this week and the entirety of next week.
+    // This provides immediate feedback to students who just enrolled mid-week.
+    const startOfThisWeek = startOfWeek(now, { weekStartsOn: 0 });
+    const startOfNextWeek = addDays(startOfThisWeek, 7);
+    const targetWeeks = [startOfThisWeek, startOfNextWeek];
 
     let dayCounter = 0;
-    for (const dayIndex of enrollment.schedule_days) {
-      // ── CREDIT CHECK per session ──────────────────────────────────
-      // Re-fetch student inside the loop so we see the latest credit
-      // balance after each deduction (avoids race where all sessions
-      // are created before any deduction is applied).
-      const student = await prisma.students.findUnique({
-        where: { id: enrollment.student_id },
-      });
-      if (!student) break;
+    for (const weekStart of targetWeeks) {
+      for (const dayIndex of enrollment.schedule_days) {
+        let sessionStart = addDays(weekStart, dayIndex % 7);
+        sessionStart = setHours(sessionStart, hours);
+        sessionStart = setMinutes(sessionStart, minutes);
 
-      const creditsRemaining = student.subscription_credits ?? 0;
-      if (creditsRemaining <= 0) {
-        this.logger.warn(
-          `Enrollment ${enrollment.id}: student ${enrollment.student_id} has 0 subscription credits — stopping session generation`,
-        );
-        // Pause the enrollment so the cron skips it next week too
-        await prisma.enrollments.update({
-          where: { id: enrollment.id },
-          data: { status: 'paused' },
+        // 1. Skip if this slot is already in the past
+        if (sessionStart <= now) continue;
+
+        // 2. Skip if booking already exists for this slot (prevents double-booking during cron or manual runs)
+        const existing = await prisma.bookings.findFirst({
+          where: { enrollment_id: enrollment.id, requested_start: sessionStart },
         });
-        break;
+        if (existing) {
+          dayCounter++;
+          continue;
+        }
+
+        // 3. CREDIT CHECK per session
+        // We re-fetch to get the most accurate current balance
+        const student = await prisma.students.findUnique({
+          where: { id: enrollment.student_id },
+        });
+        if (!student) return;
+
+        const creditsRemaining = student.subscription_credits ?? 0;
+        if (creditsRemaining <= 0) {
+          this.logger.warn(
+            `Enrollment ${enrollment.id}: student ${enrollment.student_id} has 0 subscription credits — stopping session generation`,
+          );
+          // Auto-pause if credits run dry
+          await prisma.enrollments.update({
+            where: { id: enrollment.id },
+            data: { status: 'paused' },
+          });
+          return; // Exit entire generation loop
+        }
+
+        const sessionEnd = new Date(sessionStart.getTime() + 60 * 60 * 1000);
+        const subjectId = enrollment.subject_ids[dayCounter % enrollment.subject_ids.length];
+
+        await this.bookingsService.createScheduledBooking({
+          student_id: enrollment.student_id,
+          program_id: enrollment.program_id,
+          package_id: enrollment.package_id,
+          subject_id: subjectId,
+          curriculum_id: enrollment.curriculum_id,
+          tutor_id: enrollment.tutor_id,
+          start: sessionStart,
+          end: sessionEnd,
+          enrollment_id: enrollment.id,
+        }, tx);
+
+        // Deduct 1 subscription credit
+        await prisma.students.update({
+          where: { id: enrollment.student_id },
+          data: { subscription_credits: { decrement: 1 } },
+        });
+
+        this.logger.log(`Scheduled session for ${sessionStart.toISOString()} (Enrollment: ${enrollment.id}), deducted 1 credit.`);
+        dayCounter++;
       }
-      // ─────────────────────────────────────────────────────────────
-
-      let sessionStart = addDays(startOfNextWeek, dayIndex % 7);
-      sessionStart = setHours(sessionStart, hours);
-      sessionStart = setMinutes(sessionStart, minutes);
-
-      const sessionEnd = new Date(sessionStart.getTime() + 60 * 60 * 1000);
-
-      // Skip if booking already exists for this slot (prevents cron double-fire)
-      const existing = await prisma.bookings.findFirst({
-        where: { enrollment_id: enrollment.id, requested_start: sessionStart },
-      });
-      if (existing) { dayCounter++; continue; }
-
-      const subjectId = enrollment.subject_ids[dayCounter % enrollment.subject_ids.length];
-
-      await this.bookingsService.createScheduledBooking({
-        student_id: enrollment.student_id,
-        program_id: enrollment.program_id,
-        package_id: enrollment.package_id,
-        subject_id: subjectId,
-        curriculum_id: enrollment.curriculum_id,
-        tutor_id: enrollment.tutor_id,
-        start: sessionStart,
-        end: sessionEnd,
-        enrollment_id: enrollment.id,
-      }, tx);
-
-      // Deduct 1 subscription credit for this auto-scheduled session
-      await prisma.students.update({
-        where: { id: enrollment.student_id },
-        data: { subscription_credits: { decrement: 1 } },
-      });
-
-      this.logger.log(`Scheduled session for enrollment ${enrollment.id}, deducted 1 credit (${creditsRemaining - 1} remaining)`);
-
-      dayCounter++;
     }
   }
 }
