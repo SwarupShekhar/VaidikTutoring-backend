@@ -4,6 +4,7 @@ import { SessionsService } from './sessions.service';
 import { DailyService } from '../daily/daily.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 
 const mockSessionsService = { create: jest.fn(), findAll: jest.fn() };
 const mockDailyService = { createRoom: jest.fn() };
@@ -22,6 +23,7 @@ describe('SessionsController', () => {
       ],
     })
       .overrideGuard(JwtAuthGuard).useValue({ canActivate: () => true })
+      .overrideGuard(ClerkAuthGuard).useValue({ canActivate: () => true })
       .compile();
 
     controller = module.get<SessionsController>(SessionsController);

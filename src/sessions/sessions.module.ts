@@ -3,6 +3,7 @@ import { SessionsController } from './sessions.controller';
 import { AuthModule } from '../auth/auth.module';
 import { SessionsService } from './sessions.service';
 import { SessionsGateway } from './sessions.gateway';
+import { SessionsCronService } from './sessions-cron.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { AttentionEventsModule } from '../attention-events/attention-events.module';
@@ -28,7 +29,7 @@ import { TutorStatusGuard } from '../auth/tutor-status.guard';
     forwardRef(() => StudentsModule),
   ],
   controllers: [SessionsController],
-  providers: [SessionsService, SessionsGateway, TutorStatusGuard],
+  providers: [SessionsService, SessionsGateway, SessionsCronService, TutorStatusGuard],
   exports: [SessionsService, SessionsGateway],
 })
 export class SessionsModule { }
