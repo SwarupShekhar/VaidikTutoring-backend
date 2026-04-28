@@ -93,7 +93,7 @@ import { HealthModule } from './health/health.module';
     }),
     ThrottlerModule.forRoot([{
       ttl: 60000, // 1 minute
-      limit: 100, // 100 requests per minute
+      limit: 100, // 100 requests per minute per IP (Production Safe)
     }]),
     PrismaModule, // <-- VERY IMPORTANT
     AuthModule, // <-- VERY IMPORTANT

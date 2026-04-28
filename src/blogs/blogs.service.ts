@@ -1,4 +1,5 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -9,7 +10,8 @@ export class BlogsService {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly storage: StorageService
+        private readonly storage: StorageService,
+        @Inject(CACHE_MANAGER) private cacheManager: any,
     ) { }
 
     async create(createBlogDto: CreateBlogDto, user: any) {
@@ -71,10 +73,17 @@ export class BlogsService {
             }
         });
 
+        // Clear cache
+        await this.cacheManager.del('blogs_published_list');
+
         return blog;
     }
 
     async findAllPublished(page: number, limit: number, category?: string) {
+        const cacheKey = `blogs_published_${page}_${limit}_${category || 'all'}`;
+        const cached = await this.cacheManager.get(cacheKey);
+        if (cached) return cached;
+
         const skip = (page - 1) * limit;
         const whereClause: any = { 
             status: 'PUBLISHED',
@@ -87,7 +96,7 @@ export class BlogsService {
             whereClause.category = category;
         }
 
-        this.logger.debug(`Fetching blogs skip=${skip} limit=${limit}`);
+        this.logger.debug(`DB HIT: Fetching blogs skip=${skip} limit=${limit}`);
 
         const [data, total] = await Promise.all([
             this.prisma.blogs.findMany({
@@ -114,9 +123,9 @@ export class BlogsService {
             this.prisma.blogs.count({ where: whereClause })
         ]);
 
-        this.logger.debug(`Found ${data.length} blogs, total=${total}`);
-
-        return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+        const result = { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+        await this.cacheManager.set(cacheKey, result, 300000); // 5 mins
+        return result;
     }
 
     async findAll(page: number, limit: number) {
