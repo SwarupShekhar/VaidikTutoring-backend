@@ -95,7 +95,17 @@ export class BlogsService {
                 skip,
                 take: limit,
                 orderBy: { created_at: 'desc' },
-                include: {
+                select: {
+                    id: true,
+                    title: true,
+                    slug: true,
+                    excerpt: true,
+                    category: true,
+                    image_url: true,
+                    image_alt: true,
+                    published_at: true,
+                    created_at: true,
+                    author_id: true,
                     users: {
                         select: { first_name: true, last_name: true }
                     }

@@ -22,9 +22,12 @@ export class PrismaService
       throw new Error('DATABASE_URL environment variable is required');
     }
 
-    // Create PostgreSQL connection pool (must be done before super()) and set search_path to "app"
+    // Create PostgreSQL connection pool with optimized settings for high concurrency
     const pool = new Pool({
       connectionString: databaseUrl,
+      max: 20, // Increase from default 10
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
     });
 
     // Create Prisma adapter for PostgreSQL

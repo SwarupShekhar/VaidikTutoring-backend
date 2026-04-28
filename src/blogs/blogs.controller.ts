@@ -22,12 +22,15 @@ import { CreateBlogDto } from './dto/create-blog.dto';
 import { UpdateBlogDto } from './dto/update-blog.dto';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { BlogRedirectInterceptor } from './blog-redirect.interceptor';
+import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
 
 @Controller()
 export class BlogsController {
     constructor(private readonly blogsService: BlogsService) { }
 
     // Public: Get all PUBLISHED blogs
+    @UseInterceptors(CacheInterceptor)
+    @CacheTTL(60 * 5) // 5 minutes
     @Get('blogs')
     async findAllPublished(
         @Query('page') page?: string,
@@ -47,7 +50,8 @@ export class BlogsController {
     }
 
     // Public: Get single blog by ID or Slug (with 301 redirect for UUIDs)
-    @UseInterceptors(BlogRedirectInterceptor)
+    @UseInterceptors(CacheInterceptor, BlogRedirectInterceptor)
+    @CacheTTL(60 * 10) // 10 minutes
     @Get('blogs/:idOrSlug')
     async findOne(@Param('idOrSlug') idOrSlug: string) {
         // Check if input is a UUID
