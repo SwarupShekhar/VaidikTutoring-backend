@@ -199,6 +199,19 @@ export class AdminController {
       throw e;
     }
   }
+  @Get('students/:id')
+  async getStudentDetails(@Req() req: any, @Param('id') id: string) {
+    try {
+      const actor = req.user;
+      if (!actor || actor.role !== 'admin') {
+        throw new UnauthorizedException('Only admins can view student details.');
+      }
+      return await this.adminService.getStudentDetails(id);
+    } catch (e) {
+      this.logger.error(`GET /admin/students/${id} failed`, e);
+      throw e;
+    }
+  }
 
   @Get('bookings')
   async getBookings(

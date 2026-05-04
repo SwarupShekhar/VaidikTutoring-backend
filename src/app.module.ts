@@ -42,6 +42,7 @@ import { SupportModule } from './support/support.module';
 import { BackupModule } from './backup/backup.module';
 import { VaultModule } from './vault/vault.module';
 import { HealthModule } from './health/health.module';
+import { MessagesModule } from './messages/messages.module';
 
 @Module({
   imports: [
@@ -127,6 +128,7 @@ import { HealthModule } from './health/health.module';
     BackupModule,
     VaultModule,
     HealthModule,
+    MessagesModule,
     ServeStaticModule.forRoot({
 
       rootPath: path.join(process.cwd(), 'public'),

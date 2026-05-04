@@ -106,7 +106,7 @@ export class TutorsService {
 
     // Fetch ratings for this tutor
     const ratings = await this.prisma.tutor_ratings.findMany({
-      where: { tutor_id: tutor.user_id },
+      where: { tutor_id: tutor.id },
       select: { score: true }
     });
 
@@ -130,6 +130,25 @@ export class TutorsService {
         isInitial: totalHours === 0
       }
     };
+  }
+
+  async getTutorReviews(userId: string) {
+    const tutor = await this.prisma.tutors.findFirst({
+      where: { user_id: userId },
+    });
+
+    if (!tutor) return [];
+
+    return this.prisma.tutor_ratings.findMany({
+      where: { tutor_id: tutor.id },
+      include: {
+        users: {
+          select: { first_name: true, last_name: true }
+        }
+      },
+      orderBy: { created_at: 'desc' },
+      take: 10
+    });
   }
 
   /**

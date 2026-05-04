@@ -138,6 +138,19 @@ export class StudentsService {
     const student = await this.prisma.students.findFirst({
       where: { user_id: userId },
       include: {
+        trial_tutor: {
+            include: {
+                users: {
+                    select: {
+                        first_name: true,
+                        last_name: true,
+                        email: true
+                    }
+                }
+            }
+        },
+        curricula: true,
+        program: true,
         bookings: {
           include: {
             sessions: {

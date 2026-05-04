@@ -56,4 +56,9 @@ export class TutorsController {
       whiteboard_link: b.sessions?.[0]?.whiteboard_link
     }));
   }
+
+  @Get('reviews')
+  async getReviews(@Req() req: any) {
+    return this.tutorsService.getTutorReviews(req.user.userId);
+  }
 }

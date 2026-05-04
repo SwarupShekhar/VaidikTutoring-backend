@@ -3,6 +3,7 @@ import {
     Logger,
     ForbiddenException,
     BadRequestException,
+    NotFoundException,
     Inject,
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
@@ -568,6 +569,7 @@ export class AdminService {
                         select: {
                             id: true,
                             email: true,
+                            phone: true,
                             first_name: true,
                             last_name: true,
                         },
@@ -629,6 +631,7 @@ export class AdminService {
                 }
                 : null,
             student_email: student.users_students_user_idTousers?.email || null,
+            student_phone: student.users_students_user_idTousers?.phone || null,
         }));
 
         return {
@@ -637,6 +640,46 @@ export class AdminService {
             page,
             limit,
             totalPages: Math.ceil(total / limit),
+        };
+    }
+
+    async getStudentDetails(studentId: string) {
+        const student = await this.prisma.students.findUnique({
+            where: { id: studentId },
+            include: {
+                users_students_user_idTousers: {
+                    select: {
+                        id: true,
+                        email: true,
+                        phone: true,
+                        first_name: true,
+                        last_name: true,
+                        timezone: true,
+                        created_at: true,
+                    },
+                },
+                trial_tutor: {
+                    include: {
+                        users: {
+                            select: {
+                                first_name: true,
+                                last_name: true,
+                            },
+                        },
+                    },
+                },
+                program: true,
+                curricula: true,
+            },
+        });
+
+        if (!student) throw new NotFoundException('Student not found');
+
+        // Ensure interests and struggle_areas are returned even if they are null in DB
+        return {
+            ...student,
+            interests: student.interests || [],
+            struggle_areas: student.struggle_areas || [],
         };
     }
 
