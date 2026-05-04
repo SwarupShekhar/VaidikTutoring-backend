@@ -1,4 +1,4 @@
-import { IsString, IsIn, Matches } from 'class-validator';
+import { IsString, IsIn, Matches, IsNotEmpty } from 'class-validator';
 
 export class SendOtpDto {
   @IsString()
@@ -7,4 +7,8 @@ export class SendOtpDto {
 
   @IsIn(['sms', 'whatsapp'])
   channel: 'sms' | 'whatsapp';
+
+  @IsString()
+  @IsNotEmpty()
+  captchaToken: string;
 }

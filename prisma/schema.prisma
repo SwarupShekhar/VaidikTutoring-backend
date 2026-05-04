@@ -400,7 +400,7 @@ model users {
   role                                    String
   first_name                              String?
   last_name                               String?
-  phone                                   String?
+  phone                                   String?              @unique
   timezone                                String?              @default("UTC")
   is_active                               Boolean?             @default(true)
   email_verified                          Boolean              @default(false)

@@ -18,13 +18,14 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { EmailVerifiedGuard } from '../auth/email-verified.guard';
 import { PasswordChangeGuard } from '../auth/password-change.guard';
 import { TutorStatusGuard } from '../auth/tutor-status.guard';
+import { PhoneVerifiedGuard } from '../auth/phone-verified.guard';
 
 @Controller('bookings')
 export class BookingsController {
   constructor(private readonly svc: BookingsService) { }
 
   // Student/Parent creates a booking
-  @UseGuards(ClerkAuthGuard, RolesGuard, EmailVerifiedGuard)
+  @UseGuards(ClerkAuthGuard, RolesGuard, EmailVerifiedGuard, PhoneVerifiedGuard)
   @Roles('parent', 'student')
   @Post('create')
   async create(@Body() dto: CreateBookingDto, @Req() req) {

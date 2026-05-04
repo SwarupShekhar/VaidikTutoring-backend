@@ -29,6 +29,7 @@ import { UploadRecordingDto } from './dto/upload-recording.dto';
 import { Response } from 'express';
 import { EmailVerifiedGuard } from '../auth/email-verified.guard';
 import { PasswordChangeGuard } from '../auth/password-change.guard';
+import { PhoneVerifiedGuard } from '../auth/phone-verified.guard';
 import { memoryStorage } from 'multer';
 
 @Controller('sessions')
@@ -67,7 +68,7 @@ export class SessionsController {
     res.send(ics);
   }
 
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(ClerkAuthGuard, PhoneVerifiedGuard)
   @Post(':id/recordings')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   async uploadRecording(
@@ -108,13 +109,13 @@ export class SessionsController {
     return this.sessionsService.generateRecordingSasUrl(id, recordingId, req.user.userId);
   }
 
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(ClerkAuthGuard, PhoneVerifiedGuard)
   @Get(':id/messages')
   getMessages(@Param('id') id: string, @Req() req: any) {
     return this.sessionsService.getMessages(id, req.user.userId);
   }
 
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(ClerkAuthGuard, PhoneVerifiedGuard)
   @Post(':id/messages')
   postMessage(
     @Param('id') id: string,
@@ -126,7 +127,7 @@ export class SessionsController {
 
   // ==================== RECORDINGS ====================
 
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(ClerkAuthGuard, PhoneVerifiedGuard)
   @Get(':id/recordings')
   async getRecordings(@Param('id') id: string, @Req() req: any) {
     return this.sessionsService.getRecordings(id, req.user.userId);
@@ -134,7 +135,7 @@ export class SessionsController {
 
 
 
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(ClerkAuthGuard, PhoneVerifiedGuard)
   @Get(':id/daily-token')
   async getDailyToken(@Param('id') idOrBookingId: string, @Req() req: any) {
     const user = req.user;
@@ -175,7 +176,7 @@ export class SessionsController {
     return this.sessionsService.validateJoinToken(body.sessionId, body.token);
   }
 
-  @UseGuards(ClerkAuthGuard)
+  @UseGuards(ClerkAuthGuard, PhoneVerifiedGuard)
   @Post(':id/attendance')
   async recordAttendance(
     @Param('id') id: string,
@@ -294,7 +295,7 @@ export class SessionsController {
     return this.sessionsService.saveWhiteboardSnapshot(id, req.user.userId, body.snapshotUrl);
   }
 
-  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, PhoneVerifiedGuard)
   @Get('stickers/:studentId')
   async getStickers(@Param('studentId') studentId: string, @Req() req: any) {
     const user = req.user;
@@ -313,7 +314,7 @@ export class SessionsController {
 
   // ==================== CLASS NOTES ====================
 
-  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, PhoneVerifiedGuard)
   @Post(':id/notes')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   async shareNote(
@@ -334,7 +335,7 @@ export class SessionsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, PhoneVerifiedGuard)
   @Post(':id/shared-pdf')
   @UseInterceptors(FileInterceptor('file', { 
     storage: memoryStorage(),
@@ -357,13 +358,13 @@ export class SessionsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, PhoneVerifiedGuard)
   @Get(':id/notes')
   async getSessionNotes(@Param('id') sessionId: string, @Req() req: any) {
     return this.sessionsService.getSessionNotes(sessionId, req.user.userId);
   }
 
-  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard)
+  @UseGuards(JwtAuthGuard, EmailVerifiedGuard, PasswordChangeGuard, PhoneVerifiedGuard)
   @Get('notes/:noteId/download')
   async downloadNote(@Param('noteId') noteId: string, @Req() req: any) {
     return this.sessionsService.generateNoteSasUrl(noteId, req.user.userId);

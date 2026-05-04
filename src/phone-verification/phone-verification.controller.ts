@@ -2,21 +2,38 @@ import {
   Controller, Post, Body, UseGuards, Req,
   BadRequestException,
 } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { PhoneVerificationService } from './phone-verification.service';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 
 @Controller('phone-verification')
-@UseGuards(ClerkAuthGuard)
+@UseGuards(ClerkAuthGuard, ThrottlerGuard)
 export class PhoneVerificationController {
   constructor(private readonly phoneVerificationService: PhoneVerificationService) {}
 
+  @Throttle({
+    default: {
+      limit: 3,
+      ttl: 600000,
+      getTracker: (req) => `send-otp:${req.body.phone}`.toLowerCase(),
+    },
+  })
   @Post('send')
-  async send(@Body() body: SendOtpDto): Promise<{ success: boolean }> {
-    return this.phoneVerificationService.sendOtp(body.phone, body.channel);
+  async send(@Body() body: SendOtpDto, @Req() req: any): Promise<{ success: boolean }> {
+    const userId = req.user?.userId || req.user?.id;
+    if (!userId) throw new BadRequestException('User not identified');
+    return this.phoneVerificationService.sendOtp(userId, body.phone, body.channel, body.captchaToken);
   }
 
+  @Throttle({
+    default: {
+      limit: 5,
+      ttl: 3600000,
+      getTracker: (req) => `verify-otp:${req.body.phone}`.toLowerCase(),
+    },
+  })
   @Post('verify')
   async verify(@Body() body: VerifyOtpDto, @Req() req: any): Promise<{ success: boolean }> {
     const userId = req.user?.userId || req.user?.id;

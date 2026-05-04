@@ -6,6 +6,6 @@ export class VerifyOtpDto {
   phone: string;
 
   @IsString()
-  @Length(4, 10)
+  @Length(6, 6)
   code: string;
 }
