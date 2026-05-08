@@ -77,6 +77,8 @@ model bookings {
   enrollment_id     String?    @db.Uuid
   enrollment        enrollments? @relation(fields: [enrollment_id], references: [id])
 
+  @@index([student_id])
+  @@index([assigned_tutor_id])
   @@schema("app")
 }
 
@@ -288,6 +290,7 @@ model sessions {
   bookings           bookings?            @relation(fields: [booking_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   program            Program?             @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([booking_id])
   @@schema("app")
 }
 
@@ -467,6 +470,7 @@ model session_messages {
   sessions   sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users      users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@index([session_id])
   @@schema("app")
 }
 
@@ -591,6 +595,9 @@ model AttentionEvent {
   Student   users              @relation("StudentAttentionEvents", fields: [studentId], references: [id], onDelete: Cascade)
   Tutor     users              @relation("TutorAttentionEvents", fields: [tutorId], references: [id], onDelete: Cascade)
 
+  @@index([sessionId])
+  @@index([studentId])
+  @@index([tutorId])
   @@map("attention_events")
   @@schema("app")
 }
@@ -629,6 +636,8 @@ model enrollments {
   tutors    tutors?  @relation(fields: [tutor_id], references: [id], onDelete: NoAction)
   bookings  bookings[]
 
+  @@index([student_id])
+  @@index([tutor_id])
   @@schema("app")
 }
 
@@ -641,6 +650,8 @@ model sticker_rewards {
   sessions   sessions @relation(fields: [session_id], references: [id], onDelete: Cascade)
   users      users    @relation(fields: [student_id], references: [id], onDelete: Cascade)
 
+  @@index([session_id])
+  @@index([student_id])
   @@map("sticker_rewards")
   @@schema("app")
 }
@@ -760,5 +771,7 @@ model tutor_messages {
   tutor      tutors   @relation(fields: [tutor_id], references: [id], onDelete: Cascade)
   sender     users    @relation(fields: [sender_id], references: [id], onDelete: Cascade)
 
+  @@index([student_id, tutor_id])
+  @@index([sender_id])
   @@schema("app")
 }

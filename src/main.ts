@@ -12,19 +12,61 @@ import { SentryFilter } from './common/filters/sentry.filter';
 import helmet from 'helmet';
 import compression from 'compression';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { BetterStackLogger } from './common/logger/betterstack.logger';
 
 // Custom Socket adapter to increase max payload size for drawings with images
+import { createAdapter } from '@socket.io/redis-adapter';
+import Redis from 'ioredis';
+
+// Custom Socket adapter to increase max payload size for drawings with images and support clustering
 class ExtendedIoAdapter extends IoAdapter {
+  private adapterConstructor: any;
+
+  async connectToRedis(): Promise<void> {
+    const redisUrl = process.env.REDIS_URL;
+    if (!redisUrl) {
+      console.log('[Socket.IO] No REDIS_URL found, Socket.IO running in local/single-process mode');
+      return;
+    }
+
+    try {
+      console.log('[Socket.IO] Connecting to Redis adapter...');
+      const pubClient = new Redis(redisUrl, {
+        maxRetriesPerRequest: null,
+        enableReadyCheck: false,
+        family: 4, // Force IPv4 to align with cache manager settings
+      });
+      const subClient = pubClient.duplicate();
+
+      pubClient.on('error', (err) => console.error('[Socket.IO Redis Pub Client Error]', err.message));
+      subClient.on('error', (err) => console.error('[Socket.IO Redis Sub Client Error]', err.message));
+
+      await Promise.all([
+        new Promise<void>((resolve) => pubClient.once('ready', () => resolve())),
+        new Promise<void>((resolve) => subClient.once('ready', () => resolve())),
+      ]);
+
+      this.adapterConstructor = createAdapter(pubClient, subClient);
+      console.log('[Socket.IO] ✅ Redis adapter connected successfully!');
+    } catch (err: any) {
+      console.error('[Socket.IO] Redis adapter initialization failed:', err.message);
+    }
+  }
+
   createIOServer(port: number, options?: any): any {
     const server = super.createIOServer(port, {
       ...options,
       maxHttpBufferSize: 1e8, // 100MB limit for binary whiteboard data
     });
+    if (this.adapterConstructor) {
+      server.adapter(this.adapterConstructor);
+    }
     return server;
   }
 }
 
 async function bootstrap() {
+  const betterStackLogger = new BetterStackLogger();
   const logger = new Logger('Bootstrap');
   logger.log('Starting application...');
 
@@ -41,8 +83,12 @@ async function bootstrap() {
     bufferLogs: true,
   });
 
-  // Use Custom Socket.IO adapter for high-bandwidth whiteboard sync
-  app.useWebSocketAdapter(new ExtendedIoAdapter(app));
+  app.useLogger(betterStackLogger);
+
+  // Use Custom Socket.IO adapter for high-bandwidth whiteboard sync and clustering
+  const redisIoAdapter = new ExtendedIoAdapter(app);
+  await redisIoAdapter.connectToRedis();
+  app.useWebSocketAdapter(redisIoAdapter);
 
   // Default body limit (restrict DOS attacks)
   app.use(json({ limit: '2mb' }));

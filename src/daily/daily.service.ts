@@ -38,6 +38,7 @@ export class DailyService {
                                     enable_screenshare: true,
                                     enable_chat: false,
                                     enable_recording: 'cloud',
+                                    enable_prejoin_ui: false,
                                     exp: Math.floor(Date.now() / 1000) + 7200
                                 }
                             },
@@ -60,6 +61,7 @@ export class DailyService {
                                 properties: {
                                     enable_screenshare: true,
                                     enable_chat: false,
+                                    enable_prejoin_ui: false,
                                     exp: Math.floor(Date.now() / 1000) + 7200
                                 }
                             },
@@ -90,6 +92,7 @@ export class DailyService {
                             enable_screenshare: true,
                             enable_chat: false,
                             enable_recording: 'cloud',
+                            enable_prejoin_ui: false,
                             exp: Math.floor(Date.now() / 1000) + 7200
                         }
                     },

@@ -1,0 +1,56 @@
+# Local Build and Run artifacts
+node_modules
+dist
+build
+.code-review-graph
+generated
+
+# Sensitive Local Credentials & Configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+
+# Local Logging Outputs
+*.log
+backend.log
+backend_dev.log
+backend_final.log
+backend_final_socket.log
+backend_final_socket_v2.log
+backend_new.log
+backend_socket.log
+
+# Database Backups & Temporary SQL Dumps
+k12tutoring_backup.sql
+supabase_dump.dump
+*.sql
+*.dump
+
+# Version Control and IDE configurations
+.git
+.github
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Temporary OS cache & Scratch assets
+tmp
+temp
+scratch
+reproduce_output.txt
+verify_backend.ts
+check_duplicates.js
+check_students.js
+check_students.ts
+cleanup_db.ts
+force_reset.ts
+list_tables.js
+prisma_check.js
+test-notifications-client.ts
+test-notifications-e2e.ts
+test_db.py
