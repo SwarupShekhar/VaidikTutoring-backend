@@ -10,7 +10,7 @@ export class MessagesService {
   ) {}
 
   async sendStudentQuery(studentUserId: string, text: string) {
-    // 1. Find student and their assigned tutor
+    // 1. Find student and their assigned tutor (try trial tutor first)
     const student = await this.prisma.students.findFirst({
       where: { user_id: studentUserId },
       include: {
@@ -19,23 +19,55 @@ export class MessagesService {
       },
     });
 
-    if (!student || !student.trial_tutor_id) {
-      throw new NotFoundException('Student or assigned tutor not found');
+    if (!student) {
+      throw new NotFoundException('Student profile not found');
+    }
+
+    let tutorId = student.trial_tutor_id;
+    let tutor = student.trial_tutor;
+
+    // Fallback 1: Try to resolve tutor from active enrollments
+    if (!tutorId) {
+      const activeEnrollment = await this.prisma.enrollments.findFirst({
+        where: { student_id: student.id, status: 'active', NOT: { tutor_id: null } },
+        include: { tutors: { include: { users: true } } },
+      });
+      if (activeEnrollment && activeEnrollment.tutors) {
+        tutorId = activeEnrollment.tutor_id;
+        tutor = activeEnrollment.tutors;
+      }
+    }
+
+    // Fallback 2: Try to resolve tutor from the most recent booking with an assigned tutor
+    if (!tutorId) {
+      const recentBooking = await this.prisma.bookings.findFirst({
+        where: { student_id: student.id, NOT: { assigned_tutor_id: null } },
+        include: { tutors: { include: { users: true } } },
+        orderBy: { created_at: 'desc' },
+      });
+      if (recentBooking && recentBooking.tutors) {
+        tutorId = recentBooking.assigned_tutor_id;
+        tutor = recentBooking.tutors;
+      }
+    }
+
+    if (!tutorId || !tutor) {
+      throw new NotFoundException('No assigned tutor found for this student');
     }
 
     // 2. Save message
     const message = await this.prisma.tutor_messages.create({
       data: {
         student_id: student.id,
-        tutor_id: student.trial_tutor_id,
+        tutor_id: tutorId,
         sender_id: studentUserId,
         text,
       },
     });
 
     // 3. Notify tutor via email
-    if (student.trial_tutor?.users?.email) {
-      const tutorEmail = student.trial_tutor.users.email;
+    if (tutor.users?.email) {
+      const tutorEmail = tutor.users.email;
       const studentName = `${student.first_name} ${student.last_name || ''}`.trim();
 
       try {
@@ -44,18 +76,18 @@ export class MessagesService {
           subject: `New Query from Student: ${studentName}`,
           html: `
             <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; padding: 30px;">
-            <h2 style="color: #6366f1; margin-top: 0;">New Student Query</h2>
-            <p>Hello ${student.trial_tutor.users.first_name || 'Tutor'},</p>
-            <p>You have received a new query from your student, <strong>${studentName}</strong> (Grade ${student.grade || 'N/A'}):</p>
-            <div style="background: #f8fafc; border-left: 4px solid #6366f1; padding: 20px; margin: 25px 0; font-style: italic; color: #1e293b; line-height: 1.6;">
-              "${text}"
+              <h2 style="color: #6366f1; margin-top: 0;">New Student Query</h2>
+              <p>Hello ${tutor.users.first_name || 'Tutor'},</p>
+              <p>You have received a new query from your student, <strong>${studentName}</strong> (Grade ${student.grade || 'N/A'}):</p>
+              <div style="background: #f8fafc; border-left: 4px solid #6366f1; padding: 20px; margin: 25px 0; font-style: italic; color: #1e293b; line-height: 1.6;">
+                "${text}"
+              </div>
+              <p style="margin-bottom: 30px;">Please reply promptly from your tutor dashboard to maintain academic momentum.</p>
+              <a href="https://studyhours.com/tutor/dashboard" style="background: #6366f1; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Reply to Student</a>
+              <p style="font-size: 12px; color: #94a3b8; margin-top: 40px; border-top: 1px solid #eee; pt: 20px;">
+                StudyHours • Educational Excellence
+              </p>
             </div>
-            <p style="margin-bottom: 30px;">Please reply promptly from your tutor dashboard to maintain academic momentum.</p>
-            <a href="https://studyhours.com/tutor/dashboard" style="background: #6366f1; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Reply to Student</a>
-            <p style="font-size: 12px; color: #94a3b8; margin-top: 40px; border-top: 1px solid #eee; pt: 20px;">
-              StudyHours • Educational Excellence
-            </p>
-          </div>
           `,
         });
       } catch (e) {
@@ -70,7 +102,7 @@ export class MessagesService {
         action: 'SEND_STUDENT_QUERY',
         object_type: 'MESSAGE',
         object_id: message.id,
-        details: { student_id: student.id, tutor_id: student.trial_tutor_id }
+        details: { student_id: student.id, tutor_id: tutorId }
       }
     });
 
