@@ -54,6 +54,9 @@ COPY --from=builder --chown=node:node /app/package*.json ./
 COPY --from=builder --chown=node:node /app/prisma ./prisma
 COPY --from=builder --chown=node:node /app/prisma.config.docker.js ./prisma.config.js
 
+# Create writable directories needed at runtime
+RUN mkdir -p /app/public/uploads && chown -R node:node /app/public
+
 # Relinquish superuser permissions; execute process as non-privileged 'node' user
 USER node
 
