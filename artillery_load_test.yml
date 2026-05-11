@@ -1,0 +1,22 @@
+config:
+  target: "https://api.studyhours.com"
+  phases:
+    - duration: 20
+      arrivalRate: 2
+      name: "Phase 1: Warm up (2 requests/sec)"
+    - duration: 30
+      arrivalRate: 2
+      rampTo: 15
+      name: "Phase 2: Ramp up to high load (2 to 15 requests/sec)"
+    - duration: 30
+      arrivalRate: 15
+      name: "Phase 3: Sustained stress test (15 requests/sec)"
+  defaults:
+    headers:
+      User-Agent: "ArtilleryLoadTest"
+
+scenarios:
+  - name: "Health and DB query load testing flow"
+    flow:
+      - get:
+          url: "/health"

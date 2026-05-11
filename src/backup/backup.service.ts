@@ -24,8 +24,8 @@ export class BackupService {
         }
     }
 
-    // Runs EVERY_DAY_AT_MIDNIGHT to minimize data loss
-    @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+    // Runs EVERY_WEEK (Sunday at midnight) to minimize database load
+    @Cron(CronExpression.EVERY_WEEK)
     async performDailyBackup() {
         if (!this.blobServiceClient) {
             this.logger.error('Azure storage not configured. Skipping disaster recovery backup.');
@@ -38,7 +38,7 @@ export class BackupService {
             return;
         }
 
-        this.logger.log('Starting daily disaster recovery database backup...');
+        this.logger.log('Starting weekly disaster recovery database backup...');
         try {
             // Dynamically grab all models to ensure complete snapshot
             const allProperties: Record<string, any> = this.prisma as any;
@@ -56,13 +56,14 @@ export class BackupService {
                 while (true) {
                     const data = await allProperties[model].findMany({ skip, take });
                     if (data.length === 0) break;
-                    backupData[model].push(...data);
+                    
                     // Explicitly delete PII keys during serialization to avoid uploading them
-                    backupData[model].forEach((row: any) => {
+                    data.forEach((row: any) => {
                         delete row.password_hash;
                         delete row.refresh_token; 
-                        // Note: To completely satisfy PII zero-knowledge, we encrypt the entire blob below.
                     });
+                    
+                    backupData[model].push(...data);
                     skip += take;
                 }
             }
@@ -87,8 +88,10 @@ export class BackupService {
             await blockBlobClient.uploadData(finalEncryptedBuffer);
             
             this.logger.log(`Disaster Recovery backup SECURELY uploaded to Azure Blob Storage: ${blobName}`);
+            return blobName;
         } catch (error) {
             this.logger.error('Database backup failed', error);
+            throw error;
         }
     }
 }
