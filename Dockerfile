@@ -9,6 +9,10 @@ RUN apk add --no-cache openssl
 # Create and define application directory
 WORKDIR /app
 
+# Build-time placeholders to satisfy Prisma v7.x compile-time validations
+ENV DATABASE_URL="postgresql://placeholder_user:placeholder_password@localhost:5432/placeholder_db"
+ENV DIRECT_URL="postgresql://placeholder_user:placeholder_password@localhost:5432/placeholder_db"
+
 # Copy dependency schemas for deterministic package installs
 COPY package*.json ./
 COPY prisma ./prisma/

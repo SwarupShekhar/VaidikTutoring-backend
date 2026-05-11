@@ -90,7 +90,7 @@ jobs:
           ssh root@139.84.163.249 "mkdir -p /app/k12-backend"
           
           # Replace token template placeholders in local docker-compose.yml
-          sed "s/\${GITHUB_REPOSITORY_OWNER_LC}/${{ steps.compose_prep.outputs.owner_lc }}/g" docker-compose.yml > docker-compose.prod.yml
+          sed -e "s/\${GITHUB_REPOSITORY_OWNER_LC}/${{ steps.compose_prep.outputs.owner_lc }}/g" -e "s/\${GITHUB_REPOSITORY_NAME_LC}/${{ steps.compose_prep.outputs.repo_lc }}/g" docker-compose.yml > docker-compose.prod.yml
           
           # Upload the sanitized Compose file to Vultr VPS
           scp docker-compose.prod.yml root@139.84.163.249:/app/k12-backend/docker-compose.yml
