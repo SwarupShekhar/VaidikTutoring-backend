@@ -28,6 +28,9 @@ export class PrismaService
       max: 20, // Increase from default 10
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
+      ssl: databaseUrl.includes('sslmode=require') || databaseUrl.includes('neon.tech')
+        ? { rejectUnauthorized: false }
+        : undefined,
     });
 
     // Create Prisma adapter for PostgreSQL
