@@ -52,7 +52,7 @@ COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/package*.json ./
 COPY --from=builder --chown=node:node /app/prisma ./prisma
-COPY --from=builder --chown=node:node /app/dist/prisma.config.js ./prisma.config.js
+COPY --from=builder --chown=node:node /app/prisma.config.docker.js ./prisma.config.js
 
 # Relinquish superuser permissions; execute process as non-privileged 'node' user
 USER node
