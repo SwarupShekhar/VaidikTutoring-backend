@@ -65,10 +65,50 @@ class ExtendedIoAdapter extends IoAdapter {
   }
 }
 
+import dns from 'node:dns/promises';
+
+/**
+ * Pre-resolves database host to IPv4 to bypass dual-stack (IPv6) Happy Eyeballs
+ * timeouts inside Docker bridged container networks. Uses Neon's SNI fallback routing.
+ */
+async function resolveDatabaseUrlIPv4(logger: Logger) {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) return;
+
+  if (databaseUrl.includes('neon.tech') && !databaseUrl.includes('options=endpoint')) {
+    try {
+      const parsedUrl = new URL(databaseUrl);
+      const hostname = parsedUrl.hostname;
+      
+      // Resolve IPv4 addresses only
+      const ips = await dns.resolve4(hostname);
+      if (ips && ips.length > 0) {
+        const ip = ips[0];
+        const endpoint = hostname.split('.')[0];
+        
+        parsedUrl.hostname = ip;
+        parsedUrl.searchParams.set('options', `endpoint=${endpoint}`);
+        
+        process.env.DATABASE_URL = parsedUrl.toString();
+        // Disable strict TLS checks to allow connecting to raw IP with certificate hostname mismatch
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+        
+        logger.log(`[Database DNS] Resolved '${hostname}' to IPv4 '${ip}' successfully.`);
+        logger.log(`[Database DNS] Set SNI parameter 'endpoint=${endpoint}' and disabled TLS hostname checks.`);
+      }
+    } catch (err: any) {
+      logger.warn(`[Database DNS] IPv4 pre-resolution failed: ${err.message}. Falling back to default resolution.`);
+    }
+  }
+}
+
 async function bootstrap() {
   const betterStackLogger = new BetterStackLogger();
   const logger = new Logger('Bootstrap');
   logger.log('Starting application...');
+
+  // Resolve DATABASE_URL to IPv4 to fix Docker bridged routing timeouts
+  await resolveDatabaseUrlIPv4(logger);
 
   // Critical Environment Validation
   const requiredEnv = ['DATABASE_URL', 'CLERK_SECRET_KEY', 'JWT_SECRET'];
