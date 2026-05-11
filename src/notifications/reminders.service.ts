@@ -79,12 +79,49 @@ export class RemindersService {
       if (tutorUser?.email) recipients.push(tutorUser.email);
 
       if (recipients.length > 0) {
+        const frontendUrl = process.env.FRONTEND_URL || 'https://studyhours.com';
+        const rawLink = session.meet_link || '';
+        const meetingLink = rawLink.startsWith('http') 
+          ? rawLink 
+          : `${frontendUrl.replace(/\/$/, '')}${rawLink.startsWith('/') ? '' : '/'}${rawLink}`;
+
+        const formattedDate = new Intl.DateTimeFormat('en-US', {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZoneName: 'short'
+        }).format(new Date(session.start_time!));
+
+        const html = `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
+            <h2 style="color: #6366f1; margin-top: 0; margin-bottom: 20px;">Session Reminder</h2>
+            <p style="font-size: 16px; line-height: 1.6; color: #333;">Your upcoming session for <strong>${booking.subjects?.name || 'Class'}</strong> is starting soon!</p>
+            
+            <div style="background-color: #f8fafc; border-left: 4px solid #6366f1; padding: 20px; margin: 25px 0; border-radius: 0 8px 8px 0;">
+              <p style="margin: 0 0 10px 0; font-size: 16px;"><strong>Date & Time:</strong></p>
+              <p style="margin: 0; font-size: 15px; color: #475569;">${formattedDate}</p>
+            </div>
+            
+            <div style="margin: 35px 0; text-align: center;">
+              <a href="${meetingLink}" style="background-color: #6366f1; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(99, 102, 241, 0.2);">Join Classroom</a>
+            </div>
+            
+            <p style="font-size: 14px; color: #64748b; margin-top: 30px; line-height: 1.6;">If you have any questions, you can message your tutor from your dashboard.</p>
+            
+            <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 25px 0;" />
+            <p style="font-size: 12px; color: #94a3b8; text-align: center; margin: 0;">StudyHours • Premium Academic Support</p>
+          </div>
+        `;
+
         await this.emailService.sendMail({
           to: recipients,
-          subject: `Reminder: Session in ${hoursAhead} hour(s)`,
-          text: `Your session for ${booking.subjects?.name} starts at ${session.start_time}.\nLink: ${session.meet_link}`,
+          subject: `Reminder: Session in ${hoursAhead} hour(s) - StudyHours`,
+          text: `Your session for ${booking.subjects?.name} starts at ${formattedDate}.\nLink: ${meetingLink}`,
+          html: html,
         });
-
         // Record notification
         await this.prisma.notifications.create({
           data: {

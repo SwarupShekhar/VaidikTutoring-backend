@@ -145,7 +145,7 @@ async function bootstrap() {
     'https://k-12-backend-vnp4.vercel.app',
     'https://k-12-vaidik.vercel.app',
     'https://vaidiktutoring.vercel.app',
-    'https://k-12-backend.onrender.com',
+    'https://api.studyhours.com',
   ];
   const developmentOrigins = [
     'http://localhost:3000',
@@ -191,8 +191,8 @@ async function bootstrap() {
 
   // 📝 Setup Swagger API Documentation
   const config = new DocumentBuilder()
-    .setTitle('Vaidik Tutoring API')
-    .setDescription('The API documentation for Vaidik Tutoring systems. Provides endpoints for session management, billing, and user profiles.')
+    .setTitle('StudyHours API')
+    .setDescription('The API documentation for StudyHours tutoring platform. Provides endpoints for session management, billing, and user profiles.')
     .setVersion('1.0')
     .addBearerAuth()
     .addTag('sessions', 'Session and Whiteboard operations')

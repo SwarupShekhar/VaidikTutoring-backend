@@ -521,7 +521,7 @@ export class AdminService {
         // Let's send the email with temp password for convenience, BUT return it too.
 
         // build the frontend login URL
-        const frontend = process.env.FRONTEND_URL || 'https://vaidiktutoring.vercel.app';
+        const frontend = process.env.FRONTEND_URL || 'https://studyhours.com';
         const loginUrl = `${frontend.replace(/\/$/, '')}/login`;
 
         const html = `
@@ -535,7 +535,7 @@ export class AdminService {
         try {
             await this.email.sendMail({
                 to: email,
-                subject: 'K12 Tutoring — Account Credentials',
+                subject: 'StudyHours — Account Credentials',
                 text: `Temp Password: ${finalPassword}`,
                 html,
             });
@@ -997,7 +997,7 @@ export class AdminService {
 
             await this.email.sendMail({
                 to: tutor.users.email,
-                subject: 'New Student Allocation - K12 Tutoring',
+                subject: 'New Student Allocation - StudyHours',
                 text: `You have been allocated to student ${student.first_name} for ${subject.name}`,
                 html,
             });
@@ -1140,7 +1140,7 @@ export class AdminService {
             data: { password_hash, force_password_change: true },
         });
 
-        const frontend = process.env.FRONTEND_URL || 'https://vaidiktutoring.vercel.app';
+        const frontend = process.env.FRONTEND_URL || 'https://studyhours.com';
         const loginUrl = `${frontend.replace(/\/$/, '')}/login`;
 
         const html = `
@@ -1154,7 +1154,7 @@ export class AdminService {
         try {
             await this.email.sendMail({
                 to: tutor.users.email,
-                subject: 'K12 Tutoring — Password Reset',
+                subject: 'StudyHours — Password Reset',
                 text: `Your temporary password is: ${tempPassword}`,
                 html,
             });
@@ -1173,7 +1173,7 @@ export class AdminService {
 
         if (!tutor) throw new BadRequestException('Tutor not found');
 
-        const frontend = process.env.FRONTEND_URL || 'https://vaidiktutoring.vercel.app';
+        const frontend = process.env.FRONTEND_URL || 'https://studyhours.com';
         const loginUrl = `${frontend.replace(/\/$/, '')}/login`;
 
         const html = `
@@ -1187,7 +1187,7 @@ export class AdminService {
         </div>
         <p style="font-size: 14px; color: #64748b; margin-top: 30px;">Best regards,<br/>The StudyHours Team</p>
         <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
-        <p style="font-size: 12px; color: #94a3b8; text-align: center;">Vaidik Tutoring Services © 2026. All rights reserved.</p>
+        <p style="font-size: 12px; color: #94a3b8; text-align: center;">StudyHours © 2026. All rights reserved.</p>
       </div>
     `;
 

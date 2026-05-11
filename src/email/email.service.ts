@@ -87,7 +87,7 @@ export class EmailService {
 
   async sendVerificationEmail(to: string, token: string) {
     // Determine Verification URL (Frontend vs Local)
-    // If FRONTEND_URL is set (e.g., https://vaidik-tutoring.vercel.app), use it.
+    // If FRONTEND_URL is set (e.g., https://studyhours.com), use it.
     // Otherwise fallback to localhost.
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     // Remove trailing slash if present to avoid double slashes
@@ -96,9 +96,9 @@ export class EmailService {
 
     const result = await this.sendMail({
       to,
-      subject: 'Verify your email - K12 Tutoring',
+      subject: 'Verify your email - StudyHours',
       html: `
-        <h1>Welcome to K12 Tutoring!</h1>
+        <h1>Welcome to StudyHours!</h1>
         <p>Please click the link below to verify your email address:</p>
         <p><a href="${verificationUrl}">${verificationUrl}</a></p>
         <p>This link will expire in 24 hours.</p>

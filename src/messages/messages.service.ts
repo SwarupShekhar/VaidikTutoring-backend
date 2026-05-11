@@ -51,9 +51,9 @@ export class MessagesService {
               "${text}"
             </div>
             <p style="margin-bottom: 30px;">Please reply promptly from your tutor dashboard to maintain academic momentum.</p>
-            <a href="https://vaidik-tutoring-website.vercel.app/tutor/dashboard" style="background: #6366f1; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Reply to Student</a>
+            <a href="https://studyhours.com/tutor/dashboard" style="background: #6366f1; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Reply to Student</a>
             <p style="font-size: 12px; color: #94a3b8; margin-top: 40px; border-top: 1px solid #eee; pt: 20px;">
-              Vaidik Tutoring • Educational Excellence
+              StudyHours • Educational Excellence
             </p>
           </div>
           `,
@@ -121,16 +121,16 @@ export class MessagesService {
           subject: `Reply from your Tutor: ${tutorName}`,
           html: `
             <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; padding: 30px;">
-              <h2 style="color: #6366f1; margin-top: 0;">New Message from Englivo</h2>
+              <h2 style="color: #6366f1; margin-top: 0;">New Message from StudyHours</h2>
               <p>Hi ${student.first_name},</p>
               <p>Your tutor, <strong>${tutorName}</strong>, has sent you a new message:</p>
               <div style="background: #f8fafc; border-left: 4px solid #6366f1; padding: 20px; margin: 25px 0; font-style: italic; color: #1e293b; line-height: 1.6;">
                 "${text}"
               </div>
               <p style="margin-bottom: 30px;">You can view the full conversation and reply from your dashboard.</p>
-              <a href="https://vaidik-tutoring-website.vercel.app/students/dashboard" style="background: #6366f1; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Go to Dashboard</a>
+              <a href="https://studyhours.com/students/dashboard" style="background: #6366f1; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Go to Dashboard</a>
               <p style="font-size: 12px; color: #94a3b8; margin-top: 40px; border-top: 1px solid #eee; pt: 20px;">
-                Vaidik Tutoring • Premium Academic Support
+                StudyHours • Premium Academic Support
               </p>
             </div>
           `,

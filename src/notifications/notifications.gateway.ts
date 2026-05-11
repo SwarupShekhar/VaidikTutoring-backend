@@ -13,7 +13,7 @@ import { Server, Socket } from 'socket.io';
             'https://k-12-backend-vnp4.vercel.app',
             'https://k-12-vaidik.vercel.app',
             'https://vaidiktutoring.vercel.app',
-            'https://k-12-backend.onrender.com'
+            'https://api.studyhours.com'
         ],
         credentials: true
     }
