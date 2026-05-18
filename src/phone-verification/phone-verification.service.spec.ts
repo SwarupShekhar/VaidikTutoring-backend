@@ -45,7 +45,10 @@ describe('PhoneVerificationService', () => {
         verify: { v2: { services: jest.fn().mockReturnValue({ verifications: { create: mockCreate } }) } },
       });
 
-      await service.sendOtp('+447911123456', 'sms');
+      // Mock validateCaptcha to prevent real hCaptcha network requests in test env
+      jest.spyOn(service, 'validateCaptcha').mockResolvedValue(undefined);
+
+      await service.sendOtp('user-1', '+447911123456', 'sms', 'mock_captcha_token');
 
       expect(mockCreate).toHaveBeenCalledWith({ to: '+447911123456', channel: 'sms' });
     });

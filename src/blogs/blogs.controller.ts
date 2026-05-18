@@ -16,6 +16,7 @@ import {
     UnauthorizedException,
     NotFoundException,
     Redirect,
+    Headers,
 } from '@nestjs/common';
 import { BlogsService } from './blogs.service';
 import { CreateBlogDto } from './dto/create-blog.dto';
@@ -53,13 +54,16 @@ export class BlogsController {
     @UseInterceptors(CacheInterceptor, BlogRedirectInterceptor)
     @CacheTTL(60 * 10) // 10 minutes
     @Get('blogs/:idOrSlug')
-    async findOne(@Param('idOrSlug') idOrSlug: string) {
+    async findOne(
+        @Param('idOrSlug') idOrSlug: string,
+        @Headers('x-preview-secret') previewSecret?: string
+    ) {
         // Check if input is a UUID
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
 
         if (isUuid) {
             // For UUID requests, fetch the blog to get its slug and redirect
-            const blog = await this.blogsService.findOneById(idOrSlug);
+            const blog = await this.blogsService.findOneById(idOrSlug, previewSecret);
             if (!blog || !blog.slug) {
                 throw new NotFoundException('Blog not found');
             }
@@ -73,7 +77,7 @@ export class BlogsController {
         }
 
         // For slug requests, return the blog directly
-        const blog = await this.blogsService.findOne(idOrSlug);
+        const blog = await this.blogsService.findOne(idOrSlug, previewSecret);
         if (!blog) {
             throw new NotFoundException('Blog not found');
         }

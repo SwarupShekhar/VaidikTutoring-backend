@@ -120,6 +120,14 @@ export class ClerkAuthGuard implements CanActivate {
                         dbUser = await this.prisma.users.update({ where: { id: dbUser.id }, data: { email_verified: true } });
                     }
 
+                    // Sync phone verification status to Clerk if not verified in DB
+                    if (dbUser.phone_verified === false && (dbUser.role === 'parent' || dbUser.role === 'student')) {
+                        this.syncClerkService.syncPhoneVerifiedToClerk(dbUser.id, false).catch(err =>
+                            this.logger.error(`[ClerkAuthGuard] Failed to set phone_verified:false for existing user: ${err.message}`)
+                        );
+                    }
+
+
                     if (firstName && dbUser.first_name === 'New' && firstName !== 'New') {
                         dbUser = await this.prisma.users.update({
                             where: { id: dbUser.id },

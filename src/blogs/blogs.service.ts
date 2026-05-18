@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, Inject } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, Inject, UnauthorizedException, NotFoundException } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -74,7 +74,7 @@ export class BlogsService {
         });
 
         // Clear cache
-        await this.cacheManager.del('blogs_published_list');
+        await this.clearBlogCaches(blog.slug);
 
         return blog;
     }
@@ -154,34 +154,52 @@ export class BlogsService {
         };
     }
 
-    async findOne(idOrSlug: string) {
+    async findOne(idOrSlug: string, previewSecret?: string) {
         // Try by ID if UUID
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
 
+        let blog;
         if (isUuid) {
-            const blog = await this.prisma.blogs.findUnique({
+            blog = await this.prisma.blogs.findUnique({
                 where: { id: idOrSlug },
                 include: { users: { select: { first_name: true, last_name: true } } }
             });
-            if (!blog) return null;
-            return { ...blog, author: blog.users, users: undefined };
+        } else {
+            blog = await this.prisma.blogs.findUnique({
+                where: { slug: idOrSlug },
+                include: { users: { select: { first_name: true, last_name: true } } }
+            });
         }
 
-        const blog = await this.prisma.blogs.findUnique({
-            where: { slug: idOrSlug },
-            include: { users: { select: { first_name: true, last_name: true } } }
-        });
         if (!blog) return null;
+
+        // Secure Draft Preview: Restrict access to unpublished blogs unless matching secret is provided
+        if (blog.status !== 'PUBLISHED') {
+            const systemPreviewSecret = process.env.PREVIEW_SECRET || 'vaidikeduservicespvtltd_preview_2026_key';
+            if (!previewSecret || previewSecret !== systemPreviewSecret) {
+                throw new UnauthorizedException('Unauthorized to view draft/unpublished content');
+            }
+        }
+
         return { ...blog, author: blog.users, users: undefined };
     }
 
-    async findOneById(id: string) {
+    async findOneById(id: string, previewSecret?: string) {
         // Fetch blog by ID only (used for 301 redirects)
         const blog = await this.prisma.blogs.findUnique({
             where: { id },
             include: { users: { select: { first_name: true, last_name: true } } }
         });
         if (!blog) return null;
+
+        // Secure Draft Preview: Restrict access to unpublished blogs unless matching secret is provided
+        if (blog.status !== 'PUBLISHED') {
+            const systemPreviewSecret = process.env.PREVIEW_SECRET || 'vaidikeduservicespvtltd_preview_2026_key';
+            if (!previewSecret || previewSecret !== systemPreviewSecret) {
+                throw new UnauthorizedException('Unauthorized to view draft/unpublished content');
+            }
+        }
+
         return { 
             ...blog, 
             author: blog.users, 
@@ -272,6 +290,9 @@ export class BlogsService {
             }
         });
 
+        // Clear cache
+        await this.clearBlogCaches(blog.slug);
+
         return blog;
     }
 
@@ -331,6 +352,9 @@ export class BlogsService {
             }
         });
 
+        // Clear cache
+        await this.clearBlogCaches(restoredBlog.slug);
+
         return restoredBlog;
     }
 
@@ -341,10 +365,15 @@ export class BlogsService {
         
         this.logger.log(`Updating blog ${id} status to: ${status}`);
         
-        return this.prisma.blogs.update({
+        const updatedBlog = await this.prisma.blogs.update({
             where: { id },
             data: { status }
         });
+
+        // Clear cache
+        await this.clearBlogCaches(updatedBlog.slug);
+
+        return updatedBlog;
     }
 
     // Emergency recovery method - check if any blogs exist
@@ -389,6 +418,9 @@ export class BlogsService {
                 this.logger.error(`Failed to delete image file: ${blog.image_url}`, error);
             }
         }
+
+        // Clear cache
+        await this.clearBlogCaches(blog.slug);
 
         return { message: 'Blog deleted successfully', id: result.id };
     }
@@ -438,5 +470,94 @@ export class BlogsService {
         return Object.fromEntries(
             Object.entries(response).filter(([_, items]) => items.length > 0)
         );
+    }
+
+    private async clearBlogCaches(slug?: string) {
+        this.logger.log(`Clearing blog caches ${slug ? `for slug: ${slug}` : ''}`);
+        
+        try {
+            // 1. Clear Backend manual caches and CacheInterceptor caches
+            const store = (this.cacheManager as any).store;
+            
+            // Try to find keys by pattern across different store types
+            let blogKeys: string[] = [];
+            
+            if (store && typeof store.keys === 'function') {
+                // Standard cache-manager keys() usually takes a pattern or nothing
+                try {
+                    const keys = await store.keys('*');
+                    blogKeys = keys.filter((key: string) => 
+                        key.includes('blogs_published') || 
+                        key.includes('/blogs') ||
+                        key.includes('/admin/blogs') ||
+                        key.includes('blog')
+                    );
+                } catch (e) {
+                    this.logger.warn('Failed to fetch keys with pattern "*", trying without pattern');
+                    const keys = await store.keys();
+                    blogKeys = keys.filter((key: string) => 
+                        key.includes('blogs_published') || 
+                        key.includes('/blogs') ||
+                        key.includes('/admin/blogs')
+                    );
+                }
+            } else if (store && store.client && typeof store.client.keys === 'function') {
+                // Redis specific path
+                blogKeys = await store.client.keys('*blog*');
+            }
+
+            if (blogKeys.length > 0) {
+                this.logger.log(`Deleting ${blogKeys.length} blog cache keys`);
+                await Promise.all(blogKeys.map(key => this.cacheManager.del(key)));
+            } else {
+                // Absolute fallback for specific known keys
+                await this.cacheManager.del('blogs_published_list');
+            }
+
+            // 2. Trigger Next.js revalidation
+            if (slug) {
+                await this.triggerRevalidation(slug);
+            } else {
+                // If no specific slug, at least revalidate the list
+                await this.triggerRevalidation('list-update-placeholder'); 
+            }
+        } catch (error) {
+            this.logger.error('Failed to clear blog caches', error);
+        }
+    }
+
+    private async triggerRevalidation(slug: string) {
+        try {
+            const revalidateUrl = process.env.REVALIDATION_URL || 'https://studyhours.com/api/revalidate';
+            const revalidationSecret = process.env.REVALIDATION_SECRET || 'vaidikeduservicespvtltd_revalidate_2026_key';
+            
+            // We revalidate both the specific post and the list
+            // The frontend revalidate route handles path.includes('/blogs') to revalidate /blogs index
+            const url = `${revalidateUrl}?secret=${revalidationSecret}&path=/blogs/${slug}`;
+            
+            this.logger.log(`Triggering cache revalidation for path: /blogs/${slug}`);
+            
+            // Fire-and-forget background fetch request
+            fetch(url, { method: 'POST' })
+                .then(res => {
+                    if (res.ok) {
+                        this.logger.log(`Successfully revalidated blog cache for path: /blogs/${slug}`);
+                    } else {
+                        res.text().then(text => {
+                            this.logger.error(`Revalidation request failed for /blogs/${slug}: ${res.status} ${text}`);
+                        });
+                    }
+                })
+                .catch(err => {
+                    this.logger.error(`Network error during cache revalidation for /blogs/${slug}: ${err.message}`);
+                });
+
+            // Also explicitly revalidate the /blogs index just in case
+            const indexUrl = `${revalidateUrl}?secret=${revalidationSecret}&path=/blogs`;
+            fetch(indexUrl, { method: 'POST' }).catch(() => {});
+            
+        } catch (error: any) {
+            this.logger.error(`Failed to dispatch cache revalidation event: ${error?.message}`);
+        }
     }
 }
