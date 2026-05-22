@@ -381,19 +381,19 @@ export class AdminService {
             this.prisma.tutors.count({ where: { is_active: true } }),
         ]);
 
-        // Fetch avg ratings for all tutors
+        // Fetch avg ratings for all tutors using optimized single-query groupBy aggregation
         const tutorIds = tutors.map(t => t.id);
-        const ratingAggregates = await Promise.all(
-            tutorIds.map(id =>
-                this.prisma.tutor_ratings.aggregate({
-                    where: { tutor_id: id },
-                    _avg: { score: true },
-                    _count: { score: true },
-                })
-            )
-        );
+        const ratingAggregates = await this.prisma.tutor_ratings.groupBy({
+            by: ['tutor_id'],
+            where: { tutor_id: { in: tutorIds } },
+            _avg: { score: true },
+            _count: { score: true },
+        });
         const ratingMap = new Map(
-            tutorIds.map((id, i) => [id, ratingAggregates[i]])
+            tutorIds.map(id => {
+                const agg = ratingAggregates.find(r => r.tutor_id === id);
+                return [id, agg || { _avg: { score: null }, _count: { score: 0 } }];
+            })
         );
 
         // Format tutors for frontend compatibility

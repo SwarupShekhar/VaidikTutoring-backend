@@ -16,7 +16,7 @@ async function runTest() {
     console.log('🚀 Starting E2E Notification Test...');
 
     // 1. Setup Admin Socket Listener
-    const adminSocket = io(`${API_URL}/notifications`, { transports: ['websocket'] });
+    const adminSocket = io(`${API_URL}/notifications`, { transports: ['websocket'] } as any);
 
     const socketPromise = new Promise((resolve, reject) => {
         adminSocket.on('connect', () => {

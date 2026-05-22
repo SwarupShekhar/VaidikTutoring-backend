@@ -264,34 +264,47 @@ export class MessagesService {
 
     if (studentIds.length === 0) return [];
 
-    // For each student, get the latest message and unread count
-    const enriched = await Promise.all(studentIds.map(async (group) => {
-      const studentId = group.student_id;
-      
-      const [lastMessage, unreadCount, student] = await Promise.all([
-        this.prisma.tutor_messages.findFirst({
-          where: { tutor_id: tutor.id, student_id: studentId },
-          orderBy: { created_at: 'desc' }
-        }),
-        this.prisma.tutor_messages.count({
-          where: { 
-            tutor_id: tutor.id, 
-            student_id: studentId, 
-            is_read: false,
-            NOT: { sender_id: userId }
+    const studentIdsList = studentIds.map(s => s.student_id);
+
+    // Fetch all student profiles and their latest messages in a single query per student profile via relation include
+    const [studentsWithLatestMessage, unreadCounts] = await Promise.all([
+      this.prisma.students.findMany({
+        where: { id: { in: studentIdsList } },
+        include: {
+          tutor_messages: {
+            where: { tutor_id: tutor.id },
+            orderBy: { created_at: 'desc' },
+            take: 1
           }
-        }),
-        this.prisma.students.findUnique({
-          where: { id: studentId }
-        })
-      ]);
+        }
+      }),
+      this.prisma.tutor_messages.groupBy({
+        by: ['student_id'],
+        where: {
+          tutor_id: tutor.id,
+          student_id: { in: studentIdsList },
+          is_read: false,
+          NOT: { sender_id: userId }
+        },
+        _count: { id: true }
+      })
+    ]);
+
+    const unreadMap = new Map<string, number>(
+      unreadCounts.map(u => [u.student_id, u._count.id])
+    );
+
+    const enriched = studentsWithLatestMessage.map((s) => {
+      const lastMessage = s.tutor_messages[0];
+      const unreadCount = unreadMap.get(s.id) ?? 0;
+      const { tutor_messages, ...studentData } = s;
 
       return {
-        ...lastMessage,
-        student,
+        ...(lastMessage || {}),
+        student: studentData,
         unreadCount
       };
-    }));
+    });
 
     // Sort by latest message date
     return enriched.sort((a, b) => {

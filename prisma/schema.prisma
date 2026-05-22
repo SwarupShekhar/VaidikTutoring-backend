@@ -18,6 +18,8 @@ model assessment_attempts {
   assessments   assessments? @relation(fields: [assessment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   students      students?    @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([assessment_id])
+  @@index([student_id])
   @@schema("app")
 }
 
@@ -34,6 +36,9 @@ model assessments {
   curricula           curricula?            @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   subjects            subjects?             @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([created_by])
+  @@index([curriculum_id])
+  @@index([subject_id])
   @@schema("app")
 }
 
@@ -47,6 +52,7 @@ model audit_logs {
   created_at    DateTime? @default(now()) @db.Timestamptz(6)
   users         users?    @relation(fields: [actor_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([actor_user_id])
   @@schema("app")
 }
 
@@ -79,6 +85,11 @@ model bookings {
 
   @@index([student_id])
   @@index([assigned_tutor_id])
+  @@index([package_id])
+  @@index([program_id])
+  @@index([curriculum_id])
+  @@index([subject_id])
+  @@index([enrollment_id])
   @@schema("app")
 }
 
@@ -105,6 +116,8 @@ model curriculum_subject_map {
   curricula     curricula? @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   subjects      subjects?  @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([curriculum_id])
+  @@index([subject_id])
   @@schema("app")
 }
 
@@ -117,6 +130,7 @@ model notifications {
   created_at DateTime? @default(now()) @db.Timestamptz(6)
   users      users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([user_id])
   @@schema("app")
 }
 
@@ -129,6 +143,8 @@ model package_items {
   packages   packages? @relation(fields: [package_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   subjects   subjects? @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([package_id])
+  @@index([subject_id])
   @@schema("app")
 }
 
@@ -160,6 +176,8 @@ model progress_points {
   curricula      curricula? @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   students       students?  @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([student_id])
+  @@index([curriculum_id])
   @@schema("app")
 }
 
@@ -189,6 +207,9 @@ model purchases {
   program               Program?  @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users                 users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([user_id])
+  @@index([package_id])
+  @@index([program_id])
   @@schema("app")
 }
 
@@ -219,6 +240,8 @@ model user_credits {
   packages          packages? @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users             users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([user_id])
+  @@index([package_id])
   @@map("user_credits")
   @@schema("app")
 }
@@ -233,6 +256,8 @@ model credit_usage_logs {
   sessions     sessions? @relation(fields: [session_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users        users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([user_id])
+  @@index([session_id])
   @@map("credit_usage_logs")
   @@schema("app")
 }
@@ -255,6 +280,8 @@ model session_recordings {
   sessions         sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users            users?    @relation(fields: [uploaded_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([session_id])
+  @@index([uploaded_by])
   @@schema("app")
 }
 
@@ -291,6 +318,7 @@ model sessions {
   program            Program?             @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([booking_id])
+  @@index([program_id])
   @@schema("app")
 }
 
@@ -342,6 +370,10 @@ model students {
   users_students_user_idTousers        users?                @relation("students_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   tutor_messages                       tutor_messages[]
 
+  @@index([parent_user_id])
+  @@index([program_id])
+  @@index([package_id])
+  @@index([trial_tutor_id])
   @@schema("app")
 }
 
@@ -369,6 +401,7 @@ model tutor_shifts {
   created_at  DateTime? @default(now()) @db.Timestamptz(6)
   tutors      tutors?   @relation(fields: [tutor_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@index([tutor_id])
   @@schema("app")
 }
 
@@ -395,6 +428,8 @@ model tutors {
   enrollments        enrollments[]
   tutor_messages     tutor_messages[]
 
+  @@index([user_id])
+  @@index([program_id])
   @@schema("app")
 }
 
@@ -445,6 +480,8 @@ model users {
   children                                users[]              @relation("ParentChildren")
   school                                  School?              @relation(fields: [school_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([parent_id])
+  @@index([school_id])
   @@schema("app")
 }
 
@@ -458,6 +495,8 @@ model credit_adjustments {
   students   students  @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users      users?    @relation(fields: [granted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([student_id])
+  @@index([granted_by])
   @@schema("app")
 }
 
@@ -471,6 +510,7 @@ model session_messages {
   users      users?    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([session_id])
+  @@index([user_id])
   @@schema("app")
 }
 
@@ -495,6 +535,7 @@ model blogs {
   versions     blog_versions[]
   users        users           @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@index([author_id])
   @@schema("app")
 }
 
@@ -517,6 +558,8 @@ model blog_versions {
   author     users    @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   blog       blogs    @relation(fields: [blog_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@index([blog_id])
+  @@index([author_id])
   @@schema("app")
 }
 
@@ -638,6 +681,8 @@ model enrollments {
 
   @@index([student_id])
   @@index([tutor_id])
+  @@index([program_id])
+  @@index([package_id])
   @@schema("app")
 }
 
@@ -685,6 +730,8 @@ model class_notes {
   sessions    sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users       users    @relation(fields: [uploaded_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@index([session_id])
+  @@index([uploaded_by])
   @@schema("app")
 }
 
@@ -727,6 +774,7 @@ model support_tickets {
   updated_at DateTime @updatedAt @db.Timestamptz(6)
   users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@index([user_id])
   @@schema("app")
 }
 model vault_assets {
@@ -741,6 +789,7 @@ model vault_assets {
   curriculum_id   String?
   created_at      DateTime @default(now()) @db.Timestamptz(6)
 
+  @@index([uploaded_by])
   @@schema("app")
 }
 

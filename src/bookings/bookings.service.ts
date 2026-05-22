@@ -847,13 +847,14 @@ export class BookingsService {
       orderBy: { requested_start: 'asc' },
     });
 
-    // TRANSFORM: Flatten session data and inject SAS URLs
-    return Promise.all(bookings.map(async b => {
+    // TRANSFORM: Flatten session data and inject SAS URLs (limited to the top 5 most recent records to prevent event-loop block)
+    return Promise.all(bookings.map(async (b, idx) => {
       const session = b.sessions?.[0];
       const recording = session?.session_recordings?.[0];
+      const shouldGenerateSas = idx >= bookings.length - 5;
       
       // Inject SAS URL if Azure blob exists
-      if (recording?.azure_blob_name) {
+      if (recording?.azure_blob_name && shouldGenerateSas) {
           try {
               recording.file_url = await this.azureStorageService.generateSasUrl('session-recordings', recording.azure_blob_name, 2);
           } catch (e) {
@@ -861,7 +862,7 @@ export class BookingsService {
           }
       }
 
-      if (session?.whiteboard_snapshot_url && !session.whiteboard_snapshot_url.startsWith('http')) {
+      if (session?.whiteboard_snapshot_url && !session.whiteboard_snapshot_url.startsWith('http') && shouldGenerateSas) {
           try {
               session.whiteboard_snapshot_url = await this.azureStorageService.generateSasUrl('whiteboard-snapshots', session.whiteboard_snapshot_url, 24);
           } catch (e) {
@@ -953,18 +954,19 @@ export class BookingsService {
       orderBy: { requested_start: 'desc' },
     });
 
-    // Inject SAS URLs
-    return Promise.all(bookings.map(async b => {
+    // Inject SAS URLs (limited to the top 5 most recent records to prevent event-loop block)
+    return Promise.all(bookings.map(async (b, idx) => {
+        const shouldGenerateSas = idx < 5;
         for (const session of (b.sessions || [])) {
             const recording = session.session_recordings?.[0];
-            if (recording?.azure_blob_name) {
+            if (recording?.azure_blob_name && shouldGenerateSas) {
                 try {
                     recording.file_url = await this.azureStorageService.generateSasUrl('session-recordings', recording.azure_blob_name, 2);
                 } catch (e) {
                     this.logger.error(`Failed SAS generation for parent recording: ${e.message}`);
                 }
             }
-            if (session.whiteboard_snapshot_url && !session.whiteboard_snapshot_url.startsWith('http')) {
+            if (session.whiteboard_snapshot_url && !session.whiteboard_snapshot_url.startsWith('http') && shouldGenerateSas) {
                 try {
                     session.whiteboard_snapshot_url = await this.azureStorageService.generateSasUrl('whiteboard-snapshots', session.whiteboard_snapshot_url, 24);
                 } catch (e) {

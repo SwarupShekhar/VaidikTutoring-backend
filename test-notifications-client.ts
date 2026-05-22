@@ -6,7 +6,7 @@ async function testNotifications() {
     // 1. Simulate Admin Connection
     const adminSocket = io('http://localhost:3000/notifications', {
         transports: ['websocket'],
-    });
+    } as any);
 
     adminSocket.on('connect', () => {
         console.log('✅ Admin Socket Connected:', adminSocket.id);
