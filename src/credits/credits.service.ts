@@ -230,6 +230,9 @@ export class CreditsService {
           where: { id: studentId },
           data: {
             subscription_credits: newCredits,
+            // Keep legacy sessions_remaining in sync so the profile page shows the
+            // correct number instead of the stale value written at purchase time.
+            sessions_remaining: Math.max(0, (student.sessions_remaining || 0) - cost),
           },
         });
       }
@@ -266,11 +269,12 @@ export class CreditsService {
         },
       });
     } else {
-      // Refund subscription credit
+      // Refund subscription credit — also restore sessions_remaining (legacy field)
       await this.prisma.students.update({
         where: { id: studentId },
         data: {
           subscription_credits: (student.subscription_credits || 0) + cost,
+          sessions_remaining: (student.sessions_remaining || 0) + cost,
         },
       });
     }
