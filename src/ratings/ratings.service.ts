@@ -25,6 +25,12 @@ export class RatingsService {
         where: {
           status: 'completed',
           tutor_ratings: { none: {} },
+          attendance: {
+            some: {
+              present: true,
+              students: { user_id: userId },
+            },
+          },
           bookings: {
             students: { user_id: userId },
             assigned_tutor_id: { not: null },
@@ -61,6 +67,12 @@ export class RatingsService {
         where: {
           status: 'completed',
           tutor_ratings: { none: {} },
+          attendance: {
+            some: {
+              present: true,
+              students: { parent_user_id: userId },
+            },
+          },
           bookings: {
             students: { parent_user_id: userId },
             assigned_tutor_id: { not: null },
