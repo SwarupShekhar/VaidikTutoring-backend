@@ -66,13 +66,14 @@ export class CreditsService {
     // 2. Check for Learning Mode Enrollment
     if (student.enrollment_status === 'learning') {
       const creditsRemaining = student.subscription_credits || 0;
+      const subscriptionExpired = student.subscription_ends && new Date(student.subscription_ends) < now;
       return {
-        mode: 'learning',
-        creditsRemaining,
+        mode: subscriptionExpired ? 'trial_expired' : 'learning', // using trial_expired to prompt renew
+        creditsRemaining: subscriptionExpired ? 0 : creditsRemaining,
         trialExpiresAt: null,
         daysLeft: null,
         sessionsUsed: liveSessionsUsed,
-        canBook: creditsRemaining > 0,
+        canBook: creditsRemaining > 0 && !subscriptionExpired,
         plan: student.subscription_plan as any,
       };
     }
@@ -351,13 +352,18 @@ export class CreditsService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      // Add credits to trial balance
+      const isLearning = student.enrollment_status === 'learning';
+      // Add credits to correct balance depending on mode (learning vs trial) using atomic increment
       await tx.students.update({
         where: { id: studentId },
-        data: {
-          trial_credits: (student.trial_credits || 0) + credits,
-          is_trial_active: true,
-        },
+        data: isLearning
+          ? {
+              subscription_credits: { increment: credits },
+            }
+          : {
+              trial_credits: { increment: credits },
+              is_trial_active: true,
+            },
       });
 
       // Log in credit_adjustments
@@ -393,70 +399,135 @@ export class CreditsService {
     return result.count;
   }
 
+  /**
+   * Cron: Expire stale subscriptions and automatically pause active enrollments.
+   * Runs daily at midnight.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async expireStaleSubscriptions(): Promise<number> {
+    const now = new Date();
+    
+    // Find all students with an active subscription plan that has expired
+    const expiredStudents = await this.prisma.students.findMany({
+      where: {
+        enrollment_status: 'learning',
+        subscription_ends: { lt: now },
+      },
+      select: { id: true, user_id: true },
+    });
+
+    if (expiredStudents.length === 0) return 0;
+
+    const studentIds = expiredStudents.map(s => s.id);
+    const userIds = expiredStudents.map(s => s.user_id).filter(Boolean) as string[];
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Reset students to trial or basic state so they can't book new sessions
+      await tx.students.updateMany({
+        where: { id: { in: studentIds } },
+        data: {
+          enrollment_status: 'trial',
+          subscription_credits: 0,
+        },
+      });
+
+      // 2. Automatically pause all active enrollments for these students to stop weekly scheduling crons
+      await tx.enrollments.updateMany({
+        where: {
+          student_id: { in: studentIds },
+          status: 'active',
+        },
+        data: {
+          status: 'paused',
+        },
+      });
+      
+      // 3. Reset any legacy user_credits records for these user_ids
+      if (userIds.length > 0) {
+        await tx.user_credits.updateMany({
+          where: {
+            user_id: { in: userIds },
+          },
+          data: {
+            credits_total: 0,
+            credits_used: 0,
+          },
+        });
+      }
+    });
+
+    this.logger.log(`Expired ${expiredStudents.length} stale subscription(s) and paused their active enrollments.`);
+    return expiredStudents.length;
+  }
+
   // ─── EXISTING CREDIT SYSTEM (subscription-based) ─────────────────
 
   /**
    * Grant credits to user after successful payment
    */
   async grantCredits(userId: string, packageId: string): Promise<void> {
-    const pkg = await this.prisma.packages.findUnique({
-      where: { id: packageId },
-    });
-
-    if (!pkg || !pkg.active) {
-      throw new BadRequestException('Package not found or inactive');
-    }
-
-    const creditsTotal = this.calculateCreditsFromPackage(pkg);
-
-    const existingCredits = await this.prisma.user_credits.findFirst({
-      where: { 
-        user_id: userId,
-        reset_date: new Date(),
-      },
-    });
-
-    if (existingCredits) {
-      await this.prisma.user_credits.update({
-        where: { id: existingCredits.id },
-        data: {
-          credits_total: existingCredits.credits_total + creditsTotal,
-          updated_at: new Date(),
-        },
+    await this.prisma.$transaction(async (tx) => {
+      const pkg = await tx.packages.findUnique({
+        where: { id: packageId },
       });
-    } else {
-      await this.prisma.user_credits.create({
-        data: {
+
+      if (!pkg || !pkg.active) {
+        throw new BadRequestException('Package not found or inactive');
+      }
+
+      const creditsTotal = this.calculateCreditsFromPackage(pkg);
+
+      const existingCredits = await tx.user_credits.findFirst({
+        where: { 
           user_id: userId,
-          package_id: packageId,
-          credits_total: creditsTotal,
-          reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          reset_date: { gt: new Date() },
         },
       });
-    }
 
-    this.logger.log(`Granted ${creditsTotal} credits to user ${userId} for package ${packageId}`);
+      if (existingCredits) {
+        await tx.user_credits.update({
+          where: { id: existingCredits.id },
+          data: {
+            credits_total: creditsTotal,
+            credits_used: 0,
+            reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            updated_at: new Date(),
+          },
+        });
+      } else {
+        await tx.user_credits.create({
+          data: {
+            user_id: userId,
+            package_id: packageId,
+            credits_total: creditsTotal,
+            reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        });
+      }
 
-    // Derive plan name from package for the new subscription system
-    const pkgName = pkg.name.toLowerCase();
-    const planName = pkgName.includes('elite') ? 'elite' : pkgName.includes('mastery') ? 'mastery' : 'foundation';
-    const subEnds = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+      this.logger.log(`Granted ${creditsTotal} credits to user ${userId} for package ${packageId}`);
 
-    // Post-payment Enrollment Sync — updates BOTH the legacy sessions_remaining
-    // field AND the new subscription credit fields used by getCreditStatus()
-    await this.prisma.students.updateMany({
-      where: { user_id: userId },
-      data: {
-        enrollment_status: 'learning',
-        sessions_remaining: { increment: creditsTotal },
-        package_end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
-        // New credit system fields — these are what BookingsService reads
-        subscription_plan: planName,
-        subscription_credits: { increment: creditsTotal },
-        subscription_starts: new Date(),
-        subscription_ends: subEnds,
-        is_trial_active: false,
-      },
+      // Derive plan name from package for the new subscription system
+      const pkgName = pkg.name.toLowerCase();
+      const planName = pkgName.includes('elite') ? 'elite' : pkgName.includes('mastery') ? 'mastery' : 'foundation';
+      const subEnds = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+      // Post-payment Enrollment Sync — updates BOTH the legacy sessions_remaining
+      // field AND the new subscription credit fields used by getCreditStatus()
+      await tx.students.updateMany({
+        where: { user_id: userId },
+        data: {
+          enrollment_status: 'learning',
+          sessions_remaining: creditsTotal,
+          package_end_date: subEnds, // Sync package_end_date to 30 days to resolve GAP 2!
+          // New credit system fields — these are what BookingsService reads
+          subscription_plan: planName,
+          subscription_credits: creditsTotal, // Reset credits to new plan's value (non-stacking) to resolve GAP 1!
+          subscription_starts: new Date(),
+          subscription_ends: subEnds,
+          is_trial_active: false,
+        },
+      });
     });
   }
 
@@ -528,17 +599,41 @@ export class CreditsService {
     });
 
     for (const credit of expiredCredits) {
-      await this.prisma.user_credits.update({
-        where: { id: credit.id },
-        data: {
-          reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          credits_total: 0,
-          credits_used: 0,
-          updated_at: new Date(),
-        },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.user_credits.update({
+          where: { id: credit.id },
+          data: {
+            reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+            credits_total: 0,
+            credits_used: 0,
+            updated_at: new Date(),
+          },
+        });
+
+        // Sync to students table subscription fields to keep consistency
+        await tx.students.updateMany({
+          where: { user_id: credit.user_id },
+          data: {
+            enrollment_status: 'trial',
+            subscription_credits: 0,
+          },
+        });
+
+        // Pause associated enrollments
+        const students = await tx.students.findMany({
+          where: { user_id: credit.user_id },
+          select: { id: true },
+        });
+        const studentIds = students.map(s => s.id);
+        if (studentIds.length > 0) {
+          await tx.enrollments.updateMany({
+            where: { student_id: { in: studentIds }, status: 'active' },
+            data: { status: 'paused' },
+          });
+        }
       });
 
-      this.logger.log(`Reset credits for user ${credit.user_id}`);
+      this.logger.log(`Reset credits for user ${credit.user_id} and synced student subscription fields.`);
     }
   }
 
@@ -585,5 +680,54 @@ export class CreditsService {
     if (name.includes('elite')) return 24;
     
     return 8;
+  }
+
+  /**
+   * Revoke subscription credits (e.g. after a refund or cancellation)
+   */
+  async revokeCredits(userId: string): Promise<void> {
+    const students = await this.prisma.students.findMany({
+      where: { user_id: userId },
+      select: { id: true },
+    });
+
+    const studentIds = students.map(s => s.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Reset students subscription credits and enrollment status
+      await tx.students.updateMany({
+        where: { user_id: userId },
+        data: {
+          enrollment_status: 'trial',
+          subscription_credits: 0,
+          subscription_plan: null,
+          subscription_ends: null,
+        },
+      });
+
+      // 2. Pause active enrollments
+      if (studentIds.length > 0) {
+        await tx.enrollments.updateMany({
+          where: {
+            student_id: { in: studentIds },
+            status: 'active',
+          },
+          data: {
+            status: 'paused',
+          },
+        });
+      }
+
+      // 3. Reset legacy user_credits records
+      await tx.user_credits.updateMany({
+        where: { user_id: userId },
+        data: {
+          credits_total: 0,
+          credits_used: 0,
+        },
+      });
+    });
+
+    this.logger.log(`Revoked credits for user ${userId} due to refund.`);
   }
 }

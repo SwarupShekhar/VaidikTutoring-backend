@@ -196,28 +196,50 @@ export class PaymentsService {
         };
       }
 
-      // Update purchase to PAID
-      await this.prisma.purchases.update({
-        where: { id: purchase.id },
-        data: {
-          status: 'PAID',
-          razorpay_payment_id: paymentId,
-          razorpay_signature: signature,
-          verified_at: new Date(),
-          payment_method: payment.method || undefined,
-          payment_method_detail: {
-            card: payment.card ? {
-              last4: payment.card.last4,
-              network: payment.card.network,
-            } : null,
-            vpa: payment.vpa || null,
-            bank: payment.bank || null,
+      // Update purchase inside transaction to prevent race conditions and lock the row
+      const shouldGrantCredits = await this.prisma.$transaction(async (tx) => {
+        const [lockedPurchase]: any[] = await tx.$queryRawUnsafe(
+          `SELECT * FROM app.purchases WHERE id = $1 FOR UPDATE`,
+          purchase.id,
+        );
+
+        if (!lockedPurchase) {
+          throw new BadRequestException('Purchase not found during locking');
+        }
+
+        if (lockedPurchase.credit_granted_at) {
+          this.logger.warn(`Payment ${paymentId} already has credits granted, skipping verifyPayment grant`);
+          return false;
+        }
+
+        // Update purchase to PAID + set credit_granted_at
+        await tx.purchases.update({
+          where: { id: purchase.id },
+          data: {
+            status: 'PAID',
+            razorpay_payment_id: paymentId,
+            razorpay_signature: signature,
+            verified_at: new Date(),
+            credit_granted_at: new Date(),
+            payment_method: payment.method || undefined,
+            payment_method_detail: {
+              card: payment.card ? {
+                last4: payment.card.last4,
+                network: payment.card.network,
+              } : null,
+              vpa: payment.vpa || null,
+              bank: payment.bank || null,
+            },
           },
-        },
+        });
+
+        return true;
       });
 
-      // Grant credits to user
-      await this.creditsService.grantCredits(purchase.user_id!, purchase.package_id!);
+      if (shouldGrantCredits) {
+        // Grant credits to user
+        await this.creditsService.grantCredits(purchase.user_id!, purchase.package_id!);
+      }
 
       // Track successful payment in audit logs
       await this.prisma.audit_logs.create({
@@ -233,7 +255,7 @@ export class PaymentsService {
         },
       });
 
-      this.logger.log(`Payment verified for order ${orderId}, purchase ${purchase.id}, credits granted`);
+      this.logger.log(`Payment verified for order ${orderId}, purchase ${purchase.id}, credits granted status: ${shouldGrantCredits}`);
 
       // Find the student: parent buying for child, or student buying directly
       const student = await this.prisma.students.findFirst({
@@ -320,25 +342,51 @@ export class PaymentsService {
   }
 
   private async handlePaymentCaptured(payment: any) {
+    // Find by payment ID or order ID (to support both race condition cases)
     const purchase = await this.prisma.purchases.findFirst({
-      where: { razorpay_payment_id: payment.id },
+      where: {
+        OR: [
+          { razorpay_payment_id: payment.id },
+          { razorpay_order_id: payment.order_id },
+        ],
+      },
     });
 
-    if (!purchase) return;
-
-    // Already fully verified by the frontend verify endpoint — skip to avoid double grant
-    if (purchase.status === 'PAID' && purchase.verified_at) {
-      this.logger.log(`Payment ${payment.id} already verified via frontend, skipping webhook grant`);
+    if (!purchase) {
+      this.logger.warn(`No purchase found for payment ${payment.id} or order ${payment.order_id} in webhook`);
       return;
     }
 
-    await this.prisma.purchases.update({
-      where: { id: purchase.id },
-      data: { status: 'PAID', verified_at: purchase.verified_at ?? new Date() },
+    const shouldGrantCredits = await this.prisma.$transaction(async (tx) => {
+      const [lockedPurchase]: any[] = await tx.$queryRawUnsafe(
+        `SELECT * FROM app.purchases WHERE id = $1 FOR UPDATE`,
+        purchase.id,
+      );
+
+      if (!lockedPurchase) {
+        return false;
+      }
+
+      if (lockedPurchase.credit_granted_at) {
+        this.logger.log(`Payment ${payment.id} already has credits granted, skipping webhook grant`);
+        return false;
+      }
+
+      await tx.purchases.update({
+        where: { id: purchase.id },
+        data: {
+          status: 'PAID',
+          razorpay_payment_id: payment.id, // Ensure payment ID is set
+          verified_at: lockedPurchase.verified_at ?? new Date(),
+          credit_granted_at: new Date(),
+        },
+      });
+
+      return true;
     });
 
     // Only grant credits if this is the first time we're marking it PAID
-    if (purchase.user_id && purchase.package_id) {
+    if (shouldGrantCredits && purchase.user_id && purchase.package_id) {
       await this.creditsService.grantCredits(purchase.user_id, purchase.package_id);
       this.logger.log(`Payment captured for purchase ${purchase.id} via webhook, credits granted`);
     }
@@ -383,6 +431,11 @@ export class PaymentsService {
         },
       });
       this.logger.log(`Refund processed for purchase ${purchase.id}`);
+
+      // GAP 5 FIX: Revoke user credits and pause associated active enrollments!
+      if (purchase.user_id) {
+        await this.creditsService.revokeCredits(purchase.user_id);
+      }
     }
   }
 

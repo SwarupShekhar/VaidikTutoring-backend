@@ -145,4 +145,11 @@ export class BookingsController {
   async getBookingById(@Param('id') id: string, @Req() req) {
     return this.svc.getBookingById(id, req.user);
   }
+
+  // Cancel a booking (GAP 7)
+  @UseGuards(ClerkAuthGuard)
+  @Post(':id/cancel')
+  async cancelBooking(@Param('id') id: string, @Req() req) {
+    return this.svc.cancelBooking(id, req.user);
+  }
 }

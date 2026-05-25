@@ -13,6 +13,8 @@ import {
 import { StudentsService } from './students.service';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { CreditsService } from '../credits/credits.service';
+import { BookingsService } from '../bookings/bookings.service';
+import { RatingsService } from '../ratings/ratings.service';
 
 // Assuming you have an AuthGuard or similar to get the user
 // If not, you might need to extract userId differently.
@@ -22,6 +24,8 @@ export class StudentsController {
   constructor(
     private readonly studentsService: StudentsService,
     private readonly creditsService: CreditsService,
+    private readonly bookingsService: BookingsService,
+    private readonly ratingsService: RatingsService,
   ) { }
 
   @Post()
@@ -51,6 +55,39 @@ export class StudentsController {
       return { ...student, creditStatus };
     }
     return student;
+  }
+
+  @Get('me/dashboard-summary')
+  @UseGuards(ClerkAuthGuard)
+  async getMyDashboardSummary(@Req() req: any) {
+    const userId = req.user?.userId;
+    const role = req.user?.role;
+    if (!userId) throw new Error('User not authenticated');
+
+    const student = await this.studentsService.findByUserId(userId);
+    if (!student) {
+      throw new NotFoundException('Student profile not found');
+    }
+
+    // Run all fetches concurrently using Promise.all to optimize performance and prevent network waterfalls!
+    const [creditStatus, enrollmentStatus, progressSummary, bookings, pendingRatings] = await Promise.all([
+      this.creditsService.getCreditStatus(student),
+      this.studentsService.getEnrollmentStatus(student.id),
+      this.studentsService.getProgressSummary(student.id),
+      this.bookingsService.forStudent(userId),
+      this.ratingsService.getPendingRatings(userId, role),
+    ]);
+
+    return {
+      profile: {
+        ...student,
+        creditStatus,
+      },
+      enrollmentStatus,
+      progressSummary,
+      bookings,
+      pendingRatings,
+    };
   }
 
   @Get('me/progress-summary')

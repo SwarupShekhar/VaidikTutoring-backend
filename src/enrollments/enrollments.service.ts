@@ -192,6 +192,29 @@ export class EnrollmentsService {
         });
         if (!student) return;
 
+        // GAP FIX: Check if the student's subscription has expired!
+        const subscriptionExpired = student.subscription_ends && new Date(student.subscription_ends) < now;
+        if (subscriptionExpired) {
+          this.logger.warn(
+            `Enrollment ${enrollment.id}: student ${enrollment.student_id} subscription expired on ${student.subscription_ends} — pausing enrollment`,
+          );
+          // Pause enrollment since subscription expired
+          await prisma.enrollments.update({
+            where: { id: enrollment.id },
+            data: { status: 'paused' },
+          });
+          return; // Stop generating sessions
+        }
+
+        // GAP FIX: Ensure classes generated fall within their subscription ends date!
+        if (student.subscription_ends && sessionStart > student.subscription_ends) {
+          this.logger.log(
+            `Skipping session slot ${sessionStart.toISOString()} for student ${student.id} because it falls after subscription ends (${student.subscription_ends.toISOString()})`,
+          );
+          dayCounter++;
+          continue; // Skip this slot and check others
+        }
+
         const creditsRemaining = student.subscription_credits ?? 0;
         if (creditsRemaining <= 0) {
           this.logger.warn(
@@ -208,23 +231,33 @@ export class EnrollmentsService {
         const sessionEnd = new Date(sessionStart.getTime() + 60 * 60 * 1000);
         const subjectId = enrollment.subject_ids[dayCounter % enrollment.subject_ids.length];
 
-        await this.bookingsService.createScheduledBooking({
-          student_id: enrollment.student_id,
-          program_id: enrollment.program_id,
-          package_id: enrollment.package_id,
-          subject_id: subjectId,
-          curriculum_id: enrollment.curriculum_id,
-          tutor_id: enrollment.tutor_id,
-          start: sessionStart,
-          end: sessionEnd,
-          enrollment_id: enrollment.id,
-        }, tx);
+        const runDeduction = async (dbClient: any) => {
+          await this.bookingsService.createScheduledBooking({
+            student_id: enrollment.student_id,
+            program_id: enrollment.program_id,
+            package_id: enrollment.package_id,
+            subject_id: subjectId,
+            curriculum_id: enrollment.curriculum_id,
+            tutor_id: enrollment.tutor_id,
+            start: sessionStart,
+            end: sessionEnd,
+            enrollment_id: enrollment.id,
+          }, dbClient);
 
-        // Deduct 1 subscription credit
-        await prisma.students.update({
-          where: { id: enrollment.student_id },
-          data: { subscription_credits: { decrement: 1 } },
-        });
+          // Deduct 1 subscription credit
+          await dbClient.students.update({
+            where: { id: enrollment.student_id },
+            data: { subscription_credits: { decrement: 1 } },
+          });
+        };
+
+        if (tx) {
+          await runDeduction(tx);
+        } else {
+          await this.prisma.$transaction(async (innerTx) => {
+            await runDeduction(innerTx);
+          });
+        }
 
         this.logger.log(`Scheduled session for ${sessionStart.toISOString()} (Enrollment: ${enrollment.id}), deducted 1 credit.`);
         dayCounter++;

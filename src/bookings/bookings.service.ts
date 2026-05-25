@@ -230,13 +230,18 @@ export class BookingsService {
             }),
           );
         }
-      } else if (studentRecord.subscription_credits < requestedCount) {
-        throw new ForbiddenException(
-          JSON.stringify({
-            error: 'insufficient_credits',
-            message: `You only have ${studentRecord.subscription_credits} credits left, but requested ${requestedCount} sessions.`,
-          }),
-        );
+      } else {
+        const subscriptionExpired = studentRecord.subscription_ends && new Date(studentRecord.subscription_ends) < new Date();
+        if (subscriptionExpired || studentRecord.subscription_credits < requestedCount) {
+          throw new ForbiddenException(
+            JSON.stringify({
+              error: 'insufficient_credits',
+              message: subscriptionExpired
+                ? 'Your subscription has expired. Please renew to book sessions.'
+                : `You only have ${studentRecord.subscription_credits} credits left, but requested ${requestedCount} sessions.`,
+            }),
+          );
+        }
       }
 
       creditCostInfo = this.creditsService.computeBookingCreditCost(studentRecord);
@@ -1134,5 +1139,105 @@ export class BookingsService {
       end_time: session?.end_time || booking.requested_end,
       tutor: booking.tutors?.users, // For UI alias consistency
     };
+  }
+
+  // Cancel booking and refund credits if applicable (GAP 7)
+  async cancelBooking(bookingId: string, user: any) {
+    return this.prisma.$transaction(async (tx) => {
+      const booking = await tx.bookings.findUnique({
+        where: { id: bookingId },
+        include: {
+          sessions: true,
+          students: true,
+          tutors: true,
+        },
+      });
+
+      if (!booking) {
+        throw new NotFoundException('Booking not found');
+      }
+
+      if (booking.status === 'cancelled') {
+        throw new BadRequestException('Booking is already cancelled');
+      }
+
+      // Check authorization: user must be the student, parent, tutor, or admin
+      const isStudent = user.role === 'student' && booking.students?.user_id === user.userId;
+      const isParent = user.role === 'parent' && booking.students?.parent_user_id === user.userId;
+      const isTutor = user.role === 'tutor' && booking.tutors?.user_id === user.userId;
+      const isAdmin = user.role === 'admin';
+
+      if (!isStudent && !isParent && !isTutor && !isAdmin) {
+        throw new ForbiddenException('Not authorized to cancel this booking');
+      }
+
+      // Cancel the booking
+      await tx.bookings.update({
+        where: { id: bookingId },
+        data: { status: 'cancelled' },
+      });
+
+      // Cancel the associated sessions
+      if (booking.sessions && booking.sessions.length > 0) {
+        await tx.sessions.updateMany({
+          where: { booking_id: bookingId },
+          data: { status: 'cancelled' },
+        });
+      }
+
+      // Refund credits if the session hasn't started yet
+      const now = new Date();
+      const isFuture = booking.requested_start && new Date(booking.requested_start) > now;
+      
+      if (isFuture && booking.student_id) {
+        // Lock the student row to prevent concurrent credit updates (lost updates)
+        const [student]: any[] = await tx.$queryRawUnsafe(
+          `SELECT * FROM app.students WHERE id = $1 FOR UPDATE`,
+          booking.student_id,
+        );
+
+        if (student) {
+          if (booking.enrollment_id) {
+            // Enrollment-generated sessions refund 1 subscription credit using atomic increment
+            await tx.students.update({
+              where: { id: student.id },
+              data: {
+                subscription_credits: { increment: 1 },
+              },
+            });
+            this.logger.log(`Refunded 1 subscription credit for cancelled enrollment booking ${booking.id} to student ${student.id}`);
+          } else if (booking.credit_cost > 0) {
+            // Manual/Direct bookings refund based on credit_cost and trial status
+            if (booking.is_trial_session) {
+              // Only refund trial credits if trial hasn't expired
+              const trialExpired = student.trial_expires_at && new Date(student.trial_expires_at) < now;
+              if (!trialExpired) {
+                await tx.students.update({
+                  where: { id: student.id },
+                  data: {
+                    trial_credits: { increment: booking.credit_cost },
+                    trial_sessions_used: Math.max(0, (student.trial_sessions_used || 0) - 1),
+                    is_trial_active: true,
+                  },
+                });
+                this.logger.log(`Refunded ${booking.credit_cost} trial credits to student ${student.id} for booking ${booking.id}`);
+              } else {
+                this.logger.log(`Skipped trial refund for student ${student.id}: trial already expired`);
+              }
+            } else {
+              await tx.students.update({
+                where: { id: student.id },
+                data: {
+                  subscription_credits: { increment: booking.credit_cost },
+                },
+              });
+              this.logger.log(`Refunded ${booking.credit_cost} subscription credits to student ${student.id} for booking ${booking.id}`);
+            }
+          }
+        }
+      }
+
+      return { success: true, message: 'Booking cancelled successfully' };
+    });
   }
 }

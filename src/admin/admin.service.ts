@@ -599,40 +599,51 @@ export class AdminService {
         ]);
 
         // Format the response for better readability
-        const formattedStudents = students.map((student) => ({
-            id: student.id,
-            first_name:
-                student.first_name ||
-                (student.users_students_user_idTousers
-                    ? student.users_students_user_idTousers.first_name
-                    : null),
-            last_name:
-                student.last_name ||
-                (student.users_students_user_idTousers
-                    ? student.users_students_user_idTousers.last_name
-                    : null),
-            grade: student.grade,
-            school: student.school,
-            birth_date: this.safeIso(student.birth_date),
-            curriculum: student.curricula?.name || null,
-            created_at: this.safeIso(student.created_at),
-            enrollment_status: student.enrollment_status,
-            subscription_plan: student.subscription_plan,
-            subscription_credits: student.subscription_credits,
-            assigned_tutor_name: student.trial_tutor?.users 
-                ? `${student.trial_tutor.users.first_name} ${student.trial_tutor.users.last_name || ''}`.trim()
-                : null,
-            parent: student.users_students_parent_user_idTousers
-                ? {
-                    id: student.users_students_parent_user_idTousers.id,
-                    email: student.users_students_parent_user_idTousers.email,
-                    first_name: student.users_students_parent_user_idTousers.first_name,
-                    last_name: student.users_students_parent_user_idTousers.last_name,
-                }
-                : null,
-            student_email: student.users_students_user_idTousers?.email || null,
-            student_phone: student.users_students_user_idTousers?.phone || null,
-        }));
+        const formattedStudents = students.map((student) => {
+            const daysRemaining = (() => {
+                if (!student.subscription_ends) return null;
+                const diffMs = new Date(student.subscription_ends).getTime() - Date.now();
+                return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+            })();
+
+            return {
+                id: student.id,
+                first_name:
+                    student.first_name ||
+                    (student.users_students_user_idTousers
+                        ? student.users_students_user_idTousers.first_name
+                        : null),
+                last_name:
+                    student.last_name ||
+                    (student.users_students_user_idTousers
+                        ? student.users_students_user_idTousers.last_name
+                        : null),
+                grade: student.grade,
+                school: student.school,
+                birth_date: this.safeIso(student.birth_date),
+                curriculum: student.curricula?.name || null,
+                created_at: this.safeIso(student.created_at),
+                enrollment_status: student.enrollment_status,
+                subscription_plan: student.subscription_plan,
+                subscription_credits: student.subscription_credits,
+                subscription_starts: this.safeIso(student.subscription_starts),
+                subscription_ends: this.safeIso(student.subscription_ends),
+                days_remaining: daysRemaining,
+                assigned_tutor_name: student.trial_tutor?.users 
+                    ? `${student.trial_tutor.users.first_name} ${student.trial_tutor.users.last_name || ''}`.trim()
+                    : null,
+                parent: student.users_students_parent_user_idTousers
+                    ? {
+                        id: student.users_students_parent_user_idTousers.id,
+                        email: student.users_students_parent_user_idTousers.email,
+                        first_name: student.users_students_parent_user_idTousers.first_name,
+                        last_name: student.users_students_parent_user_idTousers.last_name,
+                    }
+                    : null,
+                student_email: student.users_students_user_idTousers?.email || null,
+                student_phone: student.users_students_user_idTousers?.phone || null,
+            };
+        });
 
         return {
             data: formattedStudents,
@@ -675,11 +686,18 @@ export class AdminService {
 
         if (!student) throw new NotFoundException('Student not found');
 
+        const daysRemaining = (() => {
+            if (!student.subscription_ends) return null;
+            const diffMs = new Date(student.subscription_ends).getTime() - Date.now();
+            return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+        })();
+
         // Ensure interests and struggle_areas are returned even if they are null in DB
         return {
             ...student,
             interests: student.interests || [],
             struggle_areas: student.struggle_areas || [],
+            days_remaining: daysRemaining,
         };
     }
 
