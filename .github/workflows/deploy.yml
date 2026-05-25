@@ -60,6 +60,9 @@ jobs:
     name: Secure Vultr Deployment
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Checkout Codebase (to transfer compose config)
