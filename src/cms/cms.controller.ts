@@ -182,10 +182,25 @@ export class CmsController {
     return { success: true, message: 'Webhook received. Document sync not required for this type.' };
   }
 
-  // 2. GET programmatic SEO landing page
+  // 2. GET all dynamic landing pages (for sitemap indexation)
+  @Get('landing-pages')
+  async getAllLandingPages() {
+    const query = `*[_type == "landingPage" && !(_id in path("drafts.**"))] | order(title asc) {
+      _id,
+      title,
+      "slug": slug.current
+    }`;
+    return this.sanityService.query<any[]>(query);
+  }
+
+  // 2b. GET programmatic SEO landing page
   @Get('landing-pages/:slug')
-  async getLandingPage(@Param('slug') slug: string) {
-    const query = `*[_type == "landingPage" && slug.current == $slug][0] {
+  async getLandingPage(
+    @Param('slug') slug: string,
+    @Query('preview') preview?: string,
+  ) {
+    const isPreview = preview === 'true';
+    const query = `*[_type == "landingPage" && slug.current == $slug] | order(_updatedAt desc)[0] {
       _id,
       title,
       "slug": slug.current,
@@ -242,7 +257,7 @@ export class CmsController {
       }
     }`;
 
-    const data = await this.sanityService.query<any>(query, { slug });
+    const data = await this.sanityService.query<any>(query, { slug }, !isPreview);
     if (!data) {
       throw new NotFoundException(`Landing page with slug '${slug}' not found.`);
     }
