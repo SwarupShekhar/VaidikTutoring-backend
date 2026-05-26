@@ -37,7 +37,7 @@ export class EnrollmentsService {
     }
     // ─────────────────────────────────────────────────────────────────
 
-    return this.prisma.$transaction(async (tx) => {
+    const enrollment = await this.prisma.$transaction(async (tx) => {
       // Resolve program_id — required by DB but may be absent from payload
       let programId = dto.program_id;
       if (!programId) {
@@ -103,11 +103,17 @@ export class EnrollmentsService {
         },
       });
 
-      // 3. Generate initial sessions (credit-checked inside)
-      await this.generateSessionsForEnrollment(enrollment, tx);
-
       return enrollment;
     });
+
+    // 3. Generate initial sessions (credit-checked inside) outside the transaction to prevent timeout
+    try {
+      await this.generateSessionsForEnrollment(enrollment);
+    } catch (e) {
+      this.logger.error(`Failed to generate initial sessions for enrollment ${enrollment.id}: ${e.message}`);
+    }
+
+    return enrollment;
   }
 
   async getTutorRecommendations(studentId: string) {
