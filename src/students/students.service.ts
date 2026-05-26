@@ -221,11 +221,15 @@ export class StudentsService {
           include: {
             sessions: {
               include: {
-                bookings: { include: { subjects: true } },
-                session_recordings: { take: 1, orderBy: { created_at: 'desc' } }
+                // Removed circular bookings include — use sessionToBooking map instead
+                session_recordings: {
+                  take: 1,
+                  orderBy: { created_at: 'desc' },
+                  select: { id: true, azure_blob_name: true },
+                }
               }
             },
-            subjects: true
+            subjects: { select: { name: true } }
           }
         }
       }
@@ -233,13 +237,17 @@ export class StudentsService {
 
     if (!student) throw new NotFoundException('Student not found');
 
+    // Reverse map: sessionId → its parent booking (replaces the circular DB join)
+    const sessionToBooking = new Map<string, typeof student.bookings[0]>();
+    student.bookings.forEach(b => b.sessions.forEach(s => sessionToBooking.set(s.id, b)));
+
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     // Get all sessions
     const allSessions = student.bookings.flatMap(b => b.sessions);
-    
+
     // A session is "effectively completed" if:
     // 1. status === 'completed'  OR
     // 2. end_time exists and is in the past  OR
@@ -248,8 +256,7 @@ export class StudentsService {
       if (s.status === 'completed') return true;
       if (s.status === 'cancelled') return false;
       if (s.end_time && new Date(s.end_time) < now) return true;
-      // Check booking dates as fallback
-      const booking = student.bookings.find(b => b.sessions.some(sess => sess.id === s.id));
+      const booking = sessionToBooking.get(s.id);
       if (booking?.requested_end && new Date(booking.requested_end) < now) return true;
       return false;
     };
@@ -291,12 +298,11 @@ export class StudentsService {
       if (s.start_time && s.end_time) {
         dynamicHours += (new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 3600000;
       } else {
-        // Fallback: check booking duration
-        const booking = student.bookings.find(b => b.sessions.some(sess => sess.id === s.id));
+        const booking = sessionToBooking.get(s.id);
         if (booking?.requested_start && booking?.requested_end) {
           dynamicHours += (new Date(booking.requested_end).getTime() - new Date(booking.requested_start).getTime()) / 3600000;
         } else {
-          dynamicHours += 1; // Default assumption: 1 hour per session
+          dynamicHours += 1;
         }
       }
     });
@@ -319,7 +325,7 @@ export class StudentsService {
     const subjectStats: Record<string, { completed: number, improving: number, needsWork: number }> = {};
     
     completedSessions.forEach(s => {
-      const subject = s.bookings?.subjects?.name || 'Unknown';
+      const subject = sessionToBooking.get(s.id)?.subjects?.name || 'Unknown';
       if (!subjectStats[subject]) subjectStats[subject] = { completed: 0, improving: 0, needsWork: 0 };
       
       subjectStats[subject].completed++;
@@ -340,20 +346,15 @@ export class StudentsService {
       return { subject, level };
     });
 
-    // Package info
-    let packageSessionsTotal = student.subscription_credits || 0;
-    const credits = await this.prisma.user_credits.findFirst({
-        where: { user_id: student.user_id || undefined }
-    });
-    if (credits) {
-        packageSessionsTotal = credits.credits_total;
-    }
-
-    // Fetch stickers
-    const stickers = await this.prisma.sticker_rewards.findMany({
-      where: { session_id: { in: allSessions.map(s => s.id) } },
-      select: { sticker: true, given_at: true }
-    });
+    // Package info + stickers — run in parallel (were sequential before)
+    const [credits, stickers] = await Promise.all([
+      this.prisma.user_credits.findFirst({ where: { user_id: student.user_id || undefined } }),
+      this.prisma.sticker_rewards.findMany({
+        where: { session_id: { in: allSessions.map(s => s.id) } },
+        select: { sticker: true, given_at: true },
+      }),
+    ]);
+    let packageSessionsTotal = credits?.credits_total ?? (student.subscription_credits || 0);
 
     // Recent tutor feedback (last 5 sessions with notes)
     const recentFeedback = completedSessions
@@ -363,7 +364,7 @@ export class StudentsService {
       .map(s => ({
         sessionId: s.id,
         date: s.start_time || s.created_at,
-        subject: s.bookings?.subjects?.name || 'Session',
+        subject: sessionToBooking.get(s.id)?.subjects?.name || 'Session',
         note: s.tutor_note,
       }));
 
@@ -375,7 +376,7 @@ export class StudentsService {
       .map(s => ({
         sessionId: s.id,
         date: s.start_time || s.created_at,
-        subject: s.bookings?.subjects?.name || 'Session',
+        subject: sessionToBooking.get(s.id)?.subjects?.name || 'Session',
         recordingId: s.session_recordings[0]?.id || null,
         blobName: s.session_recordings[0]?.azure_blob_name || null,
         hasWhiteboardSnapshot: !!s.whiteboard_snapshot_url,

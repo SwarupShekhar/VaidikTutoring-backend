@@ -9,16 +9,16 @@ import {
   Param,
   Patch,
   NotFoundException,
+  Inject,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { StudentsService } from './students.service';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { CreditsService } from '../credits/credits.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { RatingsService } from '../ratings/ratings.service';
 
-// Assuming you have an AuthGuard or similar to get the user
-// If not, you might need to extract userId differently.
-// Standard pattern: @UseGuards(JwtAuthGuard)
 @Controller('students')
 export class StudentsController {
   constructor(
@@ -26,6 +26,7 @@ export class StudentsController {
     private readonly creditsService: CreditsService,
     private readonly bookingsService: BookingsService,
     private readonly ratingsService: RatingsService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) { }
 
   @Post()
@@ -64,12 +65,15 @@ export class StudentsController {
     const role = req.user?.role;
     if (!userId) throw new Error('User not authenticated');
 
+    const cacheKey = `dashboard:student:${userId}`;
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached;
+
     const student = await this.studentsService.findByUserId(userId);
     if (!student) {
       throw new NotFoundException('Student profile not found');
     }
 
-    // Run all fetches concurrently using Promise.all to optimize performance and prevent network waterfalls!
     const [creditStatus, enrollmentStatus, progressSummary, bookings, pendingRatings] = await Promise.all([
       this.creditsService.getCreditStatus(student),
       this.studentsService.getEnrollmentStatus(student.id),
@@ -78,16 +82,17 @@ export class StudentsController {
       this.ratingsService.getPendingRatings(userId, role),
     ]);
 
-    return {
-      profile: {
-        ...student,
-        creditStatus,
-      },
+    const result = {
+      profile: { ...student, creditStatus },
       enrollmentStatus,
       progressSummary,
       bookings,
       pendingRatings,
     };
+
+    // Cache for 30 seconds — dashboard data is stable within a session
+    await this.cacheManager.set(cacheKey, result, 30_000);
+    return result;
   }
 
   @Get('me/progress-summary')
