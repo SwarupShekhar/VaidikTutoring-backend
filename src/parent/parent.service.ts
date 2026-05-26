@@ -1,10 +1,18 @@
 import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StudentsService } from '../students/students.service';
+import { BookingsService } from '../bookings/bookings.service';
+import { RatingsService } from '../ratings/ratings.service';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class ParentService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private prisma: PrismaService,
+        private studentsService: StudentsService,
+        private bookingsService: BookingsService,
+        private ratingsService: RatingsService,
+    ) { }
 
     async createStudent(parentId: string, dto: { name: string; grade: string; email?: string }) {
         // 1. Validate parent exists (optional, guarded by auth usually)
@@ -58,6 +66,32 @@ export class ParentService {
                 }
             }
         });
+    }
+
+    async getDashboardSummary(parentId: string) {
+        const [students, bookings, pendingRatings] = await Promise.all([
+            this.getChildren(parentId),
+            this.bookingsService.forParent(parentId),
+            this.ratingsService.getPendingRatings(parentId, 'parent'),
+        ]);
+
+        const progressEntries = await Promise.all(
+            students.map(async (student) => {
+                try {
+                    const summary = await this.studentsService.getProgressSummary(student.id);
+                    return [student.id, summary] as const;
+                } catch {
+                    return [student.id, null] as const;
+                }
+            }),
+        );
+
+        return {
+            students,
+            bookings,
+            pendingRatings,
+            childSummaries: Object.fromEntries(progressEntries),
+        };
     }
 
     async getChildSessions(parentId: string, childId: string) {

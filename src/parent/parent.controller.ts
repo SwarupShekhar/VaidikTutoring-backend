@@ -20,6 +20,11 @@ export class ParentController {
         return this.parentService.getChildren(req.user.userId);
     }
 
+    @Get('dashboard-summary')
+    async getDashboardSummary(@Req() req) {
+        return this.parentService.getDashboardSummary(req.user.userId);
+    }
+
     @Get('children/:childId/sessions')
     async getChildSessions(
         @Req() req: any,
