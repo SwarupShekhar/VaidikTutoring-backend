@@ -188,7 +188,8 @@ export class CmsController {
     const query = `*[_type == "landingPage" && !(_id in path("drafts.**"))] | order(title asc) {
       _id,
       title,
-      "slug": slug.current
+      "slug": slug.current,
+      addToFooter
     }`;
     return this.sanityService.query<any[]>(query);
   }
@@ -205,6 +206,7 @@ export class CmsController {
       title,
       "slug": slug.current,
       targetKeywords,
+      addToFooter,
       seo {
         metaTitle,
         metaDescription,
@@ -235,6 +237,9 @@ export class CmsController {
         _type,
         heading,
         subheading,
+        html,
+        css,
+        content,
         features[] {
           title,
           description,
