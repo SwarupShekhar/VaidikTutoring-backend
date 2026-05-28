@@ -262,7 +262,7 @@ export class CmsController {
       }
     }`;
 
-    const data = await this.sanityService.query<any>(query, { slug }, !isPreview);
+    const data = await this.sanityService.query<any>(query, { slug }, !isPreview, 60000, isPreview);
     if (!data) {
       throw new NotFoundException(`Landing page with slug '${slug}' not found.`);
     }

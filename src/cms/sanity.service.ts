@@ -7,6 +7,7 @@ import { createClient, SanityClient } from '@sanity/client';
 export class SanityService implements OnModuleInit {
   private readonly logger = new Logger(SanityService.name);
   private client: SanityClient;
+  private previewClient: SanityClient;
   private isConfigured = false;
 
   constructor(
@@ -25,6 +26,7 @@ export class SanityService implements OnModuleInit {
     }
 
     try {
+      // Standard client — uses CDN in production for fast, cached reads of published content
       this.client = createClient({
         projectId,
         dataset,
@@ -32,6 +34,17 @@ export class SanityService implements OnModuleInit {
         useCdn: process.env.NODE_ENV === 'production',
         apiVersion: '2026-05-22',
       });
+
+      // Preview client — always bypasses CDN and fetches draft content directly from the API
+      this.previewClient = createClient({
+        projectId,
+        dataset,
+        token,
+        useCdn: false,
+        apiVersion: '2026-05-22',
+        perspective: 'previewDrafts',
+      });
+
       this.isConfigured = true;
       this.logger.log(`Sanity Client initialized successfully for project: ${projectId}, dataset: ${dataset}`);
     } catch (error) {
@@ -40,10 +53,13 @@ export class SanityService implements OnModuleInit {
   }
 
   // Resilient GROQ fetcher with Caching and Mock Fallbacks
-  async query<T>(groqQuery: string, params: Record<string, any> = {}, useCache = true, cacheTtlMs = 60000): Promise<T> {
+  // When isPreview=true, uses previewClient (perspective: 'previewDrafts') so drafts are returned without publishing
+  async query<T>(groqQuery: string, params: Record<string, any> = {}, useCache = true, cacheTtlMs = 60000, isPreview = false): Promise<T> {
+    // Never cache preview requests — always fetch fresh draft data
+    const effectiveUseCache = isPreview ? false : useCache;
     const cacheKey = `sanity_groq_${Buffer.from(groqQuery + JSON.stringify(params)).toString('base64')}`;
 
-    if (useCache) {
+    if (effectiveUseCache) {
       try {
         const cached = await this.cacheManager.get(cacheKey);
         if (cached) {
@@ -62,8 +78,10 @@ export class SanityService implements OnModuleInit {
     }
 
     try {
-      const result = await this.client.fetch<T>(groqQuery, params);
-      if (useCache && result) {
+      // Use preview client for draft content, standard client for published content
+      const activeClient = (isPreview && this.previewClient) ? this.previewClient : this.client;
+      const result = await activeClient.fetch<T>(groqQuery, params);
+      if (effectiveUseCache && result) {
         try {
           await this.cacheManager.set(cacheKey, result, cacheTtlMs);
         } catch (cacheError) {
