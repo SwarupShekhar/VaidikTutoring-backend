@@ -201,7 +201,7 @@ export class CmsController {
     @Query('preview') preview?: string,
   ) {
     const isPreview = preview === 'true';
-    const query = `*[_type == "landingPage" && (slug.current == $slug || string::trim(slug.current) == $slug)] | order(_updatedAt desc)[0] {
+    const query = `*[_type == "landingPage" && (slug.current == $slug || slug.current == " " + $slug || slug.current == $slug + " " || slug.current == " " + $slug + " ")] | order(_updatedAt desc)[0] {
       _id,
       title,
       "slug": slug.current,
@@ -289,7 +289,7 @@ export class CmsController {
   // 4. GET specific resource details
   @Get('resources/:slug')
   async getResource(@Param('slug') slug: string) {
-    const query = `*[_type == "pdfResource" && (slug.current == $slug || string::trim(slug.current) == $slug)][0] {
+    const query = `*[_type == "pdfResource" && (slug.current == $slug || slug.current == " " + $slug || slug.current == $slug + " " || slug.current == " " + $slug + " ")][0] {
       _id,
       title,
       "slug": slug.current,
@@ -321,7 +321,7 @@ export class CmsController {
     }
 
     // 1. Get resource requirements
-    const query = `*[_type == "pdfResource" && (slug.current == $slug || string::trim(slug.current) == $slug)][0] {
+    const query = `*[_type == "pdfResource" && (slug.current == $slug || slug.current == " " + $slug || slug.current == $slug + " " || slug.current == " " + $slug + " ")][0] {
       _id,
       title,
       accessType,
