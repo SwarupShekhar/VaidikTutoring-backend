@@ -10,6 +10,8 @@ services:
       - "4004:3001"
     env_file:
       - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - NODE_ENV=production
       - PORT=3001
