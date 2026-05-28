@@ -1,19 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Resend } from 'resend';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class EmailService {
-  private resend: Resend;
   private logger = new Logger(EmailService.name);
 
-  constructor() {
-    const apiKey = process.env.RESEND_API_KEY;
-    if (apiKey) {
-      this.resend = new Resend(apiKey);
-    } else {
-      this.logger.warn('RESEND_API_KEY is not set. Emails will fail.');
-    }
-  }
+  constructor(@InjectQueue('email-queue') private readonly emailQueue: Queue) {}
 
   async sendMail(opts: {
     to: string | string[];
@@ -27,40 +20,14 @@ export class EmailService {
     }>;
     from?: string;
   }) {
-    const from = opts.from || process.env.EMAIL_FROM || 'StudyHours <no-reply@studyhours.com>';
-    const to = Array.isArray(opts.to) ? opts.to : [opts.to];
-
-    if (!this.resend) {
-      this.logger.error('Cannot send email: RESEND_API_KEY is missing.');
-      // Don't throw if you want the app to stay alive, but typically email failure should throw?
-      // Let's log and throw a nicer error.
-      throw new Error('RESEND_API_KEY is missing');
-    }
-
-    try {
-      const result = await this.resend.emails.send({
-        from,
-        to,
-        subject: opts.subject,
-        html: opts.html || opts.text || '',
-        text: opts.text,
-        attachments: opts.attachments?.map(a => ({
-          filename: a.filename,
-          content: a.content,
-        })),
-      });
-
-      if (result.error) {
-        this.logger.error(`Resend API Error: ${JSON.stringify(result.error)}`);
-        throw new Error(result.error.message);
-      }
-
-      this.logger.log(`Email sent via Resend: ${result.data?.id}`);
-      return result.data;
-    } catch (error) {
-      this.logger.error(`Failed to send email via Resend: ${error.message || error}`);
-      throw error;
-    }
+    // Add the email job to the queue
+    const job = await this.emailQueue.add('sendMail', opts, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 2000 },
+    });
+    
+    this.logger.log(`Enqueued background email job: ${job.id}`);
+    return { id: job.id };
   }
 
   async sendSessionInvite(params: {

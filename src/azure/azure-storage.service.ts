@@ -1,5 +1,7 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger, Inject } from '@nestjs/common';
 import { BlobServiceClient, BlobSASPermissions } from '@azure/storage-blob';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import axios from 'axios';
 
 @Injectable()
@@ -15,7 +17,9 @@ export class AzureStorageService implements OnModuleInit {
   private readonly VAULT_CONTAINER = 'vault-assets';
 
 
-  constructor() {
+  constructor(
+    @Inject(CACHE_MANAGER) private cacheManager: Cache
+  ) {
     const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
     if (!connectionString) {
       this.logger.error('AZURE_STORAGE_CONNECTION_STRING is missing in environment variables');
@@ -121,6 +125,10 @@ export class AzureStorageService implements OnModuleInit {
   }
 
   async generateSasUrl(containerName: 'session-recordings' | 'whiteboard-snapshots' | 'session-slides' | 'class-notes', blobName: string, expiryHours = 24): Promise<string> {
+    const cacheKey = `sas:${containerName}:${blobName}`;
+    const cachedUrl = await this.cacheManager.get<string>(cacheKey);
+    if (cachedUrl) return cachedUrl;
+
     const containerClient = this.blobServiceClient.getContainerClient(containerName);
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
     const expiresOn = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
@@ -129,6 +137,10 @@ export class AzureStorageService implements OnModuleInit {
       permissions: BlobSASPermissions.parse('r'),
       expiresOn
     });
+
+    const ttlMs = (expiryHours * 60 * 60 * 1000) - (5 * 60 * 1000);
+    await this.cacheManager.set(cacheKey, sasUrl, Math.max(ttlMs, 60000));
+
     return sasUrl;
   }
 

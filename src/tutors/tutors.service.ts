@@ -66,7 +66,7 @@ export class TutorsService {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const [todayCount, completedSessions, availableJobs, attentionEvents] = await Promise.all([
+    const [todayCount, completedSessionsCount, availableJobs, totalEvents, positiveEvents, ratingAgg] = await Promise.all([
       this.prisma.bookings.count({
         where: {
           assigned_tutor_id: tutor.id,
@@ -77,7 +77,7 @@ export class TutorsService {
           status: { not: 'archived' },
         },
       }),
-      this.prisma.bookings.findMany({
+      this.prisma.bookings.count({
         where: {
           assigned_tutor_id: tutor.id,
           status: 'completed',
@@ -88,36 +88,38 @@ export class TutorsService {
           status: 'available',
         },
       }),
-      this.prisma.attentionEvent.findMany({
+      this.prisma.attentionEvent.count({
         where: {
           tutorId: tutor.user_id,
         }
+      }),
+      this.prisma.attentionEvent.count({
+        where: {
+          tutorId: tutor.user_id,
+          type: { in: ['PRAISE', 'EXPLANATION'] }
+        }
+      }),
+      this.prisma.tutor_ratings.aggregate({
+        where: { tutor_id: tutor.id },
+        _avg: { score: true },
+        _count: { score: true }
       })
     ]);
 
-    const totalHours = completedSessions.length;
+    const totalHours = completedSessionsCount;
     const earnings = (totalHours * (tutor.hourly_rate_cents || 0)) / 100;
 
     // Calculate REAL quality metrics
-    const totalEvents = attentionEvents.length;
     const engagementScore = totalEvents > 0
-      ? Math.min(Math.round((attentionEvents.filter(e => ['PRAISE', 'EXPLANATION'].includes(e.type)).length / totalEvents) * 100), 100)
+      ? Math.min(Math.round((positiveEvents / totalEvents) * 100), 100)
       : 0;
 
-    // Fetch ratings for this tutor
-    const ratings = await this.prisma.tutor_ratings.findMany({
-      where: { tutor_id: tutor.id },
-      select: { score: true }
-    });
-
-    const reviewsCount = ratings.length;
-    const averageRating = reviewsCount > 0
-      ? ratings.reduce((sum, r) => sum + r.score, 0) / reviewsCount
-      : 0;
+    const reviewsCount = ratingAgg._count.score || 0;
+    const averageRating = ratingAgg._avg.score || 0;
 
     return {
       todayCount,
-      completedCount: completedSessions.length,
+      completedCount: completedSessionsCount,
       totalHours,
       earnings,
       availableCount: availableJobs,

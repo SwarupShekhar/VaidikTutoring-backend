@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { CacheModule } from '@nestjs/cache-manager';
+import { BullModule } from '@nestjs/bullmq';
 import { redisStore } from 'cache-manager-ioredis-yet';
 import * as path from 'path';
 import { AppController } from './app.controller';
@@ -98,6 +99,24 @@ import { CmsModule } from './cms/cms.module';
       ttl: 60000, // 1 minute
       limit: 100, // 100 requests per minute per IP (Production Safe)
     }]),
+    BullModule.forRootAsync({
+      useFactory: () => {
+        const redisUrl = process.env.REDIS_URL;
+        if (!redisUrl) {
+          console.log('[BullMQ] No REDIS_URL found, background jobs will fail');
+          return {};
+        }
+        
+        const parsed = new URL(redisUrl);
+        return {
+          connection: {
+            host: parsed.hostname,
+            port: parseInt(parsed.port, 10) || 6379,
+            password: decodeURIComponent(parsed.password),
+          }
+        };
+      },
+    }),
     PrismaModule, // <-- VERY IMPORTANT
     AuthModule, // <-- VERY IMPORTANT
     StudentsModule,

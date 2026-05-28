@@ -6,6 +6,7 @@ import {
     NotFoundException,
     Inject,
 } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma/prisma.service';
@@ -215,12 +216,29 @@ export class AdminService {
     async getStats() {
         const cachedStats = await this.cacheManager.get('admin_home_stats');
         if (cachedStats) {
-            this.logger.debug('Returning cached stats from Redis');
             return cachedStats;
         }
 
-        this.logger.debug('Fetching stats from DB...');
+        this.logger.warn('Admin stats cache miss - returning fallback data. Wait for cron to populate.');
+        return {
+            students: 0,
+            parents: 0,
+            tutors: 0,
+            upcomingSessions: 0,
+            pendingAllocations: 0,
+            activeNow: 0,
+            inactiveTutors: 0,
+            revenue: [],
+            enrollment: {},
+            recentFailures: 0,
+            upcomingExpirations: 0,
+            success: { attendanceRate: 100, avgMastery: 0 }
+        };
+    }
 
+    @Cron('0 */5 * * * *')
+    async precomputeAdminStats() {
+        this.logger.debug('Pre-computing admin stats in background...');
         try {
             const now = new Date();
             const sevenDaysAgo = new Date(now);
@@ -284,25 +302,21 @@ export class AdminService {
                         ]
                     }
                 }),
-                // Revenue Stats (Multi-currency aware)
                 this.prisma.purchases.groupBy({
                     by: ['currency'],
                     where: { status: 'PAID' },
                     _sum: { amount_cents: true }
                 }),
-                // Enrollment Stats
                 this.prisma.students.groupBy({
                     by: ['enrollment_status'],
                     _count: { id: true }
                 }),
-                // Recent Payment Failures (24h)
                 this.prisma.purchases.count({
                     where: {
                         status: 'FAILED',
                         created_at: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) }
                     }
                 }),
-                // Upcoming Expirations (48h)
                 this.prisma.students.count({
                     where: {
                         subscription_ends: {
@@ -311,10 +325,8 @@ export class AdminService {
                         }
                     }
                 }),
-                // Phase 2: Success Metrics (Attendance Rate)
                 this.prisma.sessions.count({ where: { status: 'completed' } }),
                 this.prisma.sessions.count({ where: { status: { in: ['completed', 'cancelled', 'scheduled'] } } }),
-                // progress_points has no numeric field; return count as proxy
                 this.prisma.progress_points.count(),
             ]);
 
@@ -344,13 +356,10 @@ export class AdminService {
                 }
             };
 
-            // Cache for 5 minutes (300000 ms)
-            await this.cacheManager.set('admin_home_stats', statsResult, 300000);
-
-            return statsResult;
+            await this.cacheManager.set('admin_home_stats', statsResult, 360000);
+            this.logger.debug('Admin stats pre-computed and cached successfully');
         } catch (error) {
-            this.logger.error('Failed to fetch stats', error);
-            throw error;
+            this.logger.error('Failed to pre-compute admin stats', error);
         }
     }
 
