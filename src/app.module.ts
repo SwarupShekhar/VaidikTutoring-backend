@@ -100,11 +100,13 @@ import { CmsModule } from './cms/cms.module';
       limit: 100, // 100 requests per minute per IP (Production Safe)
     }]),
     BullModule.forRootAsync({
-      useFactory: () => {
+      useFactory: async (): Promise<any> => {
         const redisUrl = process.env.REDIS_URL;
         if (!redisUrl) {
           console.log('[BullMQ] No REDIS_URL found, background jobs will fail');
-          return {};
+          return {
+            connection: { host: 'localhost', port: 6379 }
+          };
         }
         
         const parsed = new URL(redisUrl);
