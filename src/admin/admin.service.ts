@@ -214,13 +214,16 @@ export class AdminService {
     }
 
     async getStats() {
-        const cachedStats = await this.cacheManager.get('admin_home_stats');
+        let cachedStats = await this.cacheManager.get('admin_home_stats');
         if (cachedStats) {
             return cachedStats;
         }
 
-        this.logger.warn('Admin stats cache miss - returning fallback data. Wait for cron to populate.');
-        return {
+        this.logger.warn('Admin stats cache miss - computing synchronously for first load.');
+        await this.precomputeAdminStats();
+        
+        cachedStats = await this.cacheManager.get('admin_home_stats');
+        return cachedStats || {
             students: 0,
             parents: 0,
             tutors: 0,
