@@ -62,12 +62,18 @@ export class BlogsController {
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
 
         if (isUuid) {
-            // For UUID requests, fetch the blog to get its slug and redirect
-            const blog = await this.blogsService.findOneById(idOrSlug, previewSecret);
+            // For UUID requests, fetch the blog to get its slug and redirect.
+            // findOneById throws UnauthorizedException for unpublished — convert to 404
+            // so we don't leak whether a draft exists.
+            let blog: any;
+            try {
+                blog = await this.blogsService.findOneById(idOrSlug, previewSecret);
+            } catch {
+                throw new NotFoundException('Blog not found');
+            }
             if (!blog || !blog.slug) {
                 throw new NotFoundException('Blog not found');
             }
-            // Return redirect info for frontend to handle or middleware to process
             return {
                 _redirect: true,
                 status: 301,
@@ -77,11 +83,26 @@ export class BlogsController {
         }
 
         // For slug requests, return the blog directly
-        const blog = await this.blogsService.findOne(idOrSlug, previewSecret);
+        let blog: any;
+        try {
+            blog = await this.blogsService.findOne(idOrSlug, previewSecret);
+        } catch {
+            throw new NotFoundException('Blog not found');
+        }
         if (!blog) {
             throw new NotFoundException('Blog not found');
         }
         return blog;
+    }
+
+    // Emergency: Check blog data status (Admin Only)
+    @UseGuards(ClerkAuthGuard)
+    @Get('admin/blogs/emergency-check')
+    async emergencyCheck(@Req() req: any) {
+        if (req.user.role !== 'admin') {
+            throw new UnauthorizedException('Only admins can check blog status');
+        }
+        return this.blogsService.emergencyCheck();
     }
 
     // Protected: Get single blog for editing
@@ -120,7 +141,7 @@ export class BlogsController {
         }
         const pageNum = parseInt(page || '1', 10);
         const limitNum = parseInt(limit || '10', 10);
-        return this.blogsService.findAll(pageNum, limitNum);
+        return this.blogsService.findAll(pageNum, limitNum, user);
     }
     
     // Protected: Update blog (Admin/Tutor)
@@ -187,11 +208,12 @@ export class BlogsController {
         @Req() req: any,
         @Param('id') id: string,
         @Body('status') status: string,
+        @Body('reason') reason?: string,
     ) {
         if (req.user.role !== 'admin') {
             throw new UnauthorizedException('Only admins can update blog status');
         }
-        return this.blogsService.updateStatus(id, status);
+        return this.blogsService.updateStatus(id, status, reason, req.user);
     }
 
     // Protected: Delete Blog (Admin Only)
@@ -202,15 +224,5 @@ export class BlogsController {
             throw new UnauthorizedException('Only admins can delete blogs');
         }
         return this.blogsService.remove(id);
-    }
-
-    // Emergency: Check blog data status (Admin Only)
-    @UseGuards(ClerkAuthGuard)
-    @Get('admin/blogs/emergency-check')
-    async emergencyCheck(@Req() req: any) {
-        if (req.user.role !== 'admin') {
-            throw new UnauthorizedException('Only admins can check blog status');
-        }
-        return this.blogsService.emergencyCheck();
     }
 }

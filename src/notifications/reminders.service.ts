@@ -54,17 +54,20 @@ export class RemindersService {
       },
     });
 
+    // Fetch recent notifications to check for duplicates in memory
+    const recentNotifications = await this.prisma.notifications.findMany({
+      where: {
+        type: `reminder_${hoursAhead}h`,
+        created_at: { gte: subHours(now, 2) }
+      }
+    });
+
     for (const session of sessions) {
       const booking = session.bookings;
       if (!booking) continue;
 
       // Check duplicate using notifications table
-      const alreadySent = await this.prisma.notifications.findFirst({
-        where: {
-          type: `reminder_${hoursAhead}h`,
-          payload: { path: ['session_id'], equals: session.id },
-        },
-      });
+      const alreadySent = recentNotifications.find(n => (n.payload as any)?.session_id === session.id);
 
       if (alreadySent) continue;
 

@@ -14,7 +14,7 @@ export class CreateBlogDto {
     content: string;
 
     @IsString()
-    @IsUrl()
+    @IsOptional()
     imageUrl: string;
 
     @IsString()
@@ -43,6 +43,10 @@ export class CreateBlogDto {
 
     @IsOptional()
     related_blog_ids?: string[];
+
+    @IsString()
+    @IsOptional()
+    summary?: string;
 
     @IsDateString()
     @IsOptional()

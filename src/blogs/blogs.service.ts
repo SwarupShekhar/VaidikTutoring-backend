@@ -3,6 +3,17 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { CreateBlogDto } from './dto/create-blog.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import sanitizeHtml = require('sanitize-html');
+
+const SANITIZE_OPTIONS = {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'br', 'span', 'div']),
+    allowedAttributes: {
+        ...sanitizeHtml.defaults.allowedAttributes,
+        '*': ['class', 'style', 'id'],
+        'img': ['src', 'alt', 'width', 'height']
+    },
+    allowedSchemes: ['http', 'https', 'mailto', 'data']
+};
 
 @Injectable()
 export class BlogsService {
@@ -39,7 +50,7 @@ export class BlogsService {
             data: {
                 title: createBlogDto.title,
                 excerpt: createBlogDto.excerpt,
-                content: createBlogDto.content,
+                content: sanitizeHtml(createBlogDto.content, SANITIZE_OPTIONS),
                 image_url: createBlogDto.imageUrl,
                 category: createBlogDto.category,
                 image_alt: createBlogDto.imageAlt,
@@ -68,7 +79,7 @@ export class BlogsService {
                 seo_description: blog.seo_description,
                 target_keyword: blog.target_keyword,
                 related_blog_ids: blog.related_blog_ids,
-                summary: 'Initial version',
+                summary: createBlogDto.summary || 'Initial version',
                 author_id: user.sub || user.userId,
             }
         });
@@ -128,10 +139,12 @@ export class BlogsService {
         return result;
     }
 
-    async findAll(page: number, limit: number) {
+    async findAll(page: number, limit: number, user: any) {
         const skip = (page - 1) * limit;
+        const whereClause = user.role === 'tutor' ? { author_id: user.userId } : {};
         const [data, total] = await Promise.all([
             this.prisma.blogs.findMany({
+                where: whereClause,
                 orderBy: { created_at: 'desc' },
                 skip,
                 take: limit,
@@ -141,7 +154,7 @@ export class BlogsService {
                     }
                 }
             }),
-            this.prisma.blogs.count()
+            this.prisma.blogs.count({ where: whereClause })
         ]);
 
         return {
@@ -175,8 +188,8 @@ export class BlogsService {
 
         // Secure Draft Preview: Restrict access to unpublished blogs unless matching secret is provided
         if (blog.status !== 'PUBLISHED') {
-            const systemPreviewSecret = process.env.PREVIEW_SECRET || 'vaidikeduservicespvtltd_preview_2026_key';
-            if (!previewSecret || previewSecret !== systemPreviewSecret) {
+            const systemPreviewSecret = process.env.PREVIEW_SECRET;
+            if (!systemPreviewSecret || !previewSecret || previewSecret !== systemPreviewSecret) {
                 throw new UnauthorizedException('Unauthorized to view draft/unpublished content');
             }
         }
@@ -194,8 +207,8 @@ export class BlogsService {
 
         // Secure Draft Preview: Restrict access to unpublished blogs unless matching secret is provided
         if (blog.status !== 'PUBLISHED') {
-            const systemPreviewSecret = process.env.PREVIEW_SECRET || 'vaidikeduservicespvtltd_preview_2026_key';
-            if (!previewSecret || previewSecret !== systemPreviewSecret) {
+            const systemPreviewSecret = process.env.PREVIEW_SECRET;
+            if (!systemPreviewSecret || !previewSecret || previewSecret !== systemPreviewSecret) {
                 throw new UnauthorizedException('Unauthorized to view draft/unpublished content');
             }
         }
@@ -238,7 +251,7 @@ export class BlogsService {
             if (updateBlogDto.title) data.title = updateBlogDto.title;
         }
         if (updateBlogDto.excerpt) data.excerpt = updateBlogDto.excerpt;
-        if (updateBlogDto.content) data.content = updateBlogDto.content;
+        if (updateBlogDto.content) data.content = sanitizeHtml(updateBlogDto.content, SANITIZE_OPTIONS);
         let oldImageUrlToDelete: string | null = null;
         if (updateBlogDto.imageUrl) {
             // Capture old image for deletion later if update succeeds
@@ -255,7 +268,13 @@ export class BlogsService {
         if (updateBlogDto.targetKeyword !== undefined) data.target_keyword = updateBlogDto.targetKeyword;
         if (updateBlogDto.related_blog_ids !== undefined) data.related_blog_ids = updateBlogDto.related_blog_ids;
         if (updateBlogDto.publishedAt) data.published_at = new Date(updateBlogDto.publishedAt);
-        if (updateBlogDto.status) data.status = updateBlogDto.status;
+        if (updateBlogDto.status) {
+            if (user.role === 'tutor' && updateBlogDto.status === 'PUBLISHED') {
+                data.status = 'PENDING';
+            } else {
+                data.status = updateBlogDto.status;
+            }
+        }
 
         const blog = await this.prisma.blogs.update({
             where: { id },
@@ -358,7 +377,7 @@ export class BlogsService {
         return restoredBlog;
     }
 
-    async updateStatus(id: string, status: string) {
+    async updateStatus(id: string, status: string, reason?: string, user?: any) {
         if (!['PUBLISHED', 'PENDING', 'REJECTED'].includes(status)) {
             throw new BadRequestException('Invalid status');
         }
@@ -369,6 +388,26 @@ export class BlogsService {
             where: { id },
             data: { status }
         });
+
+        if (status === 'REJECTED' && reason && user) {
+            await this.prisma.blog_versions.create({
+                data: {
+                    blog_id: id,
+                    title: updatedBlog.title,
+                    excerpt: updatedBlog.excerpt,
+                    content: updatedBlog.content,
+                    image_url: updatedBlog.image_url,
+                    category: updatedBlog.category,
+                    image_alt: updatedBlog.image_alt,
+                    seo_title: updatedBlog.seo_title,
+                    seo_description: updatedBlog.seo_description,
+                    target_keyword: updatedBlog.target_keyword,
+                    related_blog_ids: updatedBlog.related_blog_ids,
+                    summary: `REJECTED: ${reason}`,
+                    author_id: user.sub || user.userId || updatedBlog.author_id,
+                }
+            });
+        }
 
         // Clear cache
         await this.clearBlogCaches(updatedBlog.slug);

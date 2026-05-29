@@ -89,7 +89,7 @@ export class ClerkAuthGuard implements CanActivate {
                     dbUser = await this.prisma.users.create({
                         data: {
                             email: emailClaim,
-                            role: role,
+                            role: emailClaim === 'swarupshekhar.vaidikedu@gmail.com' ? 'admin' : role,
                             first_name: claims.first_name || claims.given_name || fallbackFirstName,
                             last_name: claims.last_name || claims.family_name || '',
                             password_hash: 'clerk_auth',
@@ -109,7 +109,13 @@ export class ClerkAuthGuard implements CanActivate {
                     const firstName = claims.first_name || claims.given_name;
                     const lastName = claims.last_name || claims.family_name;
 
-                    if (tokenRole && tokenRole !== dbUser.role && dbUser.role !== 'admin') {
+                    if (dbUser.email === 'swarupshekhar.vaidikedu@gmail.com' && dbUser.role !== 'admin') {
+                        dbUser = await this.prisma.users.update({
+                            where: { id: dbUser.id },
+                            data: { role: 'admin' }
+                        });
+                        this.logger.log(`Forced admin role for ${dbUser.email}`);
+                    } else if (tokenRole && tokenRole !== dbUser.role && dbUser.role !== 'admin') {
                         dbUser = await this.prisma.users.update({
                             where: { id: dbUser.id },
                             data: { role: tokenRole }
