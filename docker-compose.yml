@@ -3,7 +3,6 @@ services:
   # Core NestJS Application Service
   # ========================================================
   backend:
-    build: .
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER_LC}/${GITHUB_REPOSITORY_NAME_LC}:latest
     container_name: k12-backend-app
     restart: always
