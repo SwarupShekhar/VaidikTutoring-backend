@@ -108,8 +108,8 @@ export class BlogsController {
     // Protected: Get single blog for editing
     @UseGuards(ClerkAuthGuard)
     @Get('admin/blogs/:id')
-    async findOneForAdmin(@Param('id') id: string) {
-        const blog = await this.blogsService.findOneById(id);
+    async findOneForAdmin(@Param('id') id: string, @Req() req: any) {
+        const blog = await this.blogsService.findOneById(id, undefined, req.user);
         if (!blog) {
             throw new NotFoundException('Blog not found');
         }

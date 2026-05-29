@@ -197,7 +197,7 @@ export class BlogsService {
         return { ...blog, author: blog.users, users: undefined };
     }
 
-    async findOneById(id: string, previewSecret?: string) {
+    async findOneById(id: string, previewSecret?: string, user?: any) {
         // Fetch blog by ID only (used for 301 redirects)
         const blog = await this.prisma.blogs.findUnique({
             where: { id },
@@ -207,9 +207,12 @@ export class BlogsService {
 
         // Secure Draft Preview: Restrict access to unpublished blogs unless matching secret is provided
         if (blog.status !== 'PUBLISHED') {
-            const systemPreviewSecret = process.env.PREVIEW_SECRET;
-            if (!systemPreviewSecret || !previewSecret || previewSecret !== systemPreviewSecret) {
-                throw new UnauthorizedException('Unauthorized to view draft/unpublished content');
+            const isAuthorizedUser = user && (user.role === 'admin' || blog.author_id === user.id);
+            if (!isAuthorizedUser) {
+                const systemPreviewSecret = process.env.PREVIEW_SECRET;
+                if (!systemPreviewSecret || !previewSecret || previewSecret !== systemPreviewSecret) {
+                    throw new UnauthorizedException('Unauthorized to view draft/unpublished content');
+                }
             }
         }
 
