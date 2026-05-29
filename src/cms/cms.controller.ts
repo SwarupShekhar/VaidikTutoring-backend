@@ -237,28 +237,57 @@ export class CmsController {
         _type,
         heading,
         subheading,
+        body,
+        layout,
+
         html,
         css,
+        scopeClass,
+        sectionBackground,
+        sectionPadding,
+        maxWidth,
+
         content,
+
         features[] {
           title,
           description,
           icon
         },
+
         testimonials[] {
           quote,
-          author,
-          role,
+          name,
+          examBoard,
+          grade,
           avatar {
-            asset->{
-              url
-            }
+            asset->{ url }
           }
         },
+
         faqs[] {
           question,
           answer
-        }
+        },
+
+        stats[] {
+          value,
+          label,
+          icon
+        },
+
+        ctaText,
+        ctaUrl,
+        image {
+          asset->{ url },
+          alt
+        },
+        imagePosition,
+
+        variant,
+
+        url,
+        caption
       }
     }`;
 

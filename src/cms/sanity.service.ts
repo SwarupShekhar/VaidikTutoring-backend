@@ -240,8 +240,8 @@ export class SanityService implements OnModuleInit {
             _type: 'testimonialsBlock',
             heading: 'Parent & Student Success Stories',
             testimonials: [
-              { quote: 'StudyHours transformed my daughter\'s confidence in O-Level Physics. She went from C to A* in just 8 weeks!', author: 'Clara Goh', role: 'Parent, Singapore', avatar: { asset: { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330' } } },
-              { quote: 'The ATAR math prep sheets are exceptionally accurate to the actual final year exam format.', author: 'Liam Patterson', role: 'Year 12 Student, Australia', avatar: { asset: { url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e' } } }
+              { quote: 'StudyHours transformed my daughter\'s confidence in O-Level Physics. She went from C to A* in just 8 weeks!', name: 'Clara Goh', examBoard: 'O-Level, Singapore', grade: 'A*', avatar: { asset: { url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330' } } },
+              { quote: 'The ATAR math prep sheets are exceptionally accurate to the actual final year exam format.', name: 'Liam Patterson', examBoard: 'ATAR, Australia', grade: 'A', avatar: { asset: { url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e' } } }
             ]
           },
           {
