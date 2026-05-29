@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { BookingsService } from './bookings.service';
 import { BookingsController } from './bookings.controller';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -23,10 +22,10 @@ import { TutorStatusGuard } from '../auth/tutor-status.guard';
     AuthModule,
     CreditsModule,
     AzureModule,
-    ScheduleModule.forRoot(),
   ],
   controllers: [BookingsController],
   providers: [BookingsService, BookingsCleanupService, BookingFallbackSchedulerService, BookingAlertsService, TutorStatusGuard],
   exports: [BookingsService],
 })
 export class BookingsModule { }
+
