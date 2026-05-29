@@ -153,7 +153,8 @@ export class BlogsController {
         @Body() updateBlogDto: UpdateBlogDto
     ) {
         const user = req.user;
-        const blog = await this.blogsService.findOneById(id);
+        // Pass user so findOneById allows tutors to access their own PENDING/REJECTED drafts
+        const blog = await this.blogsService.findOneById(id, undefined, user);
         
         if (!blog) {
             throw new NotFoundException('Blog not found');

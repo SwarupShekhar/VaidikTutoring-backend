@@ -207,7 +207,9 @@ export class BlogsService {
 
         // Secure Draft Preview: Restrict access to unpublished blogs unless matching secret is provided
         if (blog.status !== 'PUBLISHED') {
-            const isAuthorizedUser = user && (user.role === 'admin' || blog.author_id === user.id);
+            // Guard sets both userId (explicit) and id (via spread from dbUser); support both
+            const requestUserId = user?.userId || user?.id;
+            const isAuthorizedUser = user && (user.role === 'admin' || blog.author_id === requestUserId);
             if (!isAuthorizedUser) {
                 const systemPreviewSecret = process.env.PREVIEW_SECRET;
                 if (!systemPreviewSecret || !previewSecret || previewSecret !== systemPreviewSecret) {
