@@ -74,10 +74,17 @@ export class AdminService {
             },
             include: {
                 bookings: {
-                    include: {
-                        subjects: true,
-                        students: true,
-                        tutors: { include: { users: true } },
+                    select: {
+                        id: true,
+                        status: true,
+                        requested_start: true,
+                        requested_end: true,
+                        student_id: true,
+                        subject_id: true,
+                        assigned_tutor_id: true,
+                        subjects: { select: { id: true, name: true } },
+                        students: { select: { id: true, first_name: true, last_name: true, grade: true } },
+                        tutors: { include: { users: { select: { id: true, first_name: true, last_name: true, email: true } } } },
                     }
                 }
             },
@@ -138,6 +145,7 @@ export class AdminService {
                 subjects: { select: { id: true, name: true } },
             },
             orderBy: { created_at: 'asc' },
+            take: 50,
         });
 
         return queue.map(b => ({

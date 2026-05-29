@@ -564,17 +564,26 @@ export class BookingsService {
         assigned_tutor_id: null,
         created_at: { lt: fifteenMinutesAgo },
       },
+      select: {
+        id: true,
+        program_id: true,
+        subject_id: true,
+        requested_start: true,
+        requested_end: true,
+        created_at: true,
+      },
     });
 
-    for (const booking of unassignedBookings) {
-      const alreadyBroadcasted = await this.prisma.notifications.findFirst({
-        where: {
-          type: 'claim_broadcast',
-          payload: { path: ['booking_id'], equals: booking.id },
-        },
-      });
+    const alreadyBroadcastedNotifications = await this.prisma.notifications.findMany({
+      where: { type: 'claim_broadcast' },
+      select: { payload: true },
+    });
+    const broadcastedIds = new Set(
+      alreadyBroadcastedNotifications.map(n => (n.payload as any)?.booking_id).filter(Boolean)
+    );
 
-      if (alreadyBroadcasted) continue;
+    for (const booking of unassignedBookings) {
+      if (broadcastedIds.has(booking.id)) continue;
 
       await this.broadcastToTutors(booking);
 
@@ -849,14 +858,15 @@ export class BookingsService {
           include: { session_recordings: { take: 1, orderBy: { created_at: 'desc' } } }
         }
       },
-      orderBy: { requested_start: 'asc' },
+      orderBy: { requested_start: 'desc' },
+      take: 100,
     });
 
     // TRANSFORM: Flatten session data and inject SAS URLs (limited to the top 5 most recent records to prevent event-loop block)
     return Promise.all(bookings.map(async (b, idx) => {
       const session = b.sessions?.[0];
       const recording = session?.session_recordings?.[0];
-      const shouldGenerateSas = idx >= bookings.length - 5;
+      const shouldGenerateSas = idx < 5;
       
       // Inject SAS URL if Azure blob exists
       if (recording?.azure_blob_name && shouldGenerateSas) {
@@ -957,6 +967,7 @@ export class BookingsService {
         },
       },
       orderBy: { requested_start: 'desc' },
+      take: 100,
     });
 
     // Inject SAS URLs (limited to the top 5 most recent records to prevent event-loop block)

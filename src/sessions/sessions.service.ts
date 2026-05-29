@@ -44,6 +44,19 @@ export class SessionsService {
 
     const booking = await this.prisma.bookings.findUnique({
       where: { id: dto.booking_id },
+      include: {
+        students: {
+          include: {
+            users_students_user_idTousers: { select: { email: true } },
+            users_students_parent_user_idTousers: { select: { email: true } },
+          },
+        },
+        tutors: {
+          include: {
+            users: { select: { email: true } },
+          },
+        },
+      },
     });
     if (!booking) throw new NotFoundException('Booking not found');
 
@@ -65,40 +78,19 @@ export class SessionsService {
     // generate ICS
     const ics = await this.generateIcsInvite(created.id);
 
-    // collect recipient emails (student, parent, tutor)
+    // collect recipient emails (student, parent, tutor) — using pre-loaded relations
     const recipients = new Set<string>();
 
-    if (booking.student_id) {
-      const student = await this.prisma.students.findUnique({
-        where: { id: booking.student_id },
-      });
-      if (student) {
-        if (student.parent_user_id) {
-          const parent = await this.prisma.users.findUnique({
-            where: { id: student.parent_user_id },
-          });
-          if (parent?.email) recipients.add(parent.email);
-        }
-        if (student.user_id) {
-          const studentUser = await this.prisma.users.findUnique({
-            where: { id: student.user_id },
-          });
-          if (studentUser?.email) recipients.add(studentUser.email);
-        }
-      }
+    if (booking.students) {
+      const parentEmail = booking.students.users_students_parent_user_idTousers?.email;
+      if (parentEmail) recipients.add(parentEmail);
+
+      const studentEmail = booking.students.users_students_user_idTousers?.email;
+      if (studentEmail) recipients.add(studentEmail);
     }
 
-    if (booking.assigned_tutor_id) {
-      const tutor = await this.prisma.tutors.findUnique({
-        where: { id: booking.assigned_tutor_id },
-      });
-      if (tutor) {
-        const tutorUser = await this.prisma.users.findUnique({
-          where: { id: tutor.user_id },
-        });
-        if (tutorUser?.email) recipients.add(tutorUser.email);
-      }
-    }
+    const tutorEmail = booking.tutors?.users?.email;
+    if (tutorEmail) recipients.add(tutorEmail);
 
     // send email if recipients found
     const to = Array.from(recipients);
@@ -132,57 +124,55 @@ export class SessionsService {
     const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (!user) return [];
 
-    let bookingIds: string[] = [];
+    const sessionInclude = {
+      bookings: {
+        include: {
+          subjects: true,
+          students: true,
+          tutors: { include: { users: true } },
+        },
+      },
+    };
 
     if (user.role === 'parent') {
-      // Find all students for this parent
+      // Find all students for this parent, then filter sessions through the bookings relation
       const students = await this.prisma.students.findMany({
         where: { parent_user_id: userId },
+        select: { id: true },
       });
       const studentIds = students.map((s) => s.id);
-      const bookings = await this.prisma.bookings.findMany({
-        where: { student_id: { in: studentIds } },
+      if (studentIds.length === 0) return [];
+      return this.prisma.sessions.findMany({
+        where: { bookings: { student_id: { in: studentIds } } },
+        take: 100,
+        orderBy: { start_time: 'asc' },
+        include: sessionInclude,
       });
-      bookingIds = bookings.map((b) => b.id);
     } else if (user.role === 'student') {
       const student = await this.prisma.students.findFirst({
         where: { user_id: userId },
       });
-      if (student) {
-        const bookings = await this.prisma.bookings.findMany({
-          where: { student_id: student.id },
-        });
-        bookingIds = bookings.map((b) => b.id);
-      }
+      if (!student) return [];
+      return this.prisma.sessions.findMany({
+        where: { bookings: { student_id: student.id } },
+        take: 100,
+        orderBy: { start_time: 'asc' },
+        include: sessionInclude,
+      });
     } else if (user.role === 'tutor') {
       const tutor = await this.prisma.tutors.findFirst({
         where: { user_id: userId },
       });
-      if (tutor) {
-        const bookings = await this.prisma.bookings.findMany({
-          where: { assigned_tutor_id: tutor.id },
-        });
-        bookingIds = bookings.map((b) => b.id);
-      }
+      if (!tutor) return [];
+      return this.prisma.sessions.findMany({
+        where: { bookings: { assigned_tutor_id: tutor.id } },
+        take: 100,
+        orderBy: { start_time: 'asc' },
+        include: sessionInclude,
+      });
     }
 
-    // Fetch sessions for these bookings
-    // Fetch sessions for these bookings
-    const sessions = await this.prisma.sessions.findMany({
-      where: { booking_id: { in: bookingIds } },
-      orderBy: { start_time: 'asc' },
-      include: {
-        bookings: {
-          include: {
-            subjects: true,
-            students: true,
-            tutors: { include: { users: true } },
-          },
-        },
-      },
-    });
-
-    return sessions;
+    return [];
   }
 
   private toIcsDate(d: Date) {
@@ -208,51 +198,30 @@ export class SessionsService {
 
     const booking = session.booking_id
       ? await this.prisma.bookings.findUnique({
-        where: { id: session.booking_id },
-      })
+          where: { id: session.booking_id },
+          include: {
+            students: {
+              include: {
+                users_students_user_idTousers: { select: { id: true, email: true, first_name: true, last_name: true } },
+              },
+            },
+            tutors: {
+              include: {
+                users: { select: { id: true, email: true, first_name: true, last_name: true } },
+              },
+            },
+            subjects: true,
+            packages: true,
+            curricula: true,
+          },
+        })
       : null;
 
-    let studentUser: any = null;
-    if (booking?.student_id) {
-      const student = await this.prisma.students.findUnique({
-        where: { id: booking.student_id },
-      });
-      if (student) {
-        if (student.user_id) {
-          // Existing check for student.user_id
-          studentUser = await this.prisma.users.findUnique({
-            where: { id: student.user_id },
-          });
-        }
-      }
-    }
-
-    let tutorUser: any = null;
-    if (booking?.assigned_tutor_id) {
-      const tutor = await this.prisma.tutors.findUnique({
-        where: { id: booking.assigned_tutor_id },
-      });
-      if (tutor)
-        tutorUser = await this.prisma.users.findUnique({
-          where: { id: tutor.user_id },
-        });
-    }
-
-    const subject = booking?.subject_id
-      ? await this.prisma.subjects.findUnique({
-        where: { id: booking.subject_id },
-      })
-      : null;
-    const pkg = booking?.package_id
-      ? await this.prisma.packages.findUnique({
-        where: { id: booking.package_id },
-      })
-      : null;
-    const curriculum = booking?.curriculum_id
-      ? await this.prisma.curricula.findUnique({
-        where: { id: booking.curriculum_id },
-      })
-      : null;
+    const studentUser = booking?.students?.users_students_user_idTousers ?? null;
+    const tutorUser = booking?.tutors?.users ?? null;
+    const subject = booking?.subjects ?? null;
+    const pkg = booking?.packages ?? null;
+    const curriculum = booking?.curricula ?? null;
 
     const startDt = session.start_time
       ? new Date(session.start_time)

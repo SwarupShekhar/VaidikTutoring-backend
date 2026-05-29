@@ -53,6 +53,7 @@ export class NotificationsService {
     // Ensure ownership
     const notif = await this.prisma.notifications.findFirst({
       where: { id, user_id: userId },
+      select: { id: true },
     });
     if (!notif) return null;
 
@@ -68,15 +69,21 @@ export class NotificationsService {
     // 2. Persist to DB for all admins (so it shows in bell icon history)
     try {
       const admins = await this.prisma.users.findMany({
-        where: { role: 'admin', is_active: true }
+        where: { role: 'admin', is_active: true },
+        select: { id: true },
       });
 
-      for (const admin of admins) {
-        await this.create(admin.id, 'booking_created', {
-          message: `Student ${studentName} just booked a new session!`,
-          studentName
-        });
-      }
+      await this.prisma.notifications.createMany({
+        data: admins.map(admin => ({
+          user_id: admin.id,
+          type: 'booking_created',
+          payload: {
+            message: `Student ${studentName} just booked a new session!`,
+            studentName,
+          },
+          is_read: false,
+        })),
+      });
     } catch (e) {
       this.logger.error(`Failed to persist admin notifications: ${e.message}`);
     }
@@ -100,14 +107,19 @@ export class NotificationsService {
         where: { role: 'admin', is_active: true },
         select: { id: true },
       });
-      for (const admin of admins) {
-        await this.create(admin.id, 'support_ticket', {
-          message: `New help request from ${userName}`,
-          ticketId,
-          preview: message.slice(0, 120),
-          link: '/admin/dashboard?tab=support',
-        });
-      }
+      await this.prisma.notifications.createMany({
+        data: admins.map(admin => ({
+          user_id: admin.id,
+          type: 'support_ticket',
+          payload: {
+            message: `New help request from ${userName}`,
+            ticketId,
+            preview: message.slice(0, 120),
+            link: '/admin/dashboard?tab=support',
+          },
+          is_read: false,
+        })),
+      });
     } catch (e) {
       this.logger.error(`Failed to persist support notifications: ${e.message}`);
     }
@@ -137,9 +149,14 @@ export class NotificationsService {
         select: { id: true },
       });
 
-      for (const admin of admins) {
-        await this.create(admin.id, type, payload);
-      }
+      await this.prisma.notifications.createMany({
+        data: admins.map(admin => ({
+          user_id: admin.id,
+          type: type,
+          payload: payload,
+          is_read: false,
+        })),
+      });
 
       // 2. Real-time broadcast
       this.gateway.notifyAdmin('admin:alert', {
