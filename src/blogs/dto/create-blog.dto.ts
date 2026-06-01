@@ -1,4 +1,5 @@
 import { IsString, IsNotEmpty, IsUrl, IsOptional, IsDateString } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateBlogDto {
     @IsString()
@@ -48,6 +49,7 @@ export class CreateBlogDto {
     @IsOptional()
     summary?: string;
 
+    @Transform(({ value }) => value === '' ? undefined : value)
     @IsDateString()
     @IsOptional()
     publishedAt?: string;
