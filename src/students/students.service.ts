@@ -18,9 +18,9 @@ export class StudentsService {
       grade: string;
       school: string;
       curriculum_preference?: string;
-      interests?: string[];
+      interests?: any[];
       recent_focus?: string;
-      struggle_areas?: string[];
+      struggle_areas?: any[];
     },
     parentUserId: string,
   ) {
@@ -82,9 +82,9 @@ export class StudentsService {
       email?: string;
       grade?: string;
       school?: string;
-      interests?: string[];
+      interests?: any[];
       recent_focus?: string;
-      struggle_areas?: string[];
+      struggle_areas?: any[];
     },
     userId: string,
     userRole: string

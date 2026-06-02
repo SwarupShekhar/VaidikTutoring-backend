@@ -383,6 +383,15 @@ export class BookingsService {
       const skills = t.skills as any;
       if (!skills || !skills.subjects || !Array.isArray(skills.subjects))
         return false;
+      
+      // Curriculum-Aware Matching:
+      // Ensure the tutor explicitly supports the requested curriculum
+      if (booking.curriculum_id) {
+        if (!skills.curricula || !Array.isArray(skills.curricula) || !skills.curricula.includes(booking.curriculum_id)) {
+          return false;
+        }
+      }
+
       return skills.subjects.includes(booking.subject_id);
     });
 
