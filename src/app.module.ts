@@ -45,6 +45,7 @@ import { VaultModule } from './vault/vault.module';
 import { HealthModule } from './health/health.module';
 import { MessagesModule } from './messages/messages.module';
 import { CmsModule } from './cms/cms.module';
+import { LeadsModule } from './leads/leads.module';
 
 
 @Module({
@@ -153,6 +154,7 @@ import { CmsModule } from './cms/cms.module';
     HealthModule,
     MessagesModule,
     CmsModule,
+    LeadsModule,
     ServeStaticModule.forRoot({
 
       rootPath: path.join(process.cwd(), 'public'),

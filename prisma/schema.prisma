@@ -838,3 +838,14 @@ model tutor_messages {
   @@index([sender_id])
   @@schema("app")
 }
+
+model LeadCapture {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email      String
+  source     String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([email])
+  @@map("lead_captures")
+  @@schema("app")
+}
