@@ -165,6 +165,19 @@ export class AdminService {
         }));
     }
 
+    async getLeads() {
+        return this.prisma.leadCapture.findMany({
+            orderBy: { created_at: 'desc' },
+            take: 500, // Return up to 500 recent leads
+            select: {
+                id: true,
+                email: true,
+                source: true,
+                created_at: true,
+            }
+        });
+    }
+
     async assignTutorToBooking(bookingId: string, tutorId: string) {
         return await this.prisma.bookings.update({
             where: { id: bookingId },

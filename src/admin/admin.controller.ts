@@ -234,6 +234,20 @@ export class AdminController {
     }
   }
 
+  @Get('leads')
+  async getLeads(@Req() req: any) {
+    try {
+      const actor = req.user;
+      if (!actor || actor.role !== 'admin') {
+        throw new UnauthorizedException('Only admins can view leads.');
+      }
+      return await this.adminService.getLeads();
+    } catch (e) {
+      this.logger.error('GET /admin/leads failed', e);
+      throw e;
+    }
+  }
+
   @Get('allocations/queue')
   async getAllocationQueue(@Req() req: any) {
     const actor = req.user;
