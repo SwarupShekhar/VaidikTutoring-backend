@@ -157,6 +157,7 @@ model packages {
   name          String
   description   String?
   price_cents   Int?
+  base_price_usd Int?
   currency      String?         @default("USD")
   billing_type  String?
   active        Boolean?        @default(true)
@@ -847,5 +848,26 @@ model LeadCapture {
 
   @@index([email])
   @@map("lead_captures")
+  @@schema("app")
+}
+
+model exchange_rates {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  currency      String    @unique
+  rate_to_usd   Decimal   @db.Decimal(16, 6)
+  last_updated  DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@schema("app")
+}
+
+model test_prep_leads {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  email         String
+  phone         String
+  target_test   String
+  status        String    @default("NEW")
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+
   @@schema("app")
 }

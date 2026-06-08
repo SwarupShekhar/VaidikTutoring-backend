@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, Logger, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import Razorpay from 'razorpay';
 import * as crypto from 'crypto';
 import { CreditsService } from '../credits/credits.service';
@@ -67,6 +68,33 @@ export class PaymentsService {
   }
 
   /**
+   * Sync exchange rates daily
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async syncExchangeRates() {
+    this.logger.log('Starting daily exchange rate sync...');
+    try {
+      const response = await fetch('https://open.er-api.com/v6/latest/USD');
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      
+      if (data && data.rates) {
+        const rates = data.rates;
+        for (const [currency, rate_to_usd] of Object.entries(rates)) {
+          await this.prisma.exchange_rates.upsert({
+            where: { currency },
+            update: { rate_to_usd: rate_to_usd as number, last_updated: new Date() },
+            create: { currency, rate_to_usd: rate_to_usd as number }
+          });
+        }
+        this.logger.log('Exchange rates synced successfully');
+      }
+    } catch (error) {
+      this.logger.error('Failed to sync exchange rates:', error);
+    }
+  }
+
+  /**
    * Create a Razorpay order for a package purchase
    * Adapated for Vaidik Tutoring architecture - uses existing packages table
    */
@@ -90,13 +118,34 @@ export class PaymentsService {
     // Calculate total credits included in this package
     const creditsIncluded = pkg.package_items?.reduce((total, item) => total + (item.hours || 0), 0) || 0;
 
+    // Calculate dynamic price if base_price_usd exists
+    let dynamicPriceCents = pkg.price_cents || 0;
+    let finalCurrency = pkg.currency ?? 'USD';
+
+    if (pkg.base_price_usd) {
+      if (finalCurrency === 'USD') {
+        dynamicPriceCents = pkg.base_price_usd * 100;
+      } else {
+        const rateRecord = await this.prisma.exchange_rates.findUnique({
+          where: { currency: finalCurrency }
+        });
+        if (rateRecord) {
+          // If rate_to_usd means 1 USD = X currency
+          // then dynamic price in target currency = base_price_usd * rate
+          dynamicPriceCents = Math.round(pkg.base_price_usd * Number(rateRecord.rate_to_usd) * 100);
+        } else {
+          this.logger.warn(`No exchange rate found for ${finalCurrency}, falling back to static price`);
+        }
+      }
+    }
+
     // Create pending purchase record first
     const purchase = await this.prisma.purchases.create({
       data: {
         user_id: userId,
         package_id: packageId,
-        amount_cents: pkg.price_cents,
-        currency: pkg.currency ?? 'USD', // Your default is USD
+        amount_cents: dynamicPriceCents,
+        currency: finalCurrency,
         status: 'PENDING',
         payment_provider: 'razorpay',
         ip_address: ip,
@@ -106,8 +155,8 @@ export class PaymentsService {
 
     // Create Razorpay order
     const order = await this.razorpay!.orders.create({
-      amount: pkg.price_cents || 0, // Razorpay uses paise (smallest unit)
-      currency: pkg.currency ?? 'USD',
+      amount: dynamicPriceCents, // Razorpay uses paise (smallest unit)
+      currency: finalCurrency,
       receipt: purchase.id, // Link back to our DB
       notes: {
         packageId,

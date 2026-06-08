@@ -27,4 +27,27 @@ export class LeadsService {
 
     return { success: true, id: lead.id };
   }
+
+  async captureTestPrep(data: { name: string; email: string; phone: string; target_test: string }) {
+    const lead = await this.prisma.test_prep_leads.create({
+      data: {
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        target_test: data.target_test,
+        status: 'NEW'
+      },
+    });
+
+    this.logger.log(`Test Prep Lead captured: ${data.email} for ${data.target_test}`);
+
+    const adminEmail = process.env.ADMIN_EMAIL || 'swarupshekhar.vaidikedu@gmail.com';
+    await this.email.sendMail({
+      to: adminEmail,
+      subject: `New Test Prep Lead: ${data.target_test}`,
+      html: `<p>Name: <strong>${data.name}</strong><br>Email: <strong>${data.email}</strong><br>Phone: <strong>${data.phone}</strong><br>Test: ${data.target_test}<br>Time: ${new Date().toUTCString()}</p>`,
+    });
+
+    return { success: true, id: lead.id };
+  }
 }
