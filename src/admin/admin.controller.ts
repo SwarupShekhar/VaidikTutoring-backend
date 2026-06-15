@@ -251,23 +251,23 @@ export class AdminController {
   }
 
   @Get('leads/gcse-blast/preview')
-  async previewGcseBlast(@Req() req: any) {
+  async previewGcseBlast(@Req() req: any, @Query('testEmail') testEmail?: string) {
     const actor = req.user;
     if (!actor || actor.role !== 'admin') {
       throw new UnauthorizedException('Only admins can preview blasts.');
     }
-    return this.leadsService.blastGcseLeads(true);
+    return this.leadsService.blastGcseLeads(true, testEmail);
   }
 
   @Post('leads/gcse-blast')
   @HttpCode(HttpStatus.OK)
-  async sendGcseBlast(@Req() req: any) {
+  async sendGcseBlast(@Req() req: any, @Query('testEmail') testEmail?: string) {
     const actor = req.user;
     if (!actor || actor.role !== 'admin') {
       throw new UnauthorizedException('Only admins can send blasts.');
     }
-    this.logger.log(`GCSE blast triggered by admin: ${actor.email}`);
-    return this.leadsService.blastGcseLeads(false);
+    this.logger.log(`GCSE blast triggered by admin: ${actor.email} (testEmail: ${testEmail || 'none'})`);
+    return this.leadsService.blastGcseLeads(false, testEmail);
   }
 
   @Get('allocations/queue')

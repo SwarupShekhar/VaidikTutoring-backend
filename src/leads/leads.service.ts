@@ -58,47 +58,57 @@ export class LeadsService {
    * Excludes emails already in the users table (already signed up).
    * Returns { queued: number, skipped: number, total: number }.
    */
-  async blastGcseLeads(dryRun = false) {
-    // 1. Find all GCSE leads
-    const allLeads = await this.prisma.leadCapture.findMany({
-      where: {
-        source: { contains: 'gcse', mode: 'insensitive' },
-      },
-      select: { email: true, source: true },
-    });
+  async blastGcseLeads(dryRun = false, testEmail?: string) {
+    let targetLeads: Array<{ email: string; source: string }> = [];
+    let skipped = 0;
+    let totalCount = 0;
 
-    // Deduplicate by email (keep first occurrence)
-    const uniqueLeads = new Map<string, string>();
-    for (const lead of allLeads) {
-      const normalized = lead.email.toLowerCase().trim();
-      if (!uniqueLeads.has(normalized)) {
-        uniqueLeads.set(normalized, lead.source);
+    if (testEmail) {
+      targetLeads = [{ email: testEmail.trim().toLowerCase(), source: 'gcse-test-run' }];
+      totalCount = 1;
+      skipped = 0;
+    } else {
+      // 1. Find all GCSE leads
+      const allLeads = await this.prisma.leadCapture.findMany({
+        where: {
+          source: { contains: 'gcse', mode: 'insensitive' },
+        },
+        select: { email: true, source: true },
+      });
+
+      // Deduplicate by email (keep first occurrence)
+      const uniqueLeads = new Map<string, string>();
+      for (const lead of allLeads) {
+        const normalized = lead.email.toLowerCase().trim();
+        if (!uniqueLeads.has(normalized)) {
+          uniqueLeads.set(normalized, lead.source);
+        }
       }
-    }
 
-    // 2. Find emails already signed up
-    const existingUsers = await this.prisma.users.findMany({
-      where: {
-        email: { in: Array.from(uniqueLeads.keys()) },
-      },
-      select: { email: true },
-    });
-    const signedUpEmails = new Set(existingUsers.map((u) => u.email?.toLowerCase()));
+      // 2. Find emails already signed up
+      const existingUsers = await this.prisma.users.findMany({
+        where: {
+          email: { in: Array.from(uniqueLeads.keys()) },
+        },
+        select: { email: true },
+      });
+      const signedUpEmails = new Set(existingUsers.map((u) => u.email?.toLowerCase()));
 
-    // 3. Filter to leads NOT signed up
-    const targetLeads: Array<{ email: string; source: string }> = [];
-    for (const [email, source] of uniqueLeads) {
-      if (!signedUpEmails.has(email)) {
-        targetLeads.push({ email, source });
+      // 3. Filter to leads NOT signed up
+      for (const [email, source] of uniqueLeads) {
+        if (!signedUpEmails.has(email)) {
+          targetLeads.push({ email, source });
+        }
       }
-    }
 
-    const skipped = uniqueLeads.size - targetLeads.length;
+      skipped = uniqueLeads.size - targetLeads.length;
+      totalCount = uniqueLeads.size;
+    }
 
     if (dryRun) {
       return {
         dryRun: true,
-        total: uniqueLeads.size,
+        total: totalCount,
         alreadySignedUp: skipped,
         wouldSend: targetLeads.length,
         emails: targetLeads.map((l) => l.email),
@@ -151,7 +161,7 @@ export class LeadsService {
 
     this.logger.log(`GCSE blast complete: ${queued} queued, ${skipped} skipped (already signed up)`);
 
-    return { queued, skipped, total: uniqueLeads.size };
+    return { queued, skipped, total: totalCount };
   }
 
   private buildGcseBlastHtml(email: string, quizLink: string): string {
