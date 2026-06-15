@@ -7,5 +7,6 @@ import { EmailModule } from '../email/email.module';
   imports: [EmailModule],
   controllers: [LeadsController],
   providers: [LeadsService],
+  exports: [LeadsService],
 })
 export class LeadsModule {}

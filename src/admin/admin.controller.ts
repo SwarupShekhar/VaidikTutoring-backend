@@ -21,6 +21,7 @@ import { SyncClerkMetadataService } from './sync-clerk-metadata';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorators';
+import { LeadsService } from '../leads/leads.service';
 import {
   IsEmail,
   IsOptional,
@@ -77,7 +78,8 @@ export class AdminController {
 
   constructor(
     private readonly adminService: AdminService,
-    private readonly syncClerkService: SyncClerkMetadataService
+    private readonly syncClerkService: SyncClerkMetadataService,
+    private readonly leadsService: LeadsService,
   ) { }
 
   @Get('stats')
@@ -246,6 +248,26 @@ export class AdminController {
       this.logger.error('GET /admin/leads failed', e);
       throw e;
     }
+  }
+
+  @Get('leads/gcse-blast/preview')
+  async previewGcseBlast(@Req() req: any) {
+    const actor = req.user;
+    if (!actor || actor.role !== 'admin') {
+      throw new UnauthorizedException('Only admins can preview blasts.');
+    }
+    return this.leadsService.blastGcseLeads(true);
+  }
+
+  @Post('leads/gcse-blast')
+  @HttpCode(HttpStatus.OK)
+  async sendGcseBlast(@Req() req: any) {
+    const actor = req.user;
+    if (!actor || actor.role !== 'admin') {
+      throw new UnauthorizedException('Only admins can send blasts.');
+    }
+    this.logger.log(`GCSE blast triggered by admin: ${actor.email}`);
+    return this.leadsService.blastGcseLeads(false);
   }
 
   @Get('allocations/queue')

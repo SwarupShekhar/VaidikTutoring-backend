@@ -52,6 +52,7 @@ COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/package*.json ./
 COPY --from=builder --chown=node:node /app/prisma ./prisma
+COPY --from=builder --chown=node:node /app/private-assets ./private-assets
 COPY --from=builder --chown=node:node /app/prisma.config.docker.js ./prisma.config.js
 
 # Create writable directories needed at runtime
