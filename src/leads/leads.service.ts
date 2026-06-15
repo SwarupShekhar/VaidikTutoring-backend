@@ -133,7 +133,7 @@ export class LeadsService {
     let queued = 0;
 
     for (const lead of targetLeads) {
-      const quizLink = `${frontend}/gcse-results?utm_source=gcse_blast&utm_medium=email&utm_campaign=gcse_2026`;
+      const quizLink = `${frontend}/gcse-results?utm_source=gcse_blast&utm_medium=email&utm_campaign=gcse_2026&email=${encodeURIComponent(lead.email)}`;
 
       const html = this.buildGcseBlastHtml(lead.email, quizLink);
 
