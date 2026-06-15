@@ -46,6 +46,8 @@ import { HealthModule } from './health/health.module';
 import { MessagesModule } from './messages/messages.module';
 import { CmsModule } from './cms/cms.module';
 import { LeadsModule } from './leads/leads.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
+import { EngagementModule } from './engagement/engagement.module';
 
 
 @Module({
@@ -155,6 +157,8 @@ import { LeadsModule } from './leads/leads.module';
     MessagesModule,
     CmsModule,
     LeadsModule,
+    OnboardingModule,
+    EngagementModule,
     ServeStaticModule.forRoot({
 
       rootPath: path.join(process.cwd(), 'public'),

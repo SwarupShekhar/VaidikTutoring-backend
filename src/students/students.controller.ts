@@ -43,6 +43,14 @@ export class StudentsController {
     return this.studentsService.create(body, parentUserId);
   }
 
+  @Patch('me')
+  @UseGuards(ClerkAuthGuard)
+  async completeMyOnboarding(@Body() body: any, @Req() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) throw new NotFoundException('User not authenticated');
+    return this.studentsService.completeMyOnboarding(userId, body);
+  }
+
   @Get('me')
   @UseGuards(ClerkAuthGuard)
   async getMyProfile(@Req() req: any) {

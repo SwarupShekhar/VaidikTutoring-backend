@@ -13,10 +13,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install PostgreSQL Client
+      - name: Install PostgreSQL 18 Client
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          sudo apt-get install -y curl ca-certificates
+          # Add the official PostgreSQL apt repo (PGDG) so client 18 is available
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
 
       - name: Backup Database
         env:
@@ -25,13 +33,35 @@ jobs:
         run: |
           pg_dump "$DATABASE_URL" | gzip > backup.gz
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Upload Backup to Azure Blob Storage
+        uses: azure/CLI@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          inlineScript: |
+            az storage blob upload \
+              --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+              --container-name "${{ secrets.AZURE_BACKUP_CONTAINER }}" \
+              --name "k12-backup-$(date +%F).gz" \
+              --file backup.gz \
+              --overwrite true
 
-      - name: Upload Backup to S3
-        run: |
-          aws s3 cp backup.gz "s3://${{ secrets.AWS_BUCKET_NAME }}/k12-backup-$(date +%F).gz"
+      - name: Prune Backups Older Than 30 Days
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            CUTOFF=$(date -u -d '30 days ago' +%Y-%m-%d)
+            echo "Deleting backups older than $CUTOFF"
+            # List backup blobs, extract the YYYY-MM-DD from each name, delete if older than cutoff
+            az storage blob list \
+              --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+              --container-name "${{ secrets.AZURE_BACKUP_CONTAINER }}" \
+              --prefix "k12-backup-" \
+              --query "[].name" -o tsv | while read -r blob; do
+                blob_date=$(echo "$blob" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+                if [ -n "$blob_date" ] && [ "$blob_date" \< "$CUTOFF" ]; then
+                  echo "Deleting $blob (dated $blob_date)"
+                  az storage blob delete \
+                    --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+                    --container-name "${{ secrets.AZURE_BACKUP_CONTAINER }}" \
+                    --name "$blob"
+                fi
+              done

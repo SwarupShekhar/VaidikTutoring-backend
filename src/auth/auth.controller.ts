@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Get, BadRequestException, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Post, Patch, Get, BadRequestException, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { signupSchema } from './schemas/signup.schema';
@@ -66,6 +66,15 @@ export class AuthController {
     if (!body.password) throw new BadRequestException('Password is required');
     return this.auth.changePassword(req.user.userId || req.user.sub, body.password);
   }
+  @Patch('role')
+  @UseGuards(ClerkAuthGuard)
+  async updateRole(@Req() req: any, @Body('role') role: string) {
+    const userId = req.user?.userId || req.user?.sub;
+    if (!userId) throw new UnauthorizedException('User not authenticated');
+    if (!role) throw new BadRequestException('Role is required');
+    return this.auth.updateRole(userId, role);
+  }
+
   @Get('profile')
   @UseGuards(ClerkAuthGuard)
   async getProfile(@Req() req: any) {

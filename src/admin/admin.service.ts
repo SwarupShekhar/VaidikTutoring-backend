@@ -605,6 +605,8 @@ export class AdminService {
                             phone: true,
                             first_name: true,
                             last_name: true,
+                            lead_source: true,
+                            onboarding_status: true,
                         },
                     },
                     curricula: {
@@ -675,6 +677,8 @@ export class AdminService {
                     : null,
                 student_email: student.users_students_user_idTousers?.email || null,
                 student_phone: student.users_students_user_idTousers?.phone || null,
+                lead_source: student.users_students_user_idTousers?.lead_source || null,
+                onboarding_status: student.users_students_user_idTousers?.onboarding_status || null,
             };
         });
 
@@ -700,6 +704,8 @@ export class AdminService {
                         last_name: true,
                         timezone: true,
                         created_at: true,
+                        lead_source: true,
+                        onboarding_status: true,
                     },
                 },
                 trial_tutor: {

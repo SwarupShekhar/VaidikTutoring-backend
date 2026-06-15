@@ -1,9 +1,10 @@
 
-import { CanActivate, ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
 import { verifyToken, clerkClient } from '@clerk/clerk-sdk-node';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class ClerkAuthGuard implements CanActivate {
@@ -13,6 +14,9 @@ export class ClerkAuthGuard implements CanActivate {
         private readonly prisma: PrismaService,
         private readonly jwtService: JwtService,
         private readonly syncClerkService: SyncClerkMetadataService,
+        // Optional so the JwtAuthGuard subclass (3-arg super) still constructs.
+        // Welcome emails fire on the real Clerk login path, where DI supplies this.
+        @Optional() private readonly email?: EmailService,
     ) { }
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -86,6 +90,11 @@ export class ClerkAuthGuard implements CanActivate {
                             (e: any) => e.id === claims.primary_email_address_id
                         )?.verification?.status === 'verified');
 
+                    const leadInfo = await this.prisma.leadCapture.findFirst({
+                        where: { email: emailClaim },
+                        orderBy: { created_at: 'desc' }
+                    });
+
                     dbUser = await this.prisma.users.create({
                         data: {
                             email: emailClaim,
@@ -94,14 +103,31 @@ export class ClerkAuthGuard implements CanActivate {
                             last_name: claims.last_name || claims.family_name || '',
                             password_hash: 'clerk_auth',
                             email_verified: !!clerkEmailVerified,
+                            lead_source: leadInfo?.source || null,
+                            onboarding_status: 'not_started',
                         },
                     });
 
                     // Mark new Clerk users as needing phone verification (fire-and-forget)
-                    if (role === 'parent' || role === 'student') {
+                    if (dbUser.role === 'parent' || dbUser.role === 'student') {
                         this.syncClerkService.syncPhoneVerifiedToClerk(dbUser.id, false).catch(err =>
                             this.logger.error(`[ClerkAuthGuard] Failed to set phone_verified:false for new user: ${err.message}`)
                         );
+
+                        // Fire the welcome email + log it. Strictly fire-and-forget —
+                        // must never block or fail authentication.
+                        if (this.email) {
+                            this.email
+                                .sendWelcomeEmail(dbUser.email, dbUser.id, dbUser.first_name || undefined, dbUser.lead_source)
+                                .catch(err =>
+                                    this.logger.error(`[ClerkAuthGuard] Welcome email failed for new user: ${err.message}`)
+                                );
+                            this.prisma.email_events
+                                .createMany({ data: [{ user_id: dbUser.id, type: 'welcome' }], skipDuplicates: true })
+                                .catch(err =>
+                                    this.logger.error(`[ClerkAuthGuard] Failed to log welcome email_event: ${err.message}`)
+                                );
+                        }
                     }
                 } else {
                     // Sync Name/Role/Verification

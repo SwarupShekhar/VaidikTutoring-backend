@@ -35,6 +35,7 @@ export class EmailProcessor extends WorkerHost {
         html: opts.html || opts.text || '',
         text: opts.text,
         attachments: opts.attachments,
+        ...(opts.replyTo ? { replyTo: opts.replyTo } : {}),
       });
 
       if (result.error) {

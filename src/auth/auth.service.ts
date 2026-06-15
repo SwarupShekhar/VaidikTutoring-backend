@@ -416,6 +416,39 @@ export class AuthService {
     return safeUser;
   }
 
+  /**
+   * Persist the role chosen during onboarding to the DB (authoritative) and Clerk
+   * metadata, so middleware no longer has to guess. Fires a welcome email the
+   * first time a role is set (status still 'not_started').
+   */
+  async updateRole(userId: string, role: string) {
+    if (role !== 'parent' && role !== 'student') {
+      throw new BadRequestException('Role must be parent or student');
+    }
+
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
+    if (!user) throw new BadRequestException('User not found');
+
+    // Never let onboarding downgrade a privileged account.
+    if (user.role === 'admin' || user.role === 'tutor') {
+      return this.getUserProfile(userId);
+    }
+
+    // Updates both Clerk publicMetadata and the DB role.
+    await this.syncClerkService.syncUserRoleToClerk(userId, role).catch((err) =>
+      this.logger.error(`[updateRole] Clerk sync failed for ${userId}: ${err.message}`),
+    );
+
+    await this.prisma.users.update({
+      where: { id: userId },
+      data: { role, onboarding_status: 'in_progress' },
+    });
+
+    // Welcome email now fires at account creation (ClerkAuthGuard), not here.
+
+    return this.getUserProfile(userId);
+  }
+
   // Emergency: Fix admin role for specific email
   async fixAdminRole(email: string) {
     this.logger.log(`Attempting to fix admin role for: ${email}`);

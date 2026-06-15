@@ -58,7 +58,7 @@ export class StudentsService {
     }
 
     // Create Student directly
-    return this.prisma.students.create({
+    const created = await this.prisma.students.create({
       data: {
         parent_user_id: parentUserId,
         first_name: data.first_name,
@@ -72,6 +72,13 @@ export class StudentsService {
         struggle_areas: data.struggle_areas || [],
       },
     });
+
+    // A parent finishing their first child = onboarding complete (stops banner/nudge).
+    await this.prisma.users
+      .update({ where: { id: parentUserId }, data: { onboarding_status: 'complete' } })
+      .catch(() => undefined);
+
+    return created;
   }
 
   async update(
@@ -85,6 +92,9 @@ export class StudentsService {
       interests?: any[];
       recent_focus?: string;
       struggle_areas?: any[];
+      exam_board?: string;
+      target_grade?: string;
+      exam_date?: string | Date;
     },
     userId: string,
     userRole: string
@@ -117,8 +127,69 @@ export class StudentsService {
         ...(data.interests && { interests: data.interests }),
         ...(data.recent_focus && { recent_focus: data.recent_focus }),
         ...(data.struggle_areas && { struggle_areas: data.struggle_areas }),
+        ...(data.exam_board && { exam_board: data.exam_board }),
+        ...(data.target_grade && { target_grade: data.target_grade }),
+        ...(data.exam_date && { exam_date: new Date(data.exam_date) }),
       },
     });
+  }
+
+  /**
+   * Self-service onboarding for a signed-up student.
+   * Updates the caller's own student row (auto-created on first login) and
+   * marks the user's onboarding as complete so the dashboard banner / nudge stop.
+   */
+  async completeMyOnboarding(
+    userId: string,
+    data: {
+      grade?: string;
+      school?: string;
+      exam_board?: string;
+      target_grade?: string;
+      exam_date?: string | Date;
+      struggle_areas?: any[];
+      recent_focus?: string;
+    },
+  ) {
+    let student = await this.prisma.students.findFirst({
+      where: { user_id: userId },
+    });
+
+    // The student row is normally auto-created on login, but create it here as a
+    // fallback so onboarding can never dead-end on a missing profile.
+    if (!student) {
+      const user = await this.prisma.users.findUnique({ where: { id: userId } });
+      if (!user) throw new NotFoundException('User not found');
+      student = await this.prisma.students.create({
+        data: {
+          user_id: userId,
+          email: user.email,
+          first_name: user.first_name || 'Student',
+          last_name: user.last_name || '',
+          grade: data.grade || 'TBD',
+        },
+      });
+    }
+
+    const updated = await this.prisma.students.update({
+      where: { id: student.id },
+      data: {
+        ...(data.grade && { grade: data.grade }),
+        ...(data.school && { school: data.school }),
+        ...(data.exam_board && { exam_board: data.exam_board }),
+        ...(data.target_grade && { target_grade: data.target_grade }),
+        ...(data.exam_date && { exam_date: new Date(data.exam_date) }),
+        ...(data.struggle_areas && { struggle_areas: data.struggle_areas }),
+        ...(data.recent_focus && { recent_focus: data.recent_focus }),
+      },
+    });
+
+    await this.prisma.users.update({
+      where: { id: userId },
+      data: { onboarding_status: 'complete' },
+    });
+
+    return updated;
   }
 
   async findUniqueById(id: string) {
