@@ -1,67 +1,81 @@
 name: Backup Database
 
+# pg_dump runs ON the Vultr box (the DB on localhost:4015 is firewalled from the
+# public internet — by design). GitHub Actions only schedules + orchestrates over
+# SSH and uploads the result to Azure. No DB port is exposed and no DB credentials
+# live in GitHub secrets — they are read from the server's own .env.
+
 on:
   schedule:
     - cron: "0 3 * * *" # 3 AM UTC
   workflow_dispatch:
+
+env:
+  VULTR_HOST: 139.84.163.249
 
 jobs:
   backup:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Setup SSH Session Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VULTR_SSH_PRIVATE_KEY }}
 
-      - name: Install PostgreSQL 18 Client
+      - name: Add Server to Known Hosts
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl ca-certificates
-          # Add the official PostgreSQL apt repo (PGDG) so client 18 is available
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-            https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
-            | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client-18
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$VULTR_HOST" >> ~/.ssh/known_hosts
 
-      - name: Backup Database
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          PGSSLMODE: require
+      - name: Dump Database on the Server (streamed back over SSH)
         run: |
-          pg_dump "$DATABASE_URL" | gzip > backup.gz
+          # On the box: source the app .env (for DIRECT_URL — the non-pooled
+          # connection; pg_dump needs a session, not pgbouncer), then run
+          # pg_dump inside a postgres:18 container (matches the 18.4 server) on
+          # the host network so it can reach localhost:4015. Gzip on the box;
+          # stream the compressed dump back to the runner.
+          ssh root@"$VULTR_HOST" \
+            'set -a && . /app/k12-backend/.env && docker run --rm --network host postgres:18 pg_dump "$DIRECT_URL" | gzip' \
+            > backup.gz
+
+          # Fail loudly if the dump is empty or corrupt — never upload a bad backup.
+          if [ ! -s backup.gz ]; then
+            echo "::error::backup.gz is empty — pg_dump failed on the server"
+            exit 1
+          fi
+          if ! gzip -t backup.gz; then
+            echo "::error::backup.gz failed gzip integrity check"
+            exit 1
+          fi
+          echo "Backup OK: $(du -h backup.gz | cut -f1)"
 
       - name: Upload Backup to Azure Blob Storage
-        uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            az storage blob upload \
-              --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
-              --container-name "${{ secrets.AZURE_BACKUP_CONTAINER }}" \
-              --name "k12-backup-$(date +%F).gz" \
-              --file backup.gz \
-              --overwrite true
+        run: |
+          az storage blob upload \
+            --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+            --container-name "${{ secrets.AZURE_BACKUP_CONTAINER }}" \
+            --name "k12-backup-$(date +%F).gz" \
+            --file backup.gz \
+            --overwrite true
 
       - name: Prune Backups Older Than 30 Days
-        uses: azure/CLI@v2
-        with:
-          inlineScript: |
-            CUTOFF=$(date -u -d '30 days ago' +%Y-%m-%d)
-            echo "Deleting backups older than $CUTOFF"
-            # List backup blobs, extract the YYYY-MM-DD from each name, delete if older than cutoff
-            az storage blob list \
-              --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
-              --container-name "${{ secrets.AZURE_BACKUP_CONTAINER }}" \
-              --prefix "k12-backup-" \
-              --query "[].name" -o tsv | while read -r blob; do
-                blob_date=$(echo "$blob" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
-                if [ -n "$blob_date" ] && [ "$blob_date" \< "$CUTOFF" ]; then
-                  echo "Deleting $blob (dated $blob_date)"
-                  az storage blob delete \
-                    --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
-                    --container-name "${{ secrets.AZURE_BACKUP_CONTAINER }}" \
-                    --name "$blob"
-                fi
-              done
+        run: |
+          CUTOFF=$(date -u -d '30 days ago' +%Y-%m-%d)
+          echo "Deleting k12-backup blobs older than $CUTOFF"
+          # Only touches the k12-backup- prefix — the app's dr-snapshot-*.json.enc
+          # backups in the same container are never affected.
+          az storage blob list \
+            --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+            --container-name "${{ secrets.AZURE_BACKUP_CONTAINER }}" \
+            --prefix "k12-backup-" \
+            --query "[].name" -o tsv | while read -r blob; do
+              blob_date=$(echo "$blob" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+              if [ -n "$blob_date" ] && [ "$blob_date" \< "$CUTOFF" ]; then
+                echo "Deleting $blob (dated $blob_date)"
+                az storage blob delete \
+                  --connection-string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+                  --container-name "${{ secrets.AZURE_BACKUP_CONTAINER }}" \
+                  --name "$blob"
+              fi
+            done
