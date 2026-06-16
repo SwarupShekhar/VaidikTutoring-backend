@@ -52,6 +52,18 @@ services:
         max-size: "5m"
         max-file: "2"
 
+  # ========================================================
+  # Autoheal: Restarts unhealthy containers automatically
+  # ========================================================
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: k12-autoheal
+    restart: always
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=all
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
 volumes:
   redis-data:
     driver: local
