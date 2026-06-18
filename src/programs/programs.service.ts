@@ -138,30 +138,82 @@ export class ProgramsService {
             }
         });
 
+        const GRACE_MINUTES = 5;
+        type DetailStatus = 'present' | 'late' | 'absent';
+        const deriveStatus = (
+            present: boolean,
+            joinedAt: Date | null,
+            scheduledStart: Date | null,
+        ): DetailStatus => {
+            if (!present) return 'absent';
+            if (joinedAt && scheduledStart) {
+                const graceMs = GRACE_MINUTES * 60 * 1000;
+                if (joinedAt.getTime() > scheduledStart.getTime() + graceMs) {
+                    return 'late';
+                }
+            }
+            return 'present';
+        };
+
         // Group by student or aggregate?
         // Let's aggregate: Total Sessions, Present Count, Attendance %
-        const studentStats = new Map<string, { name: string, total: number, present: number, minutes: number }>();
+        // Plus per-session detail (joinedAt, leftAt, minutesAttended, status).
+        type Detail = {
+            sessionId: string;
+            scheduledStart: string | null;
+            status: DetailStatus;
+            joinedAt: string | null;
+            leftAt: string | null;
+            minutesAttended: number | null;
+        };
+        const studentStats = new Map<
+            string,
+            {
+                studentId: string;
+                name: string;
+                total: number;
+                present: number;
+                minutes: number;
+                details: Detail[];
+            }
+        >();
 
         for (const s of sessions) {
             for (const a of s.attendance) {
                 if (!studentStats.has(a.studentId)) {
                     studentStats.set(a.studentId, {
+                        studentId: a.studentId,
                         name: `${a.students.first_name} ${a.students.last_name || ''}`,
                         total: 0,
                         present: 0,
-                        minutes: 0
+                        minutes: 0,
+                        details: []
                     });
                 }
                 const stat = studentStats.get(a.studentId)!;
                 stat.total++;
                 if (a.present) stat.present++;
                 stat.minutes += a.minutesAttended || 0;
+                stat.details.push({
+                    sessionId: s.id,
+                    scheduledStart: s.start_time ? s.start_time.toISOString() : null,
+                    status: deriveStatus(a.present, a.joinedAt, s.start_time),
+                    joinedAt: a.joinedAt ? a.joinedAt.toISOString() : null,
+                    leftAt: a.leftAt ? a.leftAt.toISOString() : null,
+                    minutesAttended: a.minutesAttended ?? null,
+                });
             }
         }
 
         return Array.from(studentStats.values()).map(s => ({
-            ...s,
-            attendancePercentage: s.total > 0 ? (s.present / s.total) * 100 : 0
+            name: s.name,
+            total: s.total,
+            present: s.present,
+            minutes: s.minutes,
+            attendancePercentage: s.total > 0 ? (s.present / s.total) * 100 : 0,
+            // New field added per Phase 3 — does not alter existing keys.
+            studentId: s.studentId,
+            details: s.details
         }));
     }
 

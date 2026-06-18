@@ -53,6 +53,10 @@ export class SessionsGateway
   private pollState = new Map<string, any>(); // Cache for active polls
   private sessionMap = new Map<string, string>(); // Performance cache
   private clientSessionMap = new Map<string, string>(); // client.id → sessionId
+  // Separate map for attendance tracking only. Keeps existing clientSessionMap
+  // value shape (sessionId string) untouched so room/whiteboard-state cleanup
+  // continues to work identically. Only populated for student joiners.
+  private clientAttendanceMap = new Map<string, { sessionId: string; studentId: string }>(); // client.id → { sessionId, studentId }
 
   constructor(
     private readonly sessionsService: SessionsService,
@@ -65,8 +69,45 @@ export class SessionsGateway
     this.logger.log(`Client connected: ${client.id}`);
   }
 
+  /**
+   * Counts how many currently-tracked socket clients belong to the same
+   * (session, student). Used to ref-count presence so that a student with
+   * multiple tabs/devices opens exactly ONE attendance interval (and it is only
+   * finalized when their LAST client leaves) — preventing minute double-counting.
+   */
+  private countActiveStudentClients(sessionId: string, studentId: string): number {
+    let count = 0;
+    for (const entry of this.clientAttendanceMap.values()) {
+      if (entry.sessionId === sessionId && entry.studentId === studentId) count++;
+    }
+    return count;
+  }
+
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
+
+    // ATTENDANCE CAPTURE (purely additive). Recover the tracked student for this
+    // client and accumulate their attended minutes. Fire-and-forget + try/catch
+    // so it can NEVER interfere with the room/whiteboard-state cleanup below.
+    try {
+      const attendance = this.clientAttendanceMap.get(client.id);
+      this.clientAttendanceMap.delete(client.id);
+      if (attendance) {
+        // Only finalize the interval when this was the student's LAST client.
+        const stillActive =
+          this.countActiveStudentClients(attendance.sessionId, attendance.studentId) > 0;
+        if (!stillActive) {
+          void this.sessionsService
+            .markStudentLeft(attendance.sessionId, attendance.studentId)
+            .catch((e) =>
+              this.logger.error(`Attendance markStudentLeft failed (non-fatal): ${e.message}`),
+            );
+        }
+      }
+    } catch (e) {
+      this.logger.error(`Attendance disconnect handling failed (non-fatal): ${e.message}`);
+    }
+
     const sessionId = this.clientSessionMap.get(client.id);
     this.clientSessionMap.delete(client.id);
     if (!sessionId) return;
@@ -189,8 +230,46 @@ export class SessionsGateway
         sessionDuration = Math.round((end - start) / (1000 * 60));
       }
 
-      return { 
-        success: true, 
+      // 12. ATTENDANCE CAPTURE (purely additive — runs AFTER all existing join
+      // logic incl. late-joiner state replay). Wrapped in try/catch so an
+      // attendance failure can NEVER abort the join flow or whiteboard replay.
+      try {
+        if (!isTutor) {
+          // Resolve the joining user to a students.id. Attendance.studentId
+          // references the students table, not users. The booking carries the
+          // student_id (students.id); confirm this user IS that student.
+          const studentId = session.bookings?.student_id;
+          if (studentId) {
+            const student = await this.prisma.students.findUnique({
+              where: { id: studentId },
+              select: { id: true, user_id: true },
+            });
+            // Only the student themselves get an attendance row — skip parents/admins.
+            if (student && student.user_id === data.userId) {
+              // Ref-count: open an interval only on the 0->1 transition. Extra
+              // clients (multi-tab/device) join the SAME open interval so minutes
+              // are counted once and finalized only when the last client leaves.
+              const alreadyActive =
+                this.countActiveStudentClients(finalSessionId, student.id) > 0;
+              this.clientAttendanceMap.set(client.id, {
+                sessionId: finalSessionId,
+                studentId: student.id,
+              });
+              if (!alreadyActive) {
+                await this.sessionsService.markStudentPresent(finalSessionId, student.id);
+              }
+              this.logger.log(
+                `Attendance: student ${student.id} present for session ${finalSessionId} (clients now: ${this.countActiveStudentClients(finalSessionId, student.id)})`,
+              );
+            }
+          }
+        }
+      } catch (e) {
+        this.logger.error(`Attendance markStudentPresent failed (non-fatal): ${e.message}`);
+      }
+
+      return {
+        success: true,
         sessionId: finalSessionId,
         sessionStartTime,
         sessionDuration
@@ -219,6 +298,29 @@ export class SessionsGateway
       client.leave(`session:${finalSessionId}`);
       this.logger.log(`Client ${client.id} left session:${finalSessionId}`);
     });
+
+    // ATTENDANCE CAPTURE (purely additive). If this client was a tracked student,
+    // accumulate their attended minutes and clean up the attendance map entry.
+    // Fire-and-forget + try/catch so it can never affect the room-leave logic.
+    try {
+      const attendance = this.clientAttendanceMap.get(client.id);
+      this.clientAttendanceMap.delete(client.id);
+      if (attendance) {
+        // Only finalize the interval when this was the student's LAST client.
+        const stillActive =
+          this.countActiveStudentClients(attendance.sessionId, attendance.studentId) > 0;
+        if (!stillActive) {
+          void this.sessionsService
+            .markStudentLeft(attendance.sessionId, attendance.studentId)
+            .catch((e) =>
+              this.logger.error(`Attendance markStudentLeft failed (non-fatal): ${e.message}`),
+            );
+        }
+      }
+    } catch (e) {
+      this.logger.error(`Attendance leave handling failed (non-fatal): ${e.message}`);
+    }
+
     return { success: true };
   }
 

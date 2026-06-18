@@ -158,6 +158,15 @@ export class StudentsController {
     return this.studentsService.getProgressSummary(id);
   }
 
+  @Get(':id/attendance-report')
+  @UseGuards(ClerkAuthGuard)
+  async getAttendanceReport(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user?.userId;
+    const role = req.user?.role;
+    if (!userId) throw new Error('User not authenticated');
+    return this.studentsService.getStudentAttendanceReport(id, userId, role);
+  }
+
   @Post(':id/update-streak')
   @UseGuards(ClerkAuthGuard)
   async updateStreak(@Param('id') id: string, @Req() req: any) {

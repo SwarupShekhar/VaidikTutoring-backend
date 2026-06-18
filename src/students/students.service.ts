@@ -2,9 +2,14 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+
+const ATTENDANCE_GRACE_MINUTES = 5;
+
+type AttendanceStatus = 'present' | 'late' | 'absent';
 
 @Injectable()
 export class StudentsService {
@@ -642,6 +647,195 @@ export class StudentsService {
         },
       },
     });
+  }
+
+  /**
+   * Detailed attendance report for a single student.
+   *
+   * Returns per-session join/leave times, minutes attended and a derived
+   * status, plus an aggregate summary. Only past / completed sessions the
+   * student was rostered for are listed, so absences (no attendance row, or a
+   * row with present=false) still appear.
+   *
+   * Authorization mirrors the existing student-endpoint pattern (see update()):
+   *   - the parent who owns the student
+   *   - the student themselves
+   *   - an admin
+   *   - the assigned staff/tutor (trial tutor or an active enrollment tutor),
+   *     matching the tutor-assignment check used in messages.service.ts
+   */
+  async getStudentAttendanceReport(
+    studentId: string,
+    userId: string,
+    userRole: string,
+  ) {
+    const student = await this.prisma.students.findUnique({
+      where: { id: studentId },
+      include: {
+        bookings: {
+          include: {
+            sessions: {
+              include: {
+                attendance: {
+                  where: { studentId },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!student) throw new NotFoundException('Student not found');
+
+    // --- Authorization (matches existing student-endpoint access pattern) ---
+    const isParentOwner = student.parent_user_id === userId;
+    const isStudentSelf = student.user_id === userId;
+    const isAdmin = userRole === 'admin';
+
+    let isAssignedStaff = false;
+    if (!isParentOwner && !isStudentSelf && !isAdmin) {
+      const tutor = await this.prisma.tutors.findFirst({
+        where: { user_id: userId },
+        select: { id: true },
+      });
+      if (tutor) {
+        const isAssignedTrial = student.trial_tutor_id === tutor.id;
+        const hasActiveEnrollment = await this.prisma.enrollments.findFirst({
+          where: { student_id: studentId, tutor_id: tutor.id, status: 'active' },
+          select: { id: true },
+        });
+        isAssignedStaff = isAssignedTrial || !!hasActiveEnrollment;
+      }
+    }
+
+    if (!isParentOwner && !isStudentSelf && !isAdmin && !isAssignedStaff) {
+      throw new UnauthorizedException(
+        'Not authorized to view this attendance report',
+      );
+    }
+
+    const now = new Date();
+
+    // Map sessionId -> parent booking for the past/completed determination.
+    const sessionToBooking = new Map<string, typeof student.bookings[0]>();
+    student.bookings.forEach(b =>
+      b.sessions.forEach(s => sessionToBooking.set(s.id, b)),
+    );
+
+    const allSessions = student.bookings.flatMap(b => b.sessions);
+
+    // A session counts toward the report if it is completed or already past
+    // (and not cancelled). The student is rostered via the booking link, so a
+    // session with no attendance row is still listed (as an absence).
+    const isReportable = (s: typeof allSessions[0]) => {
+      if (s.status === 'cancelled') return false;
+      if (s.status === 'completed') return true;
+      if (s.end_time && new Date(s.end_time) < now) return true;
+      if (s.start_time && new Date(s.start_time) < now) return true;
+      const booking = sessionToBooking.get(s.id);
+      if (booking?.requested_end && new Date(booking.requested_end) < now) {
+        return true;
+      }
+      return false;
+    };
+
+    const reportableSessions = allSessions
+      .filter(isReportable)
+      .sort((a, b) => {
+        const ta = new Date((a.start_time || a.created_at || 0) as any).getTime();
+        const tb = new Date((b.start_time || b.created_at || 0) as any).getTime();
+        return tb - ta; // most recent first
+      });
+
+    const sessions = reportableSessions.map(s => {
+      const booking = sessionToBooking.get(s.id);
+      const row = s.attendance[0]; // filtered to this student; unique [session, student]
+      const scheduledStart = s.start_time || booking?.requested_start || null;
+
+      const status = this.deriveAttendanceStatus(
+        row ? { present: row.present, joinedAt: row.joinedAt } : null,
+        scheduledStart,
+      );
+
+      return {
+        sessionId: s.id,
+        title: 'Tutoring Session', // overwritten below with subject name when available
+        scheduledStart: scheduledStart ? new Date(scheduledStart).toISOString() : null,
+        status,
+        joinedAt: row?.joinedAt ? new Date(row.joinedAt).toISOString() : null,
+        leftAt: row?.leftAt ? new Date(row.leftAt).toISOString() : null,
+        minutesAttended: row?.minutesAttended ?? null,
+      };
+    });
+
+    // Resolve a human title per session from the booking's subject (one query).
+    const subjectIds = [
+      ...new Set(
+        reportableSessions
+          .map(s => sessionToBooking.get(s.id)?.subject_id)
+          .filter((x): x is string => !!x),
+      ),
+    ];
+    const subjects = subjectIds.length
+      ? await this.prisma.subjects.findMany({
+          where: { id: { in: subjectIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const subjectNameById = new Map(subjects.map(s => [s.id, s.name]));
+    reportableSessions.forEach((s, i) => {
+      const subjId = sessionToBooking.get(s.id)?.subject_id;
+      sessions[i].title =
+        (subjId && subjectNameById.get(subjId)) || 'Tutoring Session';
+    });
+
+    const totalSessions = sessions.length;
+    const attended = sessions.filter(s => s.status === 'present').length;
+    const late = sessions.filter(s => s.status === 'late').length;
+    const absent = sessions.filter(s => s.status === 'absent').length;
+    const totalMinutes = sessions.reduce(
+      (acc, s) => acc + (s.minutesAttended || 0),
+      0,
+    );
+    const attendanceRate =
+      totalSessions === 0
+        ? 100
+        : Math.round(((attended + late) / totalSessions) * 100);
+
+    return {
+      studentId: student.id,
+      studentName: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
+      summary: {
+        totalSessions,
+        attended,
+        absent,
+        late,
+        attendanceRate,
+        totalMinutes,
+      },
+      sessions,
+    };
+  }
+
+  /**
+   * Status derivation shared by the student and program attendance reports.
+   *  - no attendance row OR present=false                       -> 'absent'
+   *  - present=true and joinedAt > scheduledStart + grace (5m)  -> 'late'
+   *  - present=true otherwise                                   -> 'present'
+   */
+  private deriveAttendanceStatus(
+    row: { present: boolean; joinedAt: Date | null } | null,
+    scheduledStart: Date | string | null,
+  ): AttendanceStatus {
+    if (!row || !row.present) return 'absent';
+    if (row.joinedAt && scheduledStart) {
+      const graceMs = ATTENDANCE_GRACE_MINUTES * 60 * 1000;
+      const start = new Date(scheduledStart).getTime();
+      const joined = new Date(row.joinedAt).getTime();
+      if (joined > start + graceMs) return 'late';
+    }
+    return 'present';
   }
 
   async getStudentSessions(userId: string) {

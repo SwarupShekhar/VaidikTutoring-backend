@@ -529,6 +529,136 @@ export class SessionsService {
     });
   }
 
+  // ==================== AUTOMATIC ATTENDANCE (socket-driven) ====================
+
+  /**
+   * Marks a student as present for a session when their socket joins.
+   * - Upserts the Attendance row, setting present=true.
+   * - Sets joinedAt ONLY if it is currently null (do not overwrite on reconnect),
+   *   so the original arrival time is preserved across socket drops/reconnects.
+   * - Clears leftAt to indicate the student is currently active.
+   *
+   * Note on reconnect interval anchoring: the schema has a single joinedAt column,
+   * so on reconnect we re-anchor joinedAt to "now" to mark the start of the new
+   * active interval (minutesAttended having already been accumulated on the prior
+   * markStudentLeft). For the common single-join/single-leave case this is exact.
+   */
+  async markStudentPresent(sessionId: string, studentId: string) {
+    const existing = await this.prisma.attendance.findUnique({
+      where: { sessionId_studentId: { sessionId, studentId } },
+    });
+
+    // Re-anchor joinedAt to now ONLY when there is no active interval open
+    // (i.e. the student had previously left, or there is no row yet). If an
+    // interval is already open (joinedAt set AND leftAt null) we keep the old
+    // anchor so the open interval — including one orphaned by a server restart —
+    // is preserved for later accumulation / finalization.
+    const intervalIsOpen =
+      !!existing && existing.joinedAt !== null && existing.leftAt === null;
+    const openAnchor = intervalIsOpen ? existing!.joinedAt : new Date();
+
+    // upsert is atomic — no find-then-create race / unique-constraint (P2002)
+    // even if two of the student's clients fire a first-join simultaneously.
+    return this.prisma.attendance.upsert({
+      where: { sessionId_studentId: { sessionId, studentId } },
+      create: {
+        sessionId,
+        studentId,
+        present: true,
+        joinedAt: new Date(),
+        leftAt: null,
+      },
+      update: {
+        present: true,
+        joinedAt: openAnchor,
+        leftAt: null,
+      },
+    });
+  }
+
+  /**
+   * Marks a student as having left when their socket disconnects/leaves.
+   * - Sets leftAt = now.
+   * - ACCUMULATES minutesAttended by adding the just-ended interval
+   *   (now - joinedAt) to the existing total. Never overwrites, never goes negative.
+   * If no Attendance row exists yet, this is a no-op (returns null).
+   */
+  async markStudentLeft(sessionId: string, studentId: string) {
+    const existing = await this.prisma.attendance.findUnique({
+      where: { sessionId_studentId: { sessionId, studentId } },
+    });
+
+    if (!existing) {
+      // Nothing to update — student was never marked present.
+      return null;
+    }
+
+    // Idempotency guard: if the interval is already closed (leftAt set — e.g. the
+    // session was finalized at end, or a duplicate leave already fired) do NOT
+    // accumulate again. markStudentPresent reopens the interval (leftAt=null) on a
+    // genuine rejoin, so legitimate multi-visit accumulation still works.
+    if (existing.leftAt !== null) {
+      return existing;
+    }
+
+    const now = new Date();
+
+    // Compute minutes for the just-ended interval. Anchor on the most recent
+    // joinedAt. Guard against null anchor and clock skew (never negative/NaN).
+    let intervalMinutes = 0;
+    if (existing.joinedAt) {
+      const deltaMs = now.getTime() - new Date(existing.joinedAt).getTime();
+      if (Number.isFinite(deltaMs) && deltaMs > 0) {
+        intervalMinutes = Math.round(deltaMs / 60000);
+      }
+    }
+
+    const accumulated = (existing.minutesAttended ?? 0) + intervalMinutes;
+
+    return this.prisma.attendance.update({
+      where: { sessionId_studentId: { sessionId, studentId } },
+      data: {
+        leftAt: now,
+        minutesAttended: accumulated,
+      },
+    });
+  }
+
+  /**
+   * Backstop run when a session ends/completes. Finalizes any attendance row
+   * still showing an OPEN interval (present=true, leftAt=null) — i.e. a student
+   * who was connected at session end, or whose leave event was lost (e.g. the
+   * gateway's in-memory client map was wiped by a server restart/redeploy, or a
+   * second gateway instance handled the socket). Sets leftAt=endTime and
+   * accumulates the final interval. Idempotent: only touches open intervals, so
+   * a later stray markStudentLeft (guarded on leftAt) will not double-count.
+   */
+  async finalizeSessionAttendance(sessionId: string, endTime?: Date) {
+    const end = endTime ?? new Date();
+    const openRows = await this.prisma.attendance.findMany({
+      where: { sessionId, present: true, leftAt: null },
+    });
+
+    for (const row of openRows) {
+      let intervalMinutes = 0;
+      if (row.joinedAt) {
+        const deltaMs = end.getTime() - new Date(row.joinedAt).getTime();
+        if (Number.isFinite(deltaMs) && deltaMs > 0) {
+          intervalMinutes = Math.round(deltaMs / 60000);
+        }
+      }
+      await this.prisma.attendance.update({
+        where: { id: row.id },
+        data: {
+          leftAt: end,
+          minutesAttended: (row.minutesAttended ?? 0) + intervalMinutes,
+        },
+      });
+    }
+
+    return { finalized: openRows.length };
+  }
+
   // ==================== HELPER METHODS ====================
 
   /**
@@ -976,6 +1106,14 @@ export class SessionsService {
         };
       }
       throw e;
+    }
+
+    // Finalize any open attendance intervals (students still connected at end,
+    // or whose leave event was lost). Non-fatal — never block session end.
+    try {
+      await this.finalizeSessionAttendance(sessionId, updated.end_time || new Date());
+    } catch (e) {
+      this.logger.error(`finalizeSessionAttendance failed (non-fatal): ${e.message}`);
     }
 
     // Update student progress using unified logic

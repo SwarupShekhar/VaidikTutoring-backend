@@ -30,6 +30,14 @@ export class SessionsCronService {
         if (e?.code === 'P2025') continue;
         throw e;
       }
+      // Finalize any open attendance intervals for this auto-completed session.
+      // Non-fatal so a single bad row can't abort the cron sweep.
+      try {
+        await this.sessionsService.finalizeSessionAttendance(session.id, new Date());
+      } catch (e: any) {
+        this.logger.error(`finalizeSessionAttendance failed for ${session.id} (non-fatal): ${e.message}`);
+      }
+
       if (session.bookings?.student_id) {
         await this.sessionsService.handleSessionCompletion(
           session.id,
