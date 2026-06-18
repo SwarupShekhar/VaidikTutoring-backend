@@ -187,7 +187,7 @@ export class EmailService {
   }
 
   private frontendBase(): string {
-    return (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    return (process.env.FRONTEND_URL || 'https://studyhours.com').replace(/\/$/, '');
   }
 
   private apiBase(): string {
@@ -256,10 +256,10 @@ export class EmailService {
   }
 
   async sendVerificationEmail(to: string, token: string) {
-    // Determine Verification URL (Frontend vs Local)
-    // If FRONTEND_URL is set (e.g., https://studyhours.com), use it.
-    // Otherwise fallback to localhost.
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    // Determine Verification URL. If FRONTEND_URL is set (e.g.
+    // https://studyhours.com) use it; otherwise default to the prod domain so a
+    // missing env never emails a localhost link.
+    const baseUrl = process.env.FRONTEND_URL || 'https://studyhours.com';
     // Remove trailing slash if present to avoid double slashes
     const cleanBaseUrl = baseUrl.replace(/\/$/, '');
     const verificationUrl = `${cleanBaseUrl}/verify-email?token=${token}`;

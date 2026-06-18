@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { verifyEngagementToken } from './engagement-token';
 
-const FRONTEND = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+const FRONTEND = (process.env.FRONTEND_URL || 'https://studyhours.com').replace(/\/$/, '');
 
 /** Allowed answer keys per MCQ email type. */
 const ALLOWED_ANSWERS: Record<string, readonly string[]> = {
