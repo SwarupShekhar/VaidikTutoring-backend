@@ -118,9 +118,25 @@ jobs:
             # Pull latest containers
             docker compose pull
             
-            # Execute database migrations before live restart to prevent race conditions
+            # Execute database migrations with retry logic (handles serverless DB wake-up delays and timeouts)
             echo "Executing database migrations..."
-            docker compose run --rm backend npx prisma migrate deploy
+            max_attempts=5
+            attempt=1
+            while [ $attempt -le $max_attempts ]; do
+              echo "Migration attempt $attempt/$max_attempts..."
+              if docker compose run --rm backend npx prisma migrate deploy; then
+                echo "✅ Migrations applied successfully!"
+                break
+              fi
+              echo "⚠️ Migration failed or timed out. Retrying in 10 seconds (Database might be waking up)..."
+              sleep 10
+              attempt=$((attempt + 1))
+            done
+
+            if [ $attempt -gt $max_attempts ]; then
+              echo "❌ Database migrations failed after $max_attempts attempts."
+              exit 1
+            fi
             
             # Restart core and auxiliary containers gracefully
             echo "Re-launching application services..."
