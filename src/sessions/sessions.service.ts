@@ -759,21 +759,36 @@ export class SessionsService {
     // Check if user is the tutor
     let isTutor = tutor?.user_id === userId;
 
-    // Identity drift auto-heal fallback: Compare emails case-insensitively
-    // This fixes 403s where the tutor's DB record was created with a different email casing
+    // Identity drift auto-heal fallback: Compare emails case-insensitively and trim spaces
+    // This fixes 403s where the DB record was created with a different email casing/spacing
     if (!isTutor && tutor?.user_id && currentUser?.email) {
       const tutorUser = await this.prisma.users.findUnique({ where: { id: tutor.user_id }, select: { email: true } });
-      if (tutorUser?.email && tutorUser.email.toLowerCase() === currentUser.email.toLowerCase()) {
+      if (tutorUser?.email && tutorUser.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase()) {
         isTutor = true;
       }
     }
 
-    if (!isStudent && student?.user_id && currentUser?.email) {
-      const studentUser = await this.prisma.users.findUnique({ where: { id: student.user_id }, select: { email: true } });
-      if (studentUser?.email && studentUser.email.toLowerCase() === currentUser.email.toLowerCase()) {
-        isStudent = true;
+    if (!isStudent && student && currentUser?.email) {
+      // 1. Check if the student record itself has a matching email
+      if (student.email && student.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase()) {
+         isStudent = true;
+      } 
+      // 2. Check if the student's linked user record has a matching email
+      else if (student.user_id) {
+        const studentUser = await this.prisma.users.findUnique({ where: { id: student.user_id }, select: { email: true } });
+        if (studentUser?.email && studentUser.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase()) {
+          isStudent = true;
+        }
       }
     }
+
+    if (!isParent && student?.id && currentUser?.role === 'parent') {
+      const parentRel = await this.prisma.parent_students.findFirst({
+        where: { parent_user_id: userId, student_id: student.id }
+      });
+      if (parentRel) isParent = true;
+    }
+
 
     if (!isParent && !isStudent && !isTutor) {
       // Self-diagnosing log: a 403 here is almost always identity drift (the
