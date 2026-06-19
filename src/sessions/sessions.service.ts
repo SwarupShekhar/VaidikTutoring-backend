@@ -782,12 +782,7 @@ export class SessionsService {
       }
     }
 
-    if (!isParent && student?.id && currentUser?.role === 'parent') {
-      const parentRel = await this.prisma.parent_students.findFirst({
-        where: { parent_user_id: userId, student_id: student.id }
-      });
-      if (parentRel) isParent = true;
-    }
+
 
 
     if (!isParent && !isStudent && !isTutor) {
