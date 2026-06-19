@@ -740,27 +740,40 @@ export class SessionsService {
   }
 
   private async checkBookingAccess(booking: any, userId: string): Promise<boolean> {
-    // TEMPORARY BYPASS FOR LOCAL TESTING
-    return true;
-    
     // 0. check if user is admin
-    const userRole = await this.prisma.users.findUnique({
+    const currentUser = await this.prisma.users.findUnique({
         where: { id: userId },
-        select: { role: true }
+        select: { email: true, role: true }
     });
-    if (userRole?.role === 'admin') return true;
+    if (currentUser?.role === 'admin') return true;
 
     const student = booking.students;
     const tutor = booking.tutors;
 
     // Check if user is the parent
-    const isParent = student?.parent_user_id === userId;
+    let isParent = student?.parent_user_id === userId;
 
     // Check if user is the student
-    const isStudent = student?.user_id === userId;
+    let isStudent = student?.user_id === userId;
 
     // Check if user is the tutor
-    const isTutor = tutor?.user_id === userId;
+    let isTutor = tutor?.user_id === userId;
+
+    // Identity drift auto-heal fallback: Compare emails case-insensitively
+    // This fixes 403s where the tutor's DB record was created with a different email casing
+    if (!isTutor && tutor?.user_id && currentUser?.email) {
+      const tutorUser = await this.prisma.users.findUnique({ where: { id: tutor.user_id }, select: { email: true } });
+      if (tutorUser?.email && tutorUser.email.toLowerCase() === currentUser.email.toLowerCase()) {
+        isTutor = true;
+      }
+    }
+
+    if (!isStudent && student?.user_id && currentUser?.email) {
+      const studentUser = await this.prisma.users.findUnique({ where: { id: student.user_id }, select: { email: true } });
+      if (studentUser?.email && studentUser.email.toLowerCase() === currentUser.email.toLowerCase()) {
+        isStudent = true;
+      }
+    }
 
     if (!isParent && !isStudent && !isTutor) {
       // Self-diagnosing log: a 403 here is almost always identity drift (the
