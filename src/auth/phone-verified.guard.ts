@@ -1,7 +1,9 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 
 @Injectable()
 export class PhoneVerifiedGuard implements CanActivate {
+  private readonly logger = new Logger(PhoneVerifiedGuard.name);
+
   canActivate(context: ExecutionContext): boolean {
     const user = context.switchToHttp().getRequest().user;
     if (!user) return false;
@@ -12,6 +14,7 @@ export class PhoneVerifiedGuard implements CanActivate {
     }
 
     if (user.phone_verified !== true) {
+      this.logger.warn(`User ${user.userId} (role: ${user.role}) denied access due to unverified phone.`);
       throw new ForbiddenException('Please verify your phone number to access this feature.');
     }
     return true;
