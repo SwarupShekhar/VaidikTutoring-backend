@@ -74,13 +74,22 @@ export class ClerkAuthGuard implements CanActivate {
 
             let dbUser: any = null;
 
-            if (emailClaim) {
+            if (!isClerk && claims.sub) {
+                // For local JWTs, claims.sub is the exact user UUID
+                dbUser = await this.prisma.users.findUnique({
+                    where: { id: claims.sub }
+                });
+            }
+
+            if (!dbUser && emailClaim) {
                 dbUser = await this.prisma.users.findFirst({
                     where: { email: { equals: emailClaim, mode: 'insensitive' } },
                     orderBy: { created_at: 'asc' },
                 });
+            }
 
-                if (!dbUser) {
+            // Create user if they don't exist in DB at all and we have email
+            if (!dbUser && emailClaim) {
                     const role = (claims.metadata?.role as string) || (claims.public_metadata?.role as string) || claims.role || 'student';
                     const fallbackFirstName = emailClaim.split('@')[0];
                     this.logger.log(`Creating new user for ${emailClaim} with role ${role}`);
