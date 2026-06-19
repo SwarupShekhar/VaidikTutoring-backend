@@ -760,6 +760,36 @@ export class SessionsService {
     const isTutor = tutor?.user_id === userId;
 
     if (!isParent && !isStudent && !isTutor) {
+      // Self-diagnosing log: a 403 here is almost always identity drift (the
+      // resolved users.id is NOT the one the booking points at) rather than a
+      // genuine misassignment. Emit BOTH sides so the cause is visible in the
+      // logs without needing to reproduce. Email lookups are best-effort.
+      try {
+        const [resolved, tutorUser] = await Promise.all([
+          this.prisma.users.findUnique({
+            where: { id: userId },
+            select: { email: true, role: true },
+          }),
+          tutor?.user_id
+            ? this.prisma.users.findUnique({
+                where: { id: tutor.user_id },
+                select: { email: true },
+              })
+            : Promise.resolve(null),
+        ]);
+        this.logger.warn(
+          `Access denied (booking ${booking?.id ?? 'unknown'}): resolved userId=${userId} ` +
+            `(email=${resolved?.email ?? '?'}, role=${resolved?.role ?? '?'}) is not a participant. ` +
+            `Expected one of -> tutor.user_id=${tutor?.user_id ?? 'none'} (email=${tutorUser?.email ?? '?'}), ` +
+            `student.user_id=${student?.user_id ?? 'none'}, parent_user_id=${student?.parent_user_id ?? 'none'}.`,
+        );
+      } catch (logErr) {
+        this.logger.warn(
+          `Access denied (booking ${booking?.id ?? 'unknown'}): resolved userId=${userId} ` +
+            `is not tutor.user_id=${tutor?.user_id ?? 'none'} / student.user_id=${student?.user_id ?? 'none'} ` +
+            `/ parent_user_id=${student?.parent_user_id ?? 'none'}. (identity lookup failed: ${logErr.message})`,
+        );
+      }
       throw new ForbiddenException('Access denied to this session');
     }
 

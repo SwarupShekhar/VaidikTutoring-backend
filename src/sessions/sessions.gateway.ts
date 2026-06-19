@@ -7,7 +7,7 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Server, Socket, Namespace } from 'socket.io';
 import { Logger, UseGuards, NotFoundException } from '@nestjs/common';
 import { SessionsService } from './sessions.service';
 import { AttentionEventsService } from '../attention-events/attention-events.service';
@@ -43,7 +43,7 @@ import { AttentionEventType, SessionPhase } from '@prisma/client';
 export class SessionsGateway
   implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: Server;
+  server: Namespace;
 
   private readonly logger = new Logger(SessionsGateway.name);
   private whiteboardState = new Map<string, any>(); // Cache for elements
@@ -111,7 +111,7 @@ export class SessionsGateway
     const sessionId = this.clientSessionMap.get(client.id);
     this.clientSessionMap.delete(client.id);
     if (!sessionId) return;
-    const room = this.server.sockets.adapter.rooms.get(`session:${sessionId}`);
+    const room = this.server.adapter.rooms.get(`session:${sessionId}`);
     if (!room || room.size === 0) {
         this.whiteboardState.delete(sessionId);
         this.slidesState.delete(sessionId);
