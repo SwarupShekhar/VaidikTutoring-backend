@@ -88,8 +88,8 @@ export class ClerkAuthGuard implements CanActivate {
                 });
             }
 
-            // Create user if they don't exist in DB at all and we have email
-            if (!dbUser && emailClaim) {
+            if (emailClaim || (!isClerk && claims.sub)) {
+                if (!dbUser) {
                     const role = (claims.metadata?.role as string) || (claims.public_metadata?.role as string) || claims.role || 'student';
                     const fallbackFirstName = emailClaim.split('@')[0];
                     this.logger.log(`Creating new user for ${emailClaim} with role ${role}`);
