@@ -1018,19 +1018,37 @@ export class SessionsService {
     });
     if (!session) throw new NotFoundException('Session not found');
 
-    // Perform the update
-    const updated = await this.prisma.sessions.update({
-        where: { id: sessionId },
-        data: { status }
-    });
-
-    if (status === 'completed' && session.status !== 'completed' && session.bookings?.student_id) {
-        await this.handleSessionCompletion(
-            sessionId,
-            session.bookings.student_id,
-            session.start_time || undefined,
-            session.end_time || new Date()
-        );
+    // Perform the update with optimistic concurrency control if completing
+    let updated;
+    if (status === 'completed') {
+        try {
+            updated = await this.prisma.sessions.update({
+                where: { id: sessionId, status: { not: 'completed' } },
+                data: { status }
+            });
+            
+            // Only runs if the status was NOT already completed
+            if (session.bookings?.student_id) {
+                await this.handleSessionCompletion(
+                    sessionId,
+                    session.bookings.student_id,
+                    session.start_time || undefined,
+                    session.end_time || new Date()
+                );
+            }
+        } catch (e: any) {
+            if (e?.code === 'P2025') {
+                // Another request already completed it concurrently, safe to skip
+                updated = await this.prisma.sessions.findUnique({ where: { id: sessionId } });
+            } else {
+                throw e;
+            }
+        }
+    } else {
+        updated = await this.prisma.sessions.update({
+            where: { id: sessionId },
+            data: { status }
+        });
     }
 
     // Audit Log for Activity Pulse

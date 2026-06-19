@@ -118,6 +118,14 @@ export class SessionsGateway
         this.filesState.delete(sessionId);
         this.penAccessState.delete(sessionId);
         this.pollState.delete(sessionId);
+        
+        // Clean up the bounded sessionMap cache to prevent memory leaks
+        for (const [key, val] of this.sessionMap.entries()) {
+            if (val === sessionId) {
+                this.sessionMap.delete(key);
+            }
+        }
+
         this.logger.log(`Cleaned up session state for ${sessionId} (last client left)`);
     }
   }
