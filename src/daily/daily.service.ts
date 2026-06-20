@@ -138,6 +138,7 @@ export class DailyService {
                         room_name: roomName,
                         is_owner: isOwner,
                         user_name: userName,
+                        start_cloud_recording: isOwner,
                         enable_screenshare: true,
                         start_video_off: true,
                         start_audio_off: true,

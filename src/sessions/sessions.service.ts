@@ -1136,9 +1136,10 @@ export class SessionsService {
     let isStudent = false;
     if (user.role === 'student' && session.bookings?.student_id) {
       const student = await this.prisma.students.findUnique({
-        where: { user_id: userId }
+        where: { id: session.bookings.student_id },
+        include: { user: true }
       });
-      if (student && student.id === session.bookings.student_id) {
+      if (student && (student.user_id === userId || (student.user && student.user.email?.toLowerCase() === user.email?.toLowerCase()))) {
         isStudent = true;
       }
     }
@@ -1149,8 +1150,15 @@ export class SessionsService {
       const student = await this.prisma.students.findUnique({
         where: { id: session.bookings.student_id }
       });
-      if (student && student.parent_user_id === userId) {
-        isParent = true;
+      if (student) {
+        if (student.parent_user_id === userId) {
+          isParent = true;
+        } else if (student.parent_user_id) {
+          const parentUser = await this.prisma.users.findUnique({ where: { id: student.parent_user_id }});
+          if (parentUser && parentUser.email?.toLowerCase() === user.email?.toLowerCase()) {
+            isParent = true;
+          }
+        }
       }
     }
 
