@@ -1136,9 +1136,12 @@ export class SessionsService {
     let isStudent = false;
     if (user.role === 'student' && session.bookings?.student_id) {
       const student = await this.prisma.students.findUnique({
-        where: { id: session.bookings.student_id }
+        where: { id: session.bookings.student_id },
+        include: { users_students_user_idTousers: true }
       });
-      if (student && (student.user_id === userId || student.email?.toLowerCase() === user.email?.toLowerCase())) {
+      if (student && (student.user_id === userId || 
+          student.email?.toLowerCase() === user.email?.toLowerCase() ||
+          student.users_students_user_idTousers?.email?.toLowerCase() === user.email?.toLowerCase())) {
         isStudent = true;
       }
     }
