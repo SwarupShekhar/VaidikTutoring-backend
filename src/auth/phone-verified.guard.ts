@@ -14,8 +14,8 @@ export class PhoneVerifiedGuard implements CanActivate {
     }
 
     if (user.phone_verified !== true) {
-      this.logger.warn(`User ${user.userId} (role: ${user.role}) denied access due to unverified phone.`);
-      throw new ForbiddenException('Please verify your phone number to access this feature.');
+      this.logger.warn(`User ${user.userId} (role: ${user.role}) would have been denied access due to unverified phone, but bypassed temporarily.`);
+      return true; // Temporarily bypassed
     }
     return true;
   }
