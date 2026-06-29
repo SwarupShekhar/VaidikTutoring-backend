@@ -48,8 +48,6 @@ import { CmsModule } from './cms/cms.module';
 import { LeadsModule } from './leads/leads.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { EngagementModule } from './engagement/engagement.module';
-import { AssessmentsModule } from './assessments/assessments.module';
-import { AssignmentsModule } from './assignments/assignments.module';
 import { ZoomModule } from './zoom/zoom.module';
 
 @Module({
@@ -161,13 +159,11 @@ import { ZoomModule } from './zoom/zoom.module';
     LeadsModule,
     OnboardingModule,
     EngagementModule,
-    AssessmentsModule,
     ServeStaticModule.forRoot({
 
       rootPath: path.join(process.cwd(), 'public'),
       serveRoot: '/',
     }),
-    AssignmentsModule,
     ZoomModule,
   ],
   controllers: [AppController],

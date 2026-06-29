@@ -180,6 +180,48 @@ export class EmailService {
     });
   }
 
+  /** Send notification to a student for a newly scheduled group session. */
+  async sendGroupSessionNotification(opts: {
+    to: string;
+    userId: string;
+    firstName: string;
+    tutorName: string;
+    startTime: Date;
+    meetLink: string;
+  }) {
+    const name = this.firstName(opts.firstName);
+    
+    // Format the date/time nicely
+    const dateOptions: Intl.DateTimeFormatOptions = { 
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 
+      hour: 'numeric', minute: '2-digit', timeZoneName: 'short' 
+    };
+    const formattedTime = opts.startTime.toLocaleString('en-US', dateOptions);
+
+    const body = `
+      <h1 style="color:#fff;font-size:24px;font-weight:800;margin:0 0 12px;line-height:1.3">You've been invited to a Group Session!</h1>
+      <p style="color:#e5e5e5;font-size:15px;line-height:1.6;margin:0 0 16px">
+        Hi ${name}, you have a new group session scheduled with ${opts.tutorName} on <strong>${formattedTime}</strong>.
+      </p>
+      <p style="color:#e5e5e5;font-size:15px;line-height:1.6;margin:0 0 24px">
+        Please make sure to join on time using the button below.
+      </p>
+      <a href="${opts.meetLink}" style="display:inline-block;background:#fff;color:#000;text-decoration:none;padding:13px 22px;border-radius:50px;font-weight:600;font-size:14px;margin:0 0 8px">
+        Join Session →
+      </a>
+      <p style="color:#9ca3af;font-size:13px;line-height:1.6;margin:24px 0 0">
+        See you there! — The StudyHours team
+      </p>`;
+
+    return this.sendMail({
+      to: opts.to,
+      from: 'StudyHours <hellostudents@studyhours.com>',
+      replyTo: 'StudyHours <hellostudents@studyhours.com>',
+      subject: `New Group Session with ${opts.tutorName}`,
+      html: this.wrapper(body, opts.userId),
+    });
+  }
+
   // ── Builder helpers ──────────────────────────────────────────────────────────
 
   private firstName(firstName?: string): string {

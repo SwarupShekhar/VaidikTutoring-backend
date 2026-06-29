@@ -24,7 +24,7 @@ export class RatingsService {
       const sessions = await this.prisma.sessions.findMany({
         where: {
           status: 'completed',
-          tutor_ratings: { none: {} },
+          tutor_ratings: null,
           attendance: {
             some: {
               present: true,
@@ -66,7 +66,7 @@ export class RatingsService {
       const sessions = await this.prisma.sessions.findMany({
         where: {
           status: 'completed',
-          tutor_ratings: { none: {} },
+          tutor_ratings: null,
           attendance: {
             some: {
               present: true,
@@ -124,7 +124,7 @@ export class RatingsService {
 
     if (!session) throw new NotFoundException('Session not found');
     if (session.status !== 'completed') throw new BadRequestException('Session is not completed yet');
-    if (session.tutor_ratings.length > 0) throw new BadRequestException('Session already rated');
+    if (session.tutor_ratings) throw new BadRequestException('Session already rated');
 
     const student = session.bookings?.students;
     const tutorId = session.bookings?.tutors?.id;

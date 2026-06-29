@@ -125,7 +125,7 @@ export class DailyService {
         }
     }
 
-    async createMeetingToken(roomName: string, isOwner: boolean, userName: string): Promise<string> {
+    async createMeetingToken(roomName: string, isOwner: boolean, userName: string, userId?: string): Promise<string> {
         if (!this.apiKey) {
             throw new HttpException('Video service configuration missing', HttpStatus.INTERNAL_SERVER_ERROR);
         }
@@ -138,6 +138,7 @@ export class DailyService {
                         room_name: roomName,
                         is_owner: isOwner,
                         user_name: userName,
+                        user_id: userId,
                         start_cloud_recording: isOwner,
                         enable_screenshare: true,
                         start_video_off: true,
@@ -163,6 +164,7 @@ export class DailyService {
                                 room_name: roomName,
                                 is_owner: isOwner,
                                 user_name: userName,
+                                user_id: userId,
                                 exp: Math.floor(Date.now() / 1000) + 7200
                             }
                         },
