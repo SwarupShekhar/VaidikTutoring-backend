@@ -4,14 +4,22 @@ import {
   Post,
   Body,
   Param,
+  Query,
+  Req,
+  Res,
+  UseGuards,
   UseInterceptors,
   UploadedFile,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
+import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { VaultService } from './vault.service';
 
 @Controller('vault')
+@UseGuards(ClerkAuthGuard)
 export class VaultController {
   private readonly logger = new Logger(VaultController.name);
 
@@ -37,14 +45,40 @@ export class VaultController {
     });
   }
 
+  // Role-aware: admins/tutors get the full library; students/parents only see
+  // assets relevant to the student (curriculum + subjects they study).
+  // Optional ?subject=<name> narrows to one subject (within the student's scope).
   @Get('assets')
-  async findAll() {
-    return this.vaultService.findAll();
+  async findAll(@Req() req: any, @Query('subject') subject?: string) {
+    return this.vaultService.findAllForUser(req.user, subject);
   }
 
+  // Returns a short-lived SAS URL. For students, membership is re-checked so an
+  // asset id outside their scope cannot be opened by guessing it.
   @Get('assets/:id')
-  async findOne(@Param('id') id: string) {
-    return this.vaultService.findOne(id);
+  async findOne(@Param('id') id: string, @Req() req: any) {
+    return this.vaultService.findOneForUser(id, req.user);
+  }
+
+  // View-only stream: pipes the asset bytes same-origin (no CORS) and never
+  // exposes a SAS URL to the browser, so materials can't be pulled from the
+  // Network tab. Same scope re-check as findOne for students.
+  @Get('assets/:id/stream')
+  async streamOne(@Param('id') id: string, @Req() req: any, @Res() res: Response) {
+    const result = await this.vaultService.streamAssetForUser(id, req.user);
+    if (!result) throw new NotFoundException('Asset not found');
+
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Content-Disposition', 'inline');
+    if (result.contentLength) res.setHeader('Content-Length', String(result.contentLength));
+
+    result.stream.on('error', (err) => {
+      this.logger.error(`Vault stream error for asset ${id}: ${err?.message}`);
+      if (!res.headersSent) res.status(500);
+      res.end();
+    });
+    result.stream.pipe(res);
   }
 
   @Post('annotations')

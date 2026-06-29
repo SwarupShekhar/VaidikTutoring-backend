@@ -83,8 +83,7 @@ export class ClerkAuthGuard implements CanActivate {
 
             if (!dbUser && emailClaim) {
                 dbUser = await this.prisma.users.findFirst({
-                    where: { email: { equals: emailClaim, mode: 'insensitive' } },
-                    orderBy: { created_at: 'asc' },
+                    where: { email: emailClaim },
                 });
             }
 

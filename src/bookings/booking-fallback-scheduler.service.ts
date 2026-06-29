@@ -44,20 +44,19 @@ export class BookingFallbackSchedulerService {
         Date.now() - ONLINE_THRESHOLD_MINUTES * 60 * 1000,
       );
 
-      // Find assignments older than fallback timeout
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+
+      // Find assignments older than fallback timeout but not older than 2 hours
       const potentialBookings = await this.prisma.bookings.findMany({
         where: {
           assigned_tutor_id: { not: null },
           status: 'confirmed',
-          created_at: { lte: fallbackTimeoutAgo },
-          OR: [
-            { fallback_broadcasted_at: null },
-            { fallback_broadcasted_at: { lte: broadcastCooldown } },
-          ],
+          requested_start: { lte: fallbackTimeoutAgo, gte: twoHoursAgo },
+          fallback_broadcasted_at: null, // Only broadcast ONCE to prevent spam
         },
         include: {
           sessions: {
-            where: { status: 'in_progress' },
+            where: { status: { in: ['in_progress', 'completed'] } },
           },
           tutors: { include: { users: true } },
           students: true,

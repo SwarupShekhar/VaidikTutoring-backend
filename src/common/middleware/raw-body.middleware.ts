@@ -5,7 +5,7 @@ import { Request, Response, NextFunction } from 'express';
 export class RawBodyMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
     // Only apply to webhook endpoint
-    if (req.path === '/payments/webhook' || req.path === '/webhooks/daily') {
+    if (req.path === '/payments/webhook' || req.path === '/webhooks/daily' || req.path === '/webhooks/zoom') {
       req.setEncoding('utf8');
       let rawData = '';
       

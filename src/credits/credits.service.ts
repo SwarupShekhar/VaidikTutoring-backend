@@ -10,6 +10,8 @@ export interface CreditStatus {
   sessionsUsed: number;
   canBook: boolean;
   plan: 'foundation' | 'mastery' | 'elite' | null;
+  /** ISO date the current plan/trial ends — drives the homescreen plan badge. */
+  planEndsAt: string | null;
 }
 
 export interface BookingCreditCost {
@@ -63,6 +65,14 @@ export class CreditsService {
       },
     });
 
+    // Subscription end date + days remaining (shared by learning & paid branches).
+    const subEndsIso = student.subscription_ends
+      ? new Date(student.subscription_ends).toISOString()
+      : null;
+    const subDaysLeft = student.subscription_ends
+      ? Math.max(0, Math.ceil((new Date(student.subscription_ends).getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
+      : null;
+
     // 2. Check for Learning Mode Enrollment
     if (student.enrollment_status === 'learning') {
       const creditsRemaining = student.subscription_credits || 0;
@@ -71,10 +81,11 @@ export class CreditsService {
         mode: subscriptionExpired ? 'trial_expired' : 'learning', // using trial_expired to prompt renew
         creditsRemaining: subscriptionExpired ? 0 : creditsRemaining,
         trialExpiresAt: null,
-        daysLeft: null,
+        daysLeft: subDaysLeft,
         sessionsUsed: liveSessionsUsed,
         canBook: creditsRemaining > 0 && !subscriptionExpired,
         plan: student.subscription_plan as any,
+        planEndsAt: subEndsIso,
       };
     }
 
@@ -88,10 +99,11 @@ export class CreditsService {
         mode: 'paid',
         creditsRemaining: student.subscription_credits || 0,
         trialExpiresAt: null,
-        daysLeft: null,
+        daysLeft: subDaysLeft,
         sessionsUsed: liveSessionsUsed,
         canBook: (student.subscription_credits || 0) > 0,
         plan: student.subscription_plan as any,
+        planEndsAt: subEndsIso,
       };
     }
 
@@ -107,6 +119,7 @@ export class CreditsService {
         sessionsUsed: liveSessionsUsed,
         canBook: false,
         plan: null,
+        planEndsAt: student.trial_expires_at?.toISOString() || null,
       };
     }
 
@@ -123,6 +136,7 @@ export class CreditsService {
         sessionsUsed: liveSessionsUsed,
         canBook: false,
         plan: null,
+        planEndsAt: student.trial_expires_at?.toISOString() || null,
       };
     }
 
@@ -138,6 +152,7 @@ export class CreditsService {
         sessionsUsed: liveSessionsUsed,
         canBook: false,
         plan: null,
+        planEndsAt: student.trial_expires_at?.toISOString() || null,
       };
     }
 
@@ -154,6 +169,7 @@ export class CreditsService {
       sessionsUsed: liveSessionsUsed,
       canBook: true,
       plan: null,
+      planEndsAt: student.trial_expires_at?.toISOString() || null,
     };
   }
 

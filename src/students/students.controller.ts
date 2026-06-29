@@ -51,6 +51,15 @@ export class StudentsController {
     return this.studentsService.completeMyOnboarding(userId, body);
   }
 
+  // Record a finished practice session: award XP + update the daily practice streak.
+  @Post('me/practice-result')
+  @UseGuards(ClerkAuthGuard)
+  async recordPracticeResult(@Body() body: { xp?: number }, @Req() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) throw new NotFoundException('User not authenticated');
+    return this.studentsService.recordPracticeResult(userId, Math.max(0, Math.floor(Number(body?.xp) || 0)));
+  }
+
   @Get('me')
   @UseGuards(ClerkAuthGuard)
   async getMyProfile(@Req() req: any) {

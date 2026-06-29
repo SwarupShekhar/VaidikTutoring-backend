@@ -134,6 +134,72 @@ export class TutorsService {
     };
   }
 
+  /**
+   * The tutor's students for post-session sharing: every student the tutor has
+   * actually taught (a session that has occurred), each with their past sessions.
+   * This is the data behind the "share notes/files" picker and mirrors the
+   * server-side eligibility gate in sessions.service.shareNote.
+   */
+  async getMyStudents(userId: string) {
+    const tutor = await this.prisma.tutors.findFirst({
+      where: { user_id: userId },
+      select: { id: true },
+    });
+    if (!tutor) return [];
+
+    const now = new Date();
+    const bookings = await this.prisma.bookings.findMany({
+      where: { assigned_tutor_id: tutor.id, student_id: { not: null } },
+      include: {
+        students: { select: { id: true, first_name: true, last_name: true } },
+        subjects: { select: { name: true } },
+        sessions: { select: { id: true, start_time: true, end_time: true, status: true } },
+      },
+    });
+
+    const occurred = (b: (typeof bookings)[number], s: { status: string | null; end_time: Date | null }) => {
+      if (s.status === 'cancelled') return false;
+      if (s.status === 'completed') return true;
+      if (s.end_time && new Date(s.end_time) < now) return true;
+      if (b.requested_end && new Date(b.requested_end) < now) return true;
+      return false;
+    };
+
+    const byStudent = new Map<
+      string,
+      { studentId: string; studentName: string; sessions: { sessionId: string; date: Date | null; subject: string }[] }
+    >();
+
+    for (const b of bookings) {
+      if (!b.students) continue;
+      const past = b.sessions.filter((s) => occurred(b, s));
+      if (past.length === 0) continue;
+      const key = b.students.id;
+      if (!byStudent.has(key)) {
+        byStudent.set(key, {
+          studentId: b.students.id,
+          studentName: `${b.students.first_name} ${b.students.last_name || ''}`.trim(),
+          sessions: [],
+        });
+      }
+      const entry = byStudent.get(key)!;
+      for (const s of past) {
+        entry.sessions.push({
+          sessionId: s.id,
+          date: s.start_time || b.requested_start,
+          subject: b.subjects?.name || 'Session',
+        });
+      }
+    }
+
+    return [...byStudent.values()].map((e) => ({
+      ...e,
+      sessions: e.sessions.sort(
+        (a, b) => new Date((b.date || 0) as any).getTime() - new Date((a.date || 0) as any).getTime(),
+      ),
+    }));
+  }
+
   async getTutorReviews(userId: string) {
     const tutor = await this.prisma.tutors.findFirst({
       where: { user_id: userId },

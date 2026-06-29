@@ -14,6 +14,7 @@ import { StudentsModule } from '../students/students.module';
 import { AzureModule } from '../azure/azure.module';
 import { CreditsModule } from '../credits/credits.module';
 import { TutorStatusGuard } from '../auth/tutor-status.guard';
+import { ZoomModule } from '../zoom/zoom.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { TutorStatusGuard } from '../auth/tutor-status.guard';
     AuthModule,
     NotificationsModule,
     CreditsModule,
+    ZoomModule,
     forwardRef(() => DailyModule),
     forwardRef(() => StudentsModule),
   ],

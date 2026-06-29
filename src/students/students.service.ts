@@ -3,17 +3,95 @@ import {
   BadRequestException,
   NotFoundException,
   UnauthorizedException,
+  Inject,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 
 const ATTENDANCE_GRACE_MINUTES = 5;
+// A session only counts as attended if the student was present for at least this
+// many minutes, OR a tutor explicitly marked them present (manual override).
+const ATTENDANCE_MIN_MINUTES = 30;
+
+/** Minimal shape of an attendance row needed to judge qualifying attendance. */
+type QualifyingRow = { present: boolean; markedByTutor: boolean; minutesAttended: number | null } | null | undefined;
+
+/**
+ * The single source of truth for "did the student actually attend this session".
+ * Qualifying = a tutor manually marked them present, OR they were in the live
+ * session for >= ATTENDANCE_MIN_MINUTES. Merely joining the socket (which sets
+ * present=true with a few minutes) does NOT count.
+ */
+function isQualifyingAttendance(row: QualifyingRow): boolean {
+  if (!row) return false;
+  if (row.markedByTutor && row.present) return true;
+  return (row.minutesAttended ?? 0) >= ATTENDANCE_MIN_MINUTES;
+}
 
 type AttendanceStatus = 'present' | 'late' | 'absent';
 
 @Injectable()
 export class StudentsService {
-  constructor(private prisma: PrismaService) { }
+  constructor(
+    private prisma: PrismaService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) { }
+
+  /**
+   * Record a finished practice session: add XP and update the daily practice streak
+   * (same day = unchanged, consecutive day = +1, gap = reset to 1).
+   */
+  async recordPracticeResult(userId: string, xp: number) {
+    const student = await this.prisma.students.findFirst({
+      where: { user_id: userId },
+      select: { id: true, practice_xp: true, practice_streak: true, last_practice_at: true },
+    });
+    if (!student) throw new NotFoundException('Student profile not found');
+
+    const now = new Date();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const startOfDay = (d: Date) => Math.floor(d.getTime() / dayMs);
+    let streak = student.practice_streak ?? 0;
+    if (student.last_practice_at) {
+      const diff = startOfDay(now) - startOfDay(new Date(student.last_practice_at));
+      if (diff === 0) { /* already practised today — keep streak */ }
+      else if (diff === 1) streak += 1;
+      else streak = 1;
+    } else {
+      streak = 1;
+    }
+
+    const updated = await this.prisma.students.update({
+      where: { id: student.id },
+      data: {
+        practice_xp: (student.practice_xp ?? 0) + xp,
+        practice_streak: streak,
+        last_practice_at: now,
+      },
+      select: { practice_xp: true, practice_streak: true },
+    });
+
+    // Bust the cached dashboard so the new XP shows immediately.
+    await this.cacheManager.del(`dashboard:student:${userId}`).catch(() => { });
+    return updated;
+  }
+
+  /**
+   * Translates a Clerk/Auth user_id into the internal students.id primary key.
+   * Centralized helper to prevent user_id leakage into student_id foreign keys.
+   */
+  async getStudentIdByUserId(userId: string): Promise<string> {
+    const student = await this.prisma.students.findFirst({
+      where: { user_id: userId },
+      select: { id: true }
+    });
+    if (!student) {
+      throw new NotFoundException('Student profile not found for this user');
+    }
+    return student.id;
+  }
 
   async create(
     data: {
@@ -100,6 +178,7 @@ export class StudentsService {
       exam_board?: string;
       target_grade?: string;
       exam_date?: string | Date;
+      target_exam?: string;
     },
     userId: string,
     userRole: string
@@ -122,7 +201,7 @@ export class StudentsService {
     }
 
     // 3. Update
-    return this.prisma.students.update({
+    const updated = await this.prisma.students.update({
       where: { id: studentId },
       data: {
         ...(data.first_name && { first_name: data.first_name }),
@@ -135,8 +214,17 @@ export class StudentsService {
         ...(data.exam_board && { exam_board: data.exam_board }),
         ...(data.target_grade && { target_grade: data.target_grade }),
         ...(data.exam_date && { exam_date: new Date(data.exam_date) }),
+        ...(data.target_exam !== undefined && { target_exam: data.target_exam }),
       },
     });
+
+    // 4. Bust the 30s server-side dashboard cache for this student so the edit
+    // shows immediately (the cache is keyed by the student's own user_id).
+    if (student.user_id) {
+      await this.cacheManager.del(`dashboard:student:${student.user_id}`).catch(() => {});
+    }
+
+    return updated;
   }
 
   /**
@@ -302,7 +390,12 @@ export class StudentsService {
                   take: 1,
                   orderBy: { created_at: 'desc' },
                   select: { id: true, azure_blob_name: true },
-                }
+                },
+                // This student's attendance row (if any) — drives honest attendance.
+                attendance: {
+                  where: { studentId },
+                  select: { present: true, markedByTutor: true, minutesAttended: true },
+                },
               }
             },
             subjects: { select: { name: true } }
@@ -338,8 +431,7 @@ export class StudentsService {
     };
 
     const completedSessions = allSessions.filter(isEffectivelyCompleted);
-    const totalSessions = completedSessions.length;
-    
+
     // Auto-fix: mark past sessions as completed in DB (fire-and-forget)
     const needsFix = completedSessions.filter(s => s.status !== 'completed');
     if (needsFix.length > 0) {
@@ -348,30 +440,37 @@ export class StudentsService {
         data: { status: 'completed' }
       }).catch(() => {}); // fire-and-forget
     }
-    
-    // Sessions this month
-    const sessionsThisMonth = completedSessions.filter(s => {
+
+    // ---- Honest attendance ----
+    // A past session only counts if the student ACTUALLY attended (>=30 min OR a
+    // tutor marked them present). Scheduling/briefly joining does not count.
+    const attRow = (s: any) => s.attendance?.[0] ?? null;
+    const attendedSessions = completedSessions.filter(s => isQualifyingAttendance(attRow(s)));
+    const totalSessions = attendedSessions.length;
+
+    // Sessions attended this month
+    const sessionsThisMonth = attendedSessions.filter(s => {
       const t = s.start_time || s.created_at;
       return t && new Date(t) >= startOfMonth;
     }).length;
 
-    // Attendance rate (last 30 days)
-    const scheduledLast30 = allSessions.filter(s => {
+    // Attendance rate (last 30 days) = attended past sessions / all past sessions
+    const pastLast30 = completedSessions.filter(s => {
       const t = s.start_time || s.created_at;
       return t && new Date(t) >= thirtyDaysAgo;
-    }).length;
-    
-    const completedLast30 = completedSessions.filter(s => {
-      const t = s.start_time || s.created_at;
-      return t && new Date(t) >= thirtyDaysAgo;
-    }).length;
+    });
+    const attendedLast30 = pastLast30.filter(s => isQualifyingAttendance(attRow(s))).length;
+    const attendanceRate =
+      pastLast30.length === 0 ? 100 : Math.round((attendedLast30 / pastLast30.length) * 100);
 
-    const attendanceRate = scheduledLast30 === 0 ? 100 : Math.round((completedLast30 / scheduledLast30) * 100);
-
-    // Calculate total hours dynamically
+    // Total hours learned = sum of actually-attended minutes. Fall back to the
+    // scheduled duration only when a tutor marked present but minutes weren't captured.
     let dynamicHours = 0;
-    completedSessions.forEach(s => {
-      if (s.start_time && s.end_time) {
+    attendedSessions.forEach(s => {
+      const mins = attRow(s)?.minutesAttended ?? null;
+      if (mins != null && mins > 0) {
+        dynamicHours += mins / 60;
+      } else if (s.start_time && s.end_time) {
         dynamicHours += (new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 3600000;
       } else {
         const booking = sessionToBooking.get(s.id);
@@ -382,8 +481,31 @@ export class StudentsService {
         }
       }
     });
-    // Use whichever is higher: stored value or dynamically calculated
-    const totalHoursLearned = Math.max(student.total_hours_learned || 0, dynamicHours);
+    const totalHoursLearned = Math.round(dynamicHours * 10) / 10;
+
+    // ---- Weekly streak ---- consecutive weeks (ending this week) that each
+    // contain at least one attended session. A one-week grace at the current week
+    // avoids resetting to 0 the instant a new week starts.
+    const weekKey = (d: Date) => {
+      const dt = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      const dow = (dt.getUTCDay() + 6) % 7; // Monday = 0
+      dt.setUTCDate(dt.getUTCDate() - dow);
+      return dt.getTime();
+    };
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const attendedWeeks = new Set(
+      attendedSessions
+        .map(s => s.start_time || s.created_at)
+        .filter(Boolean)
+        .map(t => weekKey(new Date(t as any))),
+    );
+    let streakWeeks = 0;
+    let weekCursor = weekKey(now);
+    if (!attendedWeeks.has(weekCursor)) weekCursor -= WEEK_MS; // grace for current week
+    while (attendedWeeks.has(weekCursor)) {
+      streakWeeks++;
+      weekCursor -= WEEK_MS;
+    }
 
     // Topics this month (from tutor notes)
     const notesThisMonth = allSessions
@@ -469,7 +591,7 @@ export class StudentsService {
     // 3. Quick Learner: 10 hours
     if (totalHoursLearned >= 10 && !hasBadge('quick_learner')) earnedBadges.push('quick_learner');
     // 4. Dedicated: 4 week streak
-    if (student.streak_weeks >= 4 && !hasBadge('dedicated')) earnedBadges.push('dedicated');
+    if (streakWeeks >= 4 && !hasBadge('dedicated')) earnedBadges.push('dedicated');
     // 5. Star Student: 5 stickers
     if (stickers.length >= 5 && !hasBadge('star_student')) earnedBadges.push('star_student');
 
@@ -482,7 +604,7 @@ export class StudentsService {
     }
 
     return {
-      streakWeeks: student.streak_weeks,
+      streakWeeks,
       totalSessions,
       totalHoursLearned,
       sessionsThisMonth,
@@ -754,7 +876,14 @@ export class StudentsService {
       const scheduledStart = s.start_time || booking?.requested_start || null;
 
       const status = this.deriveAttendanceStatus(
-        row ? { present: row.present, joinedAt: row.joinedAt } : null,
+        row
+          ? {
+              present: row.present,
+              markedByTutor: row.markedByTutor,
+              minutesAttended: row.minutesAttended,
+              joinedAt: row.joinedAt,
+            }
+          : null,
         scheduledStart,
       );
 
@@ -820,19 +949,22 @@ export class StudentsService {
 
   /**
    * Status derivation shared by the student and program attendance reports.
-   *  - no attendance row OR present=false                       -> 'absent'
-   *  - present=true and joinedAt > scheduledStart + grace (5m)  -> 'late'
-   *  - present=true otherwise                                   -> 'present'
+   * Uses the same qualifying rule as the dashboard (>=30 min OR tutor-marked):
+   *  - not qualifying (no row, <30 min and not tutor-marked)     -> 'absent'
+   *  - tutor explicitly marked present                           -> 'present'
+   *  - qualifying and joinedAt > scheduledStart + grace (5m)     -> 'late'
+   *  - qualifying otherwise                                      -> 'present'
    */
   private deriveAttendanceStatus(
-    row: { present: boolean; joinedAt: Date | null } | null,
+    row: { present: boolean; markedByTutor: boolean; minutesAttended: number | null; joinedAt: Date | null } | null,
     scheduledStart: Date | string | null,
   ): AttendanceStatus {
-    if (!row || !row.present) return 'absent';
-    if (row.joinedAt && scheduledStart) {
+    if (!isQualifyingAttendance(row)) return 'absent';
+    if (row!.markedByTutor) return 'present'; // explicit tutor override
+    if (row!.joinedAt && scheduledStart) {
       const graceMs = ATTENDANCE_GRACE_MINUTES * 60 * 1000;
       const start = new Date(scheduledStart).getTime();
-      const joined = new Date(row.joinedAt).getTime();
+      const joined = new Date(row!.joinedAt).getTime();
       if (joined > start + graceMs) return 'late';
     }
     return 'present';
@@ -845,9 +977,13 @@ export class StudentsService {
         bookings: {
           include: {
             subjects: true,
+            tutors: { include: { users: { select: { first_name: true, last_name: true } } } },
             sessions: {
               include: {
                 session_recordings: { take: 1, orderBy: { created_at: 'desc' } },
+                attendance: {
+                  select: { studentId: true, present: true, markedByTutor: true, minutesAttended: true },
+                },
               },
               orderBy: { start_time: 'desc' },
             },
@@ -857,18 +993,39 @@ export class StudentsService {
     });
     if (!student) throw new NotFoundException('Student not found');
 
+    const now = new Date();
+    const tutorName = (b: (typeof student.bookings)[number]) =>
+      b.tutors?.users
+        ? `${b.tutors.users.first_name} ${b.tutors.users.last_name || ''}`.trim()
+        : null;
+
     return student.bookings.flatMap(b =>
-      b.sessions.map(s => ({
-        sessionId: s.id,
-        subject: b.subjects?.name || 'Session',
-        startTime: s.start_time,
-        endTime: s.end_time,
-        status: s.status,
-        hasRecording: s.session_recordings.length > 0,
-        recordingId: s.session_recordings[0]?.id || null,
-        hasWhiteboardSnapshot: !!s.whiteboard_snapshot_url,
-        tutorNote: s.tutor_note,
-      }))
+      b.sessions.map(s => {
+        // This student's attendance row for the session (sessions can be shared).
+        const row = s.attendance.find(a => a.studentId === student.id) ?? null;
+        const isPast =
+          s.status === 'completed' ||
+          (s.status !== 'cancelled' &&
+            ((s.end_time && new Date(s.end_time) < now) ||
+              (b.requested_end && new Date(b.requested_end) < now)));
+        const attended = isQualifyingAttendance(row);
+        return {
+          sessionId: s.id,
+          subject: b.subjects?.name || 'Session',
+          tutorName: tutorName(b),
+          startTime: s.start_time || b.requested_start || null,
+          endTime: s.end_time || b.requested_end || null,
+          status: s.status,
+          isPast,
+          // 'attended' | 'absent' for past sessions; 'upcoming' otherwise.
+          attendanceStatus: !isPast ? 'upcoming' : attended ? 'attended' : 'absent',
+          minutesAttended: row?.minutesAttended ?? null,
+          hasRecording: s.session_recordings.length > 0,
+          recordingId: s.session_recordings[0]?.id || null,
+          hasWhiteboardSnapshot: !!s.whiteboard_snapshot_url,
+          tutorNote: s.tutor_note,
+        };
+      })
     );
   }
 }

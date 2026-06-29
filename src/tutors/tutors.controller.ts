@@ -61,4 +61,14 @@ export class TutorsController {
   async getReviews(@Req() req: any) {
     return this.tutorsService.getTutorReviews(req.user.userId);
   }
+
+  // Students this tutor has actually taught (+ their past sessions) — powers the
+  // post-session "share notes/files" picker. Server-side share eligibility is
+  // re-enforced in sessions.service.shareNote.
+  @Get('my-students')
+  async getMyStudents(@Req() req: any) {
+    if (req.user.role !== 'tutor' && req.user.role !== 'admin')
+      throw new UnauthorizedException('Access denied.');
+    return this.tutorsService.getMyStudents(req.user.userId);
+  }
 }

@@ -175,6 +175,26 @@ export class AzureStorageService implements OnModuleInit {
     return blobName;
   }
 
+  /**
+   * Server-side download of a vault blob. Lets the API stream bytes to the
+   * browser same-origin (no CORS) without ever handing a SAS URL to the client —
+   * keeps view-only materials un-downloadable from the Network tab.
+   */
+  async downloadVaultAsset(blobName: string): Promise<{
+    stream: NodeJS.ReadableStream;
+    contentType?: string;
+    contentLength?: number;
+  }> {
+    const containerClient = this.blobServiceClient.getContainerClient(this.VAULT_CONTAINER);
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    const download = await blockBlobClient.download();
+    return {
+      stream: download.readableStreamBody as NodeJS.ReadableStream,
+      contentType: download.contentType,
+      contentLength: download.contentLength,
+    };
+  }
+
   async generateShortLivedSas(blobName: string): Promise<string> {
     const containerClient = this.blobServiceClient.getContainerClient(this.VAULT_CONTAINER);
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
@@ -185,6 +205,16 @@ export class AzureStorageService implements OnModuleInit {
       expiresOn
     });
     return sasUrl;
+  }
+
+  async uploadSubmissionAsset(studentId: string, buffer: Buffer, mimeType: string, originalName: string): Promise<string> {
+    const containerClient = this.blobServiceClient.getContainerClient(this.VAULT_CONTAINER);
+    const blobName = `submissions/${studentId}/${Date.now()}-${originalName}`;
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    await blockBlobClient.uploadData(buffer, {
+      blobHTTPHeaders: { blobContentType: mimeType }
+    });
+    return blobName;
   }
 }
 
