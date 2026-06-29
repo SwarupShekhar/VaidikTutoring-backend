@@ -14,8 +14,9 @@ import { JwtService } from '@nestjs/jwt';
 import { EmailService } from '../email/email.service';
 import { AzureStorageService } from '../azure/azure-storage.service';
 import { hash } from 'bcrypt';
-import { Prisma, bookings, users } from '@prisma/client';
+import { Prisma, bookings, users, VideoProvider } from '@prisma/client';
 import * as crypto from 'crypto';
+import { ZoomService } from '../zoom/zoom.service';
 
 // Define a type for skills structure
 interface TutorSkills {
@@ -32,6 +33,7 @@ export class AdminService {
         private readonly jwt: JwtService,
         private readonly email: EmailService,
         private readonly azureStorageService: AzureStorageService,
+        private readonly zoomService: ZoomService,
     ) { }
 
     async cleanupRecordings() {
@@ -73,6 +75,11 @@ export class AdminService {
                 end_time: null,
             },
             include: {
+                attendance: {
+                    include: {
+                        students: { select: { id: true, first_name: true, last_name: true, grade: true } }
+                    }
+                },
                 bookings: {
                     select: {
                         id: true,
@@ -179,7 +186,7 @@ export class AdminService {
     }
 
     async assignTutorToBooking(bookingId: string, tutorId: string) {
-        return await this.prisma.bookings.update({
+        const updated = await this.prisma.bookings.update({
             where: { id: bookingId },
             data: {
                 assigned_tutor_id: tutorId,
@@ -199,6 +206,159 @@ export class AdminService {
                 subjects: true,
             },
         });
+
+        // Ensure a session exists so the student can actually join — the admin-assign
+        // path previously only flipped status to 'confirmed' (no session → no link).
+        // Mirrors the tutor-claim path. Idempotent.
+        // NOTE: explicit `select` everywhere — the prod DB is missing the schema's
+        // zoom_*/video_provider columns, so a default (all-column) select on `sessions`
+        // throws "column does not exist".
+        const existingSession = await this.prisma.sessions.findFirst({
+            where: { booking_id: bookingId },
+            select: { id: true },
+        });
+        if (!existingSession) {
+            const session = await this.prisma.sessions.create({
+                data: {
+                    booking_id: bookingId,
+                    start_time: updated.requested_start ?? new Date(),
+                    end_time: updated.requested_end ?? new Date(Date.now() + 3600000),
+                    status: 'scheduled',
+                    meet_link: null,
+                },
+                select: { id: true },
+            });
+            // Join URL = the in-app session page (it provisions the Daily room on demand).
+            await this.prisma.sessions.update({
+                where: { id: session.id },
+                data: { meet_link: `${process.env.FRONTEND_URL}/session/${session.id}` },
+                select: { id: true },
+            });
+        }
+
+        // Bust the student's cached dashboard so the confirmed session shows immediately.
+        const studentUserId = (updated as any).students?.users_students_user_idTousers?.id;
+        if (studentUserId) {
+            await this.cacheManager.del(`dashboard:student:${studentUserId}`).catch(() => { });
+        }
+
+        return updated;
+    }
+
+    async createGroupSession(data: {
+        tutorId: string;
+        studentIds: string[];
+        subjectId?: string;
+        curriculumId?: string;
+        startTime: Date;
+        endTime: Date;
+        provider: VideoProvider;
+    }) {
+        const { tutorId, studentIds, subjectId, curriculumId, startTime, endTime, provider } = data;
+
+        // 1. Create a Booking (so tutor has it on their calendar)
+        const booking = await this.prisma.bookings.create({
+            data: {
+                assigned_tutor_id: tutorId,
+                status: 'confirmed',
+                subject_id: subjectId,
+                curriculum_id: curriculumId,
+                requested_start: startTime,
+                requested_end: endTime,
+            },
+        });
+
+        // 2. Prepare Zoom meeting if chosen
+        let zoomMeetingId: string | null = null;
+        let zoomJoinUrl: string | null = null;
+        let meetLink: string | null = null;
+        if (provider === 'ZOOM') {
+            const durationMins = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
+            const zoomRes = await this.zoomService.createMeeting(
+                'Group Tutoring Session',
+                startTime,
+                durationMins
+            );
+            zoomMeetingId = zoomRes.meetingId;
+            zoomJoinUrl = zoomRes.joinUrl;
+            meetLink = zoomJoinUrl; // Set meet_link directly for zoom
+        }
+
+        // 3. Create Session
+        const session = await this.prisma.sessions.create({
+            data: {
+                booking_id: booking.id,
+                start_time: startTime,
+                end_time: endTime,
+                status: 'scheduled',
+                video_provider: provider,
+                zoom_meeting_id: zoomMeetingId,
+                zoom_join_url: zoomJoinUrl,
+                meet_link: meetLink, // Can be overwritten if Daily
+            },
+        });
+
+        // If Daily, meet_link is the session URL on our domain
+        if (provider === 'DAILYCO') {
+            await this.prisma.sessions.update({
+                where: { id: session.id },
+                data: { meet_link: `${process.env.FRONTEND_URL}/session/${session.id}` },
+            });
+        }
+
+        // 4. Create Attendance records for each student
+        const attendanceData = studentIds.map(studentId => ({
+            sessionId: session.id,
+            studentId
+        }));
+
+        if (attendanceData.length > 0) {
+            await this.prisma.attendance.createMany({
+                data: attendanceData
+            });
+
+            // 5. Send Email Notifications
+            try {
+                const [tutor, students] = await Promise.all([
+                    this.prisma.tutors.findUnique({
+                        where: { id: tutorId },
+                        include: { users: true }
+                    }),
+                    this.prisma.students.findMany({
+                        where: { id: { in: studentIds } },
+                        include: { users_students_user_idTousers: true }
+                    })
+                ]);
+
+                if (tutor && students.length > 0) {
+                    const tutorName = `${tutor.users?.first_name || ''} ${tutor.users?.last_name || ''}`.trim();
+                    const finalMeetLink = provider === 'DAILYCO' 
+                        ? `${process.env.FRONTEND_URL}/session/${session.id}` 
+                        : meetLink;
+
+                    await Promise.all(students.map(student => {
+                        const email = student.email || student.users_students_user_idTousers?.email;
+                        const firstName = student.first_name || student.users_students_user_idTousers?.first_name || 'Student';
+                        const userId = student.user_id || student.id;
+
+                        if (!email) return Promise.resolve();
+
+                        return this.email.sendGroupSessionNotification({
+                            to: email,
+                            userId: userId,
+                            firstName: firstName,
+                            tutorName: tutorName,
+                            startTime: startTime,
+                            meetLink: finalMeetLink || ''
+                        });
+                    }));
+                }
+            } catch (err) {
+                console.error("Failed to send group session emails:", err);
+            }
+        }
+
+        return session;
     }
 
     async getTutorRecommendations(subjectId: string) {

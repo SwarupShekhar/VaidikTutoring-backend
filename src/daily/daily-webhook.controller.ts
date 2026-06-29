@@ -75,6 +75,54 @@ export class DailyWebhookController {
       return { received: true };
     }
 
+    // 3. Handle Participant Joined / Left (Attendance)
+    if (payload.type === 'participant.joined' || payload.type === 'participant.left') {
+      const roomName = payload.payload?.room || payload.payload?.room_name;
+      const sessionId = this.extractSessionId(roomName);
+      const userId = payload.payload?.participant?.user_id;
+
+      if (sessionId && userId) {
+        try {
+          const resolvedSessionId = await this.sessionsService.ensureSessionId(sessionId);
+          
+          // Find the student record for this user
+          const student = await this.prisma.students.findFirst({
+            where: { user_id: userId }
+          });
+
+          if (student) {
+            const joined = payload.type === 'participant.joined';
+            
+            await this.prisma.attendance.upsert({
+              where: {
+                sessionId_studentId: {
+                  sessionId: resolvedSessionId,
+                  studentId: student.id
+                }
+              },
+              create: {
+                sessionId: resolvedSessionId,
+                studentId: student.id,
+                present: joined,
+                joinedAt: joined ? new Date() : null,
+                leftAt: joined ? null : new Date()
+              },
+              update: {
+                present: joined,
+                joinedAt: joined ? new Date() : undefined,
+                leftAt: joined ? null : new Date()
+              }
+            });
+            
+            this.logger.log(`Marked attendance for student ${student.id} in session ${resolvedSessionId} (Daily joined: ${joined})`);
+          }
+        } catch (error) {
+          this.logger.error(`Failed to handle attendance for daily session ${sessionId}: ${error.message}`);
+        }
+      }
+      return { received: true };
+    }
+
     return { received: true };
   }
 

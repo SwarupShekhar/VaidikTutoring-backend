@@ -24,17 +24,18 @@ model assessment_attempts {
 }
 
 model assessments {
-  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  title               String?
-  subject_id          String?
-  curriculum_id       String?
-  metadata            Json?
-  created_by          String?               @db.Uuid
-  created_at          DateTime?             @default(now()) @db.Timestamptz(6)
-  assessment_attempts assessment_attempts[]
-  users               users?                @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  curricula           curricula?            @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  subjects            subjects?             @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title                String?
+  subject_id           String?
+  curriculum_id        String?
+  metadata             Json?
+  created_by           String?                @db.Uuid
+  created_at           DateTime?              @default(now()) @db.Timestamptz(6)
+  assessment_attempts  assessment_attempts[]
+  assessment_questions assessment_questions[]
+  users                users?                 @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  curricula            curricula?             @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subjects             subjects?              @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([created_by])
   @@index([curriculum_id])
@@ -57,31 +58,31 @@ model audit_logs {
 }
 
 model bookings {
-  id                        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  student_id                String?    @db.Uuid
-  package_id                String?    @db.Uuid
-  subject_id                String?
-  curriculum_id             String?
-  requested_start           DateTime?  @db.Timestamptz(6)
-  requested_end             DateTime?  @db.Timestamptz(6)
-  status                    String?
-  assigned_tutor_id         String?    @db.Uuid
-  note                      String?
-  created_at                DateTime?  @default(now()) @db.Timestamptz(6)
-  program_id                String?    @db.Uuid
-  credit_cost               Int        @default(0)
-  is_trial_session          Boolean    @default(false)
-  is_free_session           Boolean    @default(false)
-  fallback_broadcasted_at   DateTime?  @db.Timestamptz(6)
-  tutors            tutors?    @relation(fields: [assigned_tutor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  curricula         curricula? @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  packages          packages?  @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  program           Program?   @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  students          students?  @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  subjects          subjects?  @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  sessions          sessions[]
-  enrollment_id     String?    @db.Uuid
-  enrollment        enrollments? @relation(fields: [enrollment_id], references: [id])
+  id                      String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  student_id              String?      @db.Uuid
+  package_id              String?      @db.Uuid
+  subject_id              String?
+  curriculum_id           String?
+  requested_start         DateTime?    @db.Timestamptz(6)
+  requested_end           DateTime?    @db.Timestamptz(6)
+  status                  String?
+  assigned_tutor_id       String?      @db.Uuid
+  note                    String?
+  created_at              DateTime?    @default(now()) @db.Timestamptz(6)
+  program_id              String?      @db.Uuid
+  credit_cost             Int          @default(0)
+  is_free_session         Boolean      @default(false)
+  is_trial_session        Boolean      @default(false)
+  enrollment_id           String?      @db.Uuid
+  fallback_broadcasted_at DateTime?    @db.Timestamptz(6)
+  tutors                  tutors?      @relation(fields: [assigned_tutor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  curricula               curricula?   @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  enrollment              enrollments? @relation(fields: [enrollment_id], references: [id])
+  packages                packages?    @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  program                 Program?     @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  students                students?    @relation(fields: [student_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subjects                subjects?    @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sessions                sessions[]
 
   @@index([student_id])
   @@index([assigned_tutor_id])
@@ -103,6 +104,7 @@ model curricula {
   description            String?
   created_at             DateTime?                @default(now()) @db.Timestamptz(6)
   assessments            assessments[]
+  assignments            assignments[]
   bookings               bookings[]
   curriculum_subject_map curriculum_subject_map[]
   progress_points        progress_points[]
@@ -153,20 +155,20 @@ model package_items {
 }
 
 model packages {
-  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name          String
-  description   String?
-  price_cents   Int?
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  description    String?
+  price_cents    Int?
+  currency       String?         @default("USD")
+  billing_type   String?
+  active         Boolean?        @default(true)
+  created_at     DateTime?       @default(now()) @db.Timestamptz(6)
   base_price_usd Int?
-  currency      String?         @default("USD")
-  billing_type  String?
-  active        Boolean?        @default(true)
-  created_at    DateTime?       @default(now()) @db.Timestamptz(6)
-  bookings      bookings[]
-  package_items package_items[]
-  purchases     purchases[]
-  user_credits  user_credits[]
-  students      students[]
+  bookings       bookings[]
+  package_items  package_items[]
+  purchases      purchases[]
+  students       students[]
+  user_credits   user_credits[]
 
   @@schema("app")
 }
@@ -204,11 +206,11 @@ model purchases {
   refund_id             String?
   refunded_at           DateTime? @db.Timestamptz(6)
   verified_at           DateTime? @db.Timestamptz(6)
-  credit_granted_at     DateTime? @db.Timestamptz(6)
   ip_address            String?
   user_agent            String?
   created_at            DateTime? @default(now()) @db.Timestamptz(6)
   program_id            String?   @db.Uuid
+  credit_granted_at     DateTime? @db.Timestamptz(6)
   packages              packages? @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   program               Program?  @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users                 users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -278,12 +280,12 @@ model session_recordings {
   file_size_bytes  Int?
   duration_seconds Int?
   transcript       String?
-  azure_blob_name    String?
-  mime_type          String?
-  last_viewed_at     DateTime? @db.Timestamptz(6)
-  view_count         Int       @default(0)
-  auto_delete_at     DateTime? @db.Timestamptz(6)
   created_at       DateTime? @default(now()) @db.Timestamptz(6)
+  auto_delete_at   DateTime? @db.Timestamptz(6)
+  azure_blob_name  String?
+  last_viewed_at   DateTime? @db.Timestamptz(6)
+  view_count       Int       @default(0)
+  mime_type        String?
   sessions         sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users            users?    @relation(fields: [uploaded_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -293,36 +295,39 @@ model session_recordings {
 }
 
 model sessions {
-  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  booking_id         String?              @db.Uuid
-  start_time         DateTime?            @db.Timestamptz(6)
-  end_time           DateTime?            @db.Timestamptz(6)
-  meet_link          String?
-  whiteboard_link    String?
-  status             String?
-  recordingRequired  Boolean?             @default(true) @map("recording_required")
-  recordingUploaded  Boolean?             @default(false) @map("recording_uploaded")
-  reviewedByAdmin    Boolean?             @default(false) @map("reviewed_by_admin")
-  flagged            Boolean?             @default(false)
-  created_at         DateTime?            @default(now()) @db.Timestamptz(6)
-  program_id         String?              @db.Uuid
-  attention_status   String?
-  attention_meta     Json?
-  current_phase      SessionPhase         @default(WARM_CONNECT)
-  phase_history      Json?
-  pedagogy_status    String?
-  tutor_note         String?
+  id                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_id              String?              @db.Uuid
+  start_time              DateTime?            @db.Timestamptz(6)
+  end_time                DateTime?            @db.Timestamptz(6)
+  meet_link               String?
+  whiteboard_link         String?
+  video_provider          VideoProvider?       @default(DAILYCO)
+  zoom_meeting_id         String?
+  zoom_join_url           String?
+  status                  String?
+  recordingRequired       Boolean?             @default(true) @map("recording_required")
+  recordingUploaded       Boolean?             @default(false) @map("recording_uploaded")
+  reviewedByAdmin         Boolean?             @default(false) @map("reviewed_by_admin")
+  flagged                 Boolean?             @default(false)
+  created_at              DateTime?            @default(now()) @db.Timestamptz(6)
+  program_id              String?              @db.Uuid
+  attention_status        String?
+  attention_meta          Json?
+  current_phase           SessionPhase         @default(WARM_CONNECT)
+  phase_history           Json?
+  pedagogy_status         String?
+  tutor_note              String?
   whiteboard_snapshot_url String?
-  attendance         Attendance[]
-  attention_events   AttentionEvent[]
-  class_notes        class_notes[]
-  credit_usage_logs  credit_usage_logs[]
-  session_messages   session_messages[]
-  session_recordings session_recordings[]
-  sticker_rewards    sticker_rewards[]
-  tutor_ratings      tutor_ratings[]
-  bookings           bookings?            @relation(fields: [booking_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  program            Program?             @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  attendance              Attendance[]
+  attention_events        AttentionEvent[]
+  class_notes             class_notes[]
+  credit_usage_logs       credit_usage_logs[]
+  session_messages        session_messages[]
+  session_recordings      session_recordings[]
+  bookings                bookings?            @relation(fields: [booking_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  program                 Program?             @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sticker_rewards         sticker_rewards[]
+  tutor_ratings           tutor_ratings?
 
   @@index([booking_id])
   @@index([program_id])
@@ -346,41 +351,46 @@ model students {
   interests                            Json?
   recent_focus                         String?
   struggle_areas                       Json?
+  created_at                           DateTime?             @default(now()) @db.Timestamptz(6)
+  program_id                           String?               @db.Uuid
+  is_trial_active                      Boolean               @default(true)
+  subscription_credits                 Int                   @default(0)
+  subscription_ends                    DateTime?             @db.Timestamptz(6)
+  subscription_plan                    String?               @db.VarChar(20)
+  subscription_starts                  DateTime?             @db.Timestamptz(6)
+  trial_credits                        Int                   @default(10)
+  trial_expires_at                     DateTime?             @db.Timestamptz(6)
+  trial_sessions_used                  Int                   @default(0)
+  trial_started_at                     DateTime?             @db.Timestamptz(6)
+  enrollment_status                    String                @default("trial")
+  package_end_date                     DateTime?             @db.Timestamptz(6)
+  practice_xp                          Int                   @default(0)
+  practice_streak                      Int                   @default(0)
+  last_practice_at                     DateTime?             @db.Timestamptz(6)
+  sessions_remaining                   Int                   @default(0)
+  badges                               String[]              @default([])
+  last_session_week                    String?
+  streak_weeks                         Int                   @default(0)
+  total_hours_learned                  Float                 @default(0)
+  trial_tutor_id                       String?               @db.Uuid
+  package_id                           String?               @db.Uuid
   exam_board                           String?
   target_grade                         String?
   exam_date                            DateTime?             @db.Date
-  created_at                           DateTime?             @default(now()) @db.Timestamptz(6)
-  program_id                           String?               @db.Uuid
-  package_id                           String?               @db.Uuid
-  trial_credits                        Int                   @default(10)
-  trial_started_at                     DateTime?             @db.Timestamptz(6)
-  trial_expires_at                     DateTime?             @db.Timestamptz(6)
-  trial_sessions_used                  Int                   @default(0)
-  is_trial_active                      Boolean               @default(true)
-  subscription_plan                    String?               @db.VarChar(20)
-  subscription_credits                 Int                   @default(0)
-  subscription_starts                  DateTime?             @db.Timestamptz(6)
-  subscription_ends                    DateTime?             @db.Timestamptz(6)
-  enrollment_status                    String                @default("trial")
-  package_end_date                     DateTime?             @db.Timestamptz(6)
-  sessions_remaining                   Int                   @default(0)
-  streak_weeks                         Int                   @default(0)
-  last_session_week                    String?
-  badges                               String[]              @default([])
-  total_hours_learned                  Float                 @default(0)
-  trial_tutor_id                       String?               @db.Uuid
+  target_exam                          String?
   assessment_attempts                  assessment_attempts[]
   attendance                           Attendance[]
   bookings                             bookings[]
   credit_adjustments                   credit_adjustments[]
-  progress_points                      progress_points[]
   enrollments                          enrollments[]
-  trial_tutor                          tutors?               @relation("trial_tutor", fields: [trial_tutor_id], references: [id])
+  progress_points                      progress_points[]
   curricula                            curricula?            @relation(fields: [curriculum_preference], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  packages                             packages?             @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users_students_parent_user_idTousers users?                @relation("students_parent_user_idTousers", fields: [parent_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   program                              Program?              @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  packages                             packages?             @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  trial_tutor                          tutors?               @relation("trial_tutor", fields: [trial_tutor_id], references: [id])
   users_students_user_idTousers        users?                @relation("students_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  submissions                          submissions[]
   tutor_messages                       tutor_messages[]
 
   @@index([parent_user_id])
@@ -398,6 +408,7 @@ model subjects {
   description            String?
   created_at             DateTime?                @default(now()) @db.Timestamptz(6)
   assessments            assessments[]
+  assignments            assignments[]
   bookings               bookings[]
   curriculum_subject_map curriculum_subject_map[]
   package_items          package_items[]
@@ -420,27 +431,27 @@ model tutor_shifts {
 }
 
 model tutors {
-  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id            String         @db.Uuid
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String           @db.Uuid
   bio                String?
   qualifications     Json?
   skills             Json?
   hourly_rate_cents  Int?
   employment_type    String?
-  is_active          Boolean?       @default(true)
-  tutor_approved     Boolean        @default(false)
+  is_active          Boolean?         @default(true)
+  tutor_approved     Boolean          @default(false)
   tutor_review_notes String?
-  created_at         DateTime?      @default(now()) @db.Timestamptz(6)
-  program_id         String?        @db.Uuid
-  last_seen          DateTime?      @db.Timestamptz(6)
+  created_at         DateTime?        @default(now()) @db.Timestamptz(6)
+  program_id         String?          @db.Uuid
+  last_seen          DateTime?        @db.Timestamptz(6)
   bookings           bookings[]
-  tutor_shifts       tutor_shifts[]
-  tutor_ratings      tutor_ratings[]
-  program            Program?       @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  users              users          @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  trial_students     students[]    @relation("trial_tutor")
   enrollments        enrollments[]
+  trial_students     students[]       @relation("trial_tutor")
   tutor_messages     tutor_messages[]
+  tutor_ratings      tutor_ratings[]
+  tutor_shifts       tutor_shifts[]
+  program            Program?         @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users              users            @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([user_id])
   @@index([program_id])
@@ -458,41 +469,42 @@ model users {
   timezone                                String?              @default("UTC")
   is_active                               Boolean?             @default(true)
   email_verified                          Boolean              @default(false)
-  phone_verified                          Boolean              @default(false)
   force_password_change                   Boolean              @default(false)
   email_verification_token                String?
   email_verification_expires              DateTime?            @db.Timestamptz(6)
   tutor_invite_token                      String?
   tutor_invite_expires                    DateTime?            @db.Timestamptz(6)
   created_at                              DateTime?            @default(now()) @db.Timestamptz(6)
-  last_login_at                           DateTime?            @db.Timestamptz(6)
   parent_id                               String?              @db.Uuid
   school_id                               String?              @db.Uuid
   tutor_status                            TutorStatus          @default(ACTIVE)
+  phone_verified                          Boolean              @default(false)
+  last_login_at                           DateTime?            @db.Timestamptz(6)
+  email_opted_out                         Boolean              @default(false)
   lead_source                             String?
   onboarding_status                       String               @default("not_started")
-  email_opted_out                         Boolean              @default(false)
   assessments                             assessments[]
+  assignments                             assignments[]
   student_attention_events                AttentionEvent[]     @relation("StudentAttentionEvents")
   tutor_attention_events                  AttentionEvent[]     @relation("TutorAttentionEvents")
   audit_logs                              audit_logs[]
   blog_versions                           blog_versions[]
   blogs                                   blogs[]
+  class_notes                             class_notes[]
   credit_adjustments                      credit_adjustments[]
   credit_usage_logs                       credit_usage_logs[]
   notifications                           notifications[]
   purchases                               purchases[]
   session_messages                        session_messages[]
-  class_notes                             class_notes[]
   session_recordings                      session_recordings[]
-  support_tickets                         support_tickets[]
+  sticker_rewards                         sticker_rewards[]
   students_students_parent_user_idTousers students[]           @relation("students_parent_user_idTousers")
-  students_students_user_idTousers        students?            @relation("students_user_idTousers")
+  users_students_user_idTousers           students?            @relation("students_user_idTousers")
+  support_tickets                         support_tickets[]
+  tutor_messages                          tutor_messages[]
+  tutor_ratings                           tutor_ratings[]
   tutors                                  tutors[]
   user_credits                            user_credits[]
-  sticker_rewards                         sticker_rewards[]
-  tutor_ratings                           tutor_ratings[]
-  tutor_messages                          tutor_messages[]
   parent                                  users?               @relation("ParentChildren", fields: [parent_id], references: [id])
   children                                users[]              @relation("ParentChildren")
   school                                  School?              @relation(fields: [school_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -505,14 +517,14 @@ model users {
 }
 
 model credit_adjustments {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  student_id String    @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  student_id String   @db.Uuid
   amount     Int
   note       String?
-  granted_by String?   @db.Uuid
-  created_at DateTime  @default(now()) @db.Timestamptz(6)
-  students   students  @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  users      users?    @relation(fields: [granted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  granted_by String?  @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  users      users?   @relation(fields: [granted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  students   students @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([student_id])
   @@index([granted_by])
@@ -534,25 +546,25 @@ model session_messages {
 }
 
 model blogs {
-  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  title        String
-  slug         String          @unique
-  excerpt      String
-  content      String
-  image_url    String
-  category     String
-  status       String          @default("PENDING")
-  author_id    String          @db.Uuid
-  created_at   DateTime?       @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime?       @updatedAt @db.Timestamptz(6)
-  image_alt    String?
-  seo_title    String?
-  seo_description String?
-  target_keyword String?
-  related_blog_ids String[] @default([])
-  published_at DateTime?       @db.Timestamptz(6)
-  versions     blog_versions[]
-  users        users           @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title            String
+  slug             String          @unique
+  excerpt          String
+  content          String
+  image_url        String
+  category         String
+  status           String          @default("PENDING")
+  author_id        String          @db.Uuid
+  created_at       DateTime?       @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime?       @updatedAt @db.Timestamptz(6)
+  image_alt        String?
+  published_at     DateTime?       @db.Timestamptz(6)
+  related_blog_ids String[]        @default([])
+  seo_description  String?
+  seo_title        String?
+  target_keyword   String?
+  versions         blog_versions[]
+  users            users           @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([author_id])
   @@index([status, published_at])
@@ -561,23 +573,23 @@ model blogs {
 }
 
 model blog_versions {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  blog_id    String   @db.Uuid
-  title      String
-  excerpt    String
-  content    String
-  image_url  String
-  category   String
-  image_alt  String?
-  seo_title  String?
-  seo_description String?
-  target_keyword String?
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  blog_id          String   @db.Uuid
+  title            String
+  excerpt          String
+  content          String
+  image_url        String
+  category         String
+  image_alt        String?
+  summary          String?
+  author_id        String   @db.Uuid
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
   related_blog_ids String[] @default([])
-  summary    String?
-  author_id  String   @db.Uuid
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-  author     users    @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  blog       blogs    @relation(fields: [blog_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  seo_description  String?
+  seo_title        String?
+  target_keyword   String?
+  author           users    @relation(fields: [author_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  blog             blogs    @relation(fields: [blog_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([blog_id])
   @@index([author_id])
@@ -585,26 +597,26 @@ model blog_versions {
 }
 
 model Program {
-  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name        String
   status      String
-  startDate   DateTime    @map("start_date") @db.Timestamptz(6)
-  endDate     DateTime    @map("end_date") @db.Timestamptz(6)
+  startDate   DateTime      @map("start_date") @db.Timestamptz(6)
+  endDate     DateTime      @map("end_date") @db.Timestamptz(6)
   academic    Json
   operational Json
   financial   Json
   staffing    Json
   delivery    Json
   reporting   Json
-  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-  schoolId    String?     @map("school_id") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  schoolId    String?       @map("school_id") @db.Uuid
   bookings    bookings[]
-  school      School?     @relation(fields: [schoolId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  enrollments enrollments[]
+  school      School?       @relation(fields: [schoolId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   purchases   purchases[]
   sessions    sessions[]
   students    students[]
   tutors      tutors[]
-  enrollments enrollments[]
 
   @@map("programs")
   @@schema("app")
@@ -636,6 +648,7 @@ model Attendance {
   sessionId       String    @map("session_id") @db.Uuid
   studentId       String    @map("student_id") @db.Uuid
   present         Boolean   @default(false)
+  markedByTutor   Boolean   @default(false) @map("marked_by_tutor")
   minutesAttended Int?      @map("minutes_attended")
   joinedAt        DateTime? @map("joined_at") @db.Timestamptz(6)
   leftAt          DateTime? @map("left_at") @db.Timestamptz(6)
@@ -667,38 +680,28 @@ model AttentionEvent {
 }
 
 model enrollments {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  student_id      String    @db.Uuid
-  program_id      String    @db.Uuid
-  tutor_id        String?   @db.Uuid
-
-  // Schedule
-  schedule_preset String    // "SCHOOL_NIGHTS" | "WEEKENDS" | "FLEXIBLE" | "CUSTOM"
-  schedule_days   Int[]     // [1,3,5] Mon=1...Sun=7, resolved from preset
-  start_time      String    // "18:00" HH:mm in student's timezone
-  duration        Int       @default(60)  // minutes
-
-  // Booking fields (needed for auto-created bookings)
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  student_id      String     @db.Uuid
+  program_id      String     @db.Uuid
+  tutor_id        String?    @db.Uuid
+  schedule_preset String
+  schedule_days   Int[]
+  start_time      String
+  duration        Int        @default(60)
   subject_ids     String[]
   curriculum_id   String?
   package_id      String?    @db.Uuid
-
-  // Lifecycle
-  status          String    // "active" | "paused" | "completed"
-  started_at      DateTime  @default(now()) @db.Timestamptz(6)
-  ended_at        DateTime? @db.Timestamptz(6)
-  pause_until     DateTime? @db.Timestamptz(6)
-
-  // Control
-  schedule_source String    @default("auto")  // "auto" | "manual"
-  auto_assign     Boolean   @default(true)
-
-  created_at      DateTime  @default(now()) @db.Timestamptz(6)
-
-  students  students @relation(fields: [student_id], references: [id], onDelete: Cascade)
-  program   Program  @relation(fields: [program_id], references: [id], onDelete: NoAction)
-  tutors    tutors?  @relation(fields: [tutor_id], references: [id], onDelete: NoAction)
-  bookings  bookings[]
+  status          String
+  started_at      DateTime   @default(now()) @db.Timestamptz(6)
+  ended_at        DateTime?  @db.Timestamptz(6)
+  pause_until     DateTime?  @db.Timestamptz(6)
+  schedule_source String     @default("auto")
+  auto_assign     Boolean    @default(true)
+  created_at      DateTime   @default(now()) @db.Timestamptz(6)
+  bookings        bookings[]
+  program         Program    @relation(fields: [program_id], references: [id], onDelete: NoAction)
+  students        students   @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  tutors          tutors?    @relation(fields: [tutor_id], references: [id], onDelete: NoAction)
 
   @@index([student_id])
   @@index([tutor_id])
@@ -727,12 +730,12 @@ model tutor_ratings {
   session_id       String   @unique @db.Uuid
   tutor_id         String   @db.Uuid
   rated_by_user_id String?  @db.Uuid
-  score            Int      // 1–5
+  score            Int
   comment          String?  @db.VarChar(1000)
   created_at       DateTime @default(now()) @db.Timestamptz(6)
+  users            users?   @relation(fields: [rated_by_user_id], references: [id], onUpdate: NoAction)
   sessions         sessions @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   tutors           tutors   @relation(fields: [tutor_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  users            users?   @relation(fields: [rated_by_user_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([tutor_id])
   @@index([rated_by_user_id])
@@ -753,6 +756,176 @@ model class_notes {
 
   @@index([session_id])
   @@index([uploaded_by])
+  @@schema("app")
+}
+
+model support_tickets {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String   @db.Uuid
+  message     String
+  context     Json?
+  status      String   @default("open")
+  admin_note  String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @updatedAt @db.Timestamptz(6)
+  attachments Json?    @default("[]")
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id])
+  @@schema("app")
+}
+
+model vault_assets {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title           String
+  description     String?
+  file_type       String
+  azure_blob_name String
+  mime_type       String
+  uploaded_by     String?  @db.Uuid
+  subject_id      String?
+  curriculum_id   String?
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  assignments     assignments[]
+
+  @@index([uploaded_by])
+  @@schema("app")
+}
+
+model session_asset_annotations {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  session_id      String   @db.Uuid
+  asset_id        String   @db.Uuid
+  student_id      String?  @db.Uuid
+  annotation_data Json
+  current_page    Int      @default(1)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([session_id, asset_id])
+  @@schema("app")
+}
+
+model tutor_messages {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  student_id  String   @db.Uuid
+  tutor_id    String   @db.Uuid
+  sender_id   String   @db.Uuid
+  text        String
+  is_read     Boolean  @default(false)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  attachments Json?    @default("[]")
+  sender      users    @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+  student     students @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  tutor       tutors   @relation(fields: [tutor_id], references: [id], onDelete: Cascade)
+
+  @@index([student_id, tutor_id])
+  @@index([sender_id])
+  @@schema("app")
+}
+
+model LeadCapture {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email      String
+  source     String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([email])
+  @@map("lead_captures")
+  @@schema("app")
+}
+
+model email_events {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String    @db.Uuid
+  type        String
+  sent_at     DateTime  @default(now()) @db.Timestamptz(6)
+  answer      String?
+  answered_at DateTime? @db.Timestamptz(6)
+
+  @@unique([user_id, type])
+  @@index([user_id])
+  @@schema("app")
+}
+
+model exchange_rates {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  currency     String   @unique
+  rate_to_usd  Decimal  @db.Decimal(16, 6)
+  last_updated DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("app")
+}
+
+model test_prep_leads {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  email       String
+  phone       String
+  target_test String
+  status      String   @default("NEW")
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("app")
+}
+
+model assessment_questions {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assessment_id  String?      @db.Uuid
+  curriculum_id  String?
+  grade          String?
+  question_type  String
+  content        Json
+  correct_answer Json?
+  metadata       Json?
+  created_at     DateTime?    @default(now()) @db.Timestamptz(6)
+  assessments    assessments? @relation(fields: [assessment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([assessment_id])
+  @@index([curriculum_id])
+  @@index([grade])
+  @@schema("app")
+}
+
+model assignments {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title         String
+  description   String?
+  subject_id    String?
+  curriculum_id String?
+  grade         String?
+  asset_id      String?       @db.Uuid
+  due_date      DateTime?     @db.Timestamptz(6)
+  created_by    String?       @db.Uuid
+  created_at    DateTime?     @default(now()) @db.Timestamptz(6)
+  users         users?        @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  curricula     curricula?    @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subjects      subjects?     @relation(fields: [subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vault_assets  vault_assets? @relation(fields: [asset_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  submissions   submissions[]
+
+  @@index([curriculum_id])
+  @@index([subject_id])
+  @@index([asset_id])
+  @@index([created_by])
+  @@schema("app")
+}
+
+model submissions {
+  id              String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  assignment_id   String?      @db.Uuid
+  student_id      String?      @db.Uuid
+  content         Json?
+  azure_blob_name String?
+  score           Decimal?     @db.Decimal
+  feedback        Json?
+  submitted_at    DateTime?    @default(now()) @db.Timestamptz(6)
+  graded_at       DateTime?    @db.Timestamptz(6)
+  assignments     assignments? @relation(fields: [assignment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  students        students?    @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([assignment_id])
+  @@index([student_id])
   @@schema("app")
 }
 
@@ -784,109 +957,9 @@ enum SessionPhase {
   @@schema("app")
 }
 
-model support_tickets {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id    String   @db.Uuid
-  message    String
-  context    Json?
-  status     String   @default("open")
-  admin_note String?
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-  updated_at DateTime @updatedAt @db.Timestamptz(6)
-  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([user_id])
-  @@schema("app")
-}
-model vault_assets {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  title           String
-  description     String?
-  file_type       String   // "PDF" | "PPT"
-  azure_blob_name String
-  mime_type       String
-  uploaded_by     String?  @db.Uuid
-  subject_id      String?
-  curriculum_id   String?
-  created_at      DateTime @default(now()) @db.Timestamptz(6)
-
-  @@index([uploaded_by])
-  @@schema("app")
-}
-
-model session_asset_annotations {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  session_id      String   @db.Uuid
-  asset_id        String   @db.Uuid
-  student_id      String?  @db.Uuid
-  annotation_data Json     // Array of ink strokes/elements
-  current_page    Int      @default(1)
-  created_at      DateTime @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime @updatedAt @db.Timestamptz(6)
-
-  @@index([session_id, asset_id])
-  @@schema("app")
-}
-
-model tutor_messages {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  student_id String   @db.Uuid
-  tutor_id   String   @db.Uuid
-  sender_id  String   @db.Uuid
-  text       String
-  is_read    Boolean  @default(false)
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-
-  student    students @relation(fields: [student_id], references: [id], onDelete: Cascade)
-  tutor      tutors   @relation(fields: [tutor_id], references: [id], onDelete: Cascade)
-  sender     users    @relation(fields: [sender_id], references: [id], onDelete: Cascade)
-
-  @@index([student_id, tutor_id])
-  @@index([sender_id])
-  @@schema("app")
-}
-
-model LeadCapture {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email      String
-  source     String
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-
-  @@index([email])
-  @@map("lead_captures")
-  @@schema("app")
-}
-
-model email_events {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id     String    @db.Uuid
-  type        String // 'welcome' | 'mcq_academic' | 'mcq_friction' | 'breakup'
-  sent_at     DateTime  @default(now()) @db.Timestamptz(6)
-  answer      String?
-  answered_at DateTime? @db.Timestamptz(6)
-
-  @@unique([user_id, type])
-  @@index([user_id])
-  @@schema("app")
-}
-
-model exchange_rates {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  currency      String    @unique
-  rate_to_usd   Decimal   @db.Decimal(16, 6)
-  last_updated  DateTime  @default(now()) @db.Timestamptz(6)
-
-  @@schema("app")
-}
-
-model test_prep_leads {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name          String
-  email         String
-  phone         String
-  target_test   String
-  status        String    @default("NEW")
-  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+enum VideoProvider {
+  DAILYCO
+  ZOOM
 
   @@schema("app")
 }

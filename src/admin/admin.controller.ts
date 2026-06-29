@@ -70,6 +70,32 @@ class AllocateTutorDto {
   bookingId?: string;
 }
 
+class CreateGroupSessionDto {
+  @IsUUID()
+  tutorId!: string;
+
+  @IsArray()
+  @IsUUID('4', { each: true })
+  studentIds!: string[];
+
+  @IsOptional()
+  @IsString()
+  subjectId?: string;
+
+  @IsOptional()
+  @IsString()
+  curriculumId?: string;
+
+  @IsString()
+  startTime!: string;
+
+  @IsString()
+  endTime!: string;
+
+  @IsString()
+  provider!: 'ZOOM' | 'DAILYCO';
+}
+
 @Controller('admin')
 @UseGuards(ClerkAuthGuard, RolesGuard)
 @Roles('admin')
@@ -306,6 +332,19 @@ export class AdminController {
       this.logger.error('POST /admin/allocations failed', e);
       throw e;
     }
+  }
+
+  @Post('group-sessions')
+  async createGroupSession(@Body() dto: CreateGroupSessionDto) {
+    return await this.adminService.createGroupSession({
+      tutorId: dto.tutorId,
+      studentIds: dto.studentIds,
+      subjectId: dto.subjectId,
+      curriculumId: dto.curriculumId,
+      startTime: new Date(dto.startTime),
+      endTime: new Date(dto.endTime),
+      provider: dto.provider,
+    });
   }
 
   @Patch('bookings/:id/assign-tutor')

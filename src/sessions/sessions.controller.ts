@@ -160,7 +160,8 @@ export class SessionsController {
     const token = await this.dailyService.createMeetingToken(
       room.name,
       isOwner,
-      userName
+      userName,
+      user.id
     );
 
     return {

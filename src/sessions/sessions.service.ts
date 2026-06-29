@@ -15,7 +15,7 @@ import { JwtService } from '@nestjs/jwt';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StudentsService } from '../students/students.service';
 import { AzureStorageService } from '../azure/azure-storage.service';
-
+import { ZoomService } from '../zoom/zoom.service';
 const BADGES = [
   { id: 'first_step', label: 'First Step', emoji: '🎯', description: 'Completed your first session', condition: (p) => p.totalSessions >= 1 },
   { id: 'consistent', label: 'Consistent', emoji: '📅', description: 'Attended 4 sessions in a month', condition: (p) => p.sessionsThisMonth >= 4 },
@@ -34,44 +34,79 @@ export class SessionsService {
     private readonly jwtService: JwtService,
     private readonly notificationsService: NotificationsService,
     private readonly azureStorageService: AzureStorageService,
+    private readonly zoomService: ZoomService,
     @Inject(forwardRef(() => StudentsService))
     private readonly studentsService: StudentsService,
   ) { }
 
   async create(dto: any) {
-    if (!dto?.booking_id)
-      throw new BadRequestException('booking_id is required');
+    if (!dto?.booking_id && !dto?.start_time)
+      throw new BadRequestException('booking_id or start_time is required');
 
-    const booking = await this.prisma.bookings.findUnique({
-      where: { id: dto.booking_id },
-      include: {
-        students: {
-          include: {
-            users_students_user_idTousers: { select: { email: true } },
-            users_students_parent_user_idTousers: { select: { email: true } },
+    let booking: any = null;
+    if (dto.booking_id) {
+      booking = await this.prisma.bookings.findUnique({
+        where: { id: dto.booking_id },
+        include: {
+          students: {
+            include: {
+              users_students_user_idTousers: { select: { email: true } },
+              users_students_parent_user_idTousers: { select: { email: true } },
+            },
+          },
+          tutors: {
+            include: {
+              users: { select: { email: true } },
+            },
           },
         },
-        tutors: {
-          include: {
-            users: { select: { email: true } },
-          },
-        },
-      },
-    });
-    if (!booking) throw new NotFoundException('Booking not found');
+      });
+      if (!booking) throw new NotFoundException('Booking not found');
+    }
+
+    const start = dto.start_time
+      ? new Date(dto.start_time)
+      : (booking?.requested_start ?? new Date());
+    
+    const end = dto.end_time
+      ? new Date(dto.end_time)
+      : (booking?.requested_end ?? new Date(Date.now() + 60 * 60 * 1000));
+
+    let zoomMeetingId: string | null = null;
+    let zoomJoinUrl: string | null = null;
+
+    if (dto.video_provider === 'ZOOM') {
+      const overlapping = await this.prisma.sessions.findFirst({
+        where: {
+          video_provider: 'ZOOM',
+          status: { notIn: ['cancelled', 'completed'] },
+          start_time: { lt: end },
+          end_time: { gt: start },
+        }
+      });
+
+      if (overlapping) {
+        throw new BadRequestException('A Zoom meeting is already scheduled for this time slot. Concurrent Zoom meetings are not allowed.');
+      }
+
+      const duration = Math.round((end.getTime() - start.getTime()) / 60000);
+      const zoomMeeting = await this.zoomService.createMeeting(`Tutoring Session`, start, duration);
+      zoomMeetingId = zoomMeeting.meetingId;
+      zoomJoinUrl = zoomMeeting.joinUrl;
+      if (!dto.meet_link) dto.meet_link = zoomJoinUrl;
+    }
 
     const created = await this.prisma.sessions.create({
       data: {
-        booking_id: dto.booking_id,
-        start_time: dto.start_time
-          ? new Date(dto.start_time)
-          : (booking.requested_start ?? new Date()),
-        end_time: dto.end_time
-          ? new Date(dto.end_time)
-          : (booking.requested_end ?? new Date(Date.now() + 60 * 60 * 1000)),
+        booking_id: dto.booking_id ?? null,
+        start_time: start,
+        end_time: end,
         meet_link: dto.meet_link ?? null, // Default to null, will be populated by Daily.co later or manually
         whiteboard_link: dto.whiteboard_link ?? null,
         status: dto.status ?? 'scheduled',
+        video_provider: dto.video_provider ?? 'DAILYCO',
+        zoom_meeting_id: zoomMeetingId,
+        zoom_join_url: zoomJoinUrl,
       },
     });
 
@@ -81,16 +116,18 @@ export class SessionsService {
     // collect recipient emails (student, parent, tutor) — using pre-loaded relations
     const recipients = new Set<string>();
 
-    if (booking.students) {
-      const parentEmail = booking.students.users_students_parent_user_idTousers?.email;
-      if (parentEmail) recipients.add(parentEmail);
+    if (booking) {
+      if (booking.students) {
+        const parentEmail = booking.students.users_students_parent_user_idTousers?.email;
+        if (parentEmail) recipients.add(parentEmail);
 
-      const studentEmail = booking.students.users_students_user_idTousers?.email;
-      if (studentEmail) recipients.add(studentEmail);
+        const studentEmail = booking.students.users_students_user_idTousers?.email;
+        if (studentEmail) recipients.add(studentEmail);
+      }
+
+      const tutorEmail = booking.tutors?.users?.email;
+      if (tutorEmail) recipients.add(tutorEmail);
     }
-
-    const tutorEmail = booking.tutors?.users?.email;
-    if (tutorEmail) recipients.add(tutorEmail);
 
     // send email if recipients found
     const to = Array.from(recipients);
@@ -99,7 +136,7 @@ export class SessionsService {
         await this.emailService.sendSessionInvite({
           to,
           subject: `Tutoring Session — ${created.id}`,
-          plaintext: `Your tutoring session is scheduled.\nBooking: ${booking.id}\nStart: ${created.start_time}\n`,
+          plaintext: `Your tutoring session is scheduled.\n${booking ? `Booking: ${booking.id}\n` : ''}Start: ${created.start_time}\n${zoomJoinUrl ? `Zoom Join URL: ${zoomJoinUrl}\n` : ''}`,
           icsContent: ics,
           filename: `session-${created.id}.ics`,
         });
@@ -514,6 +551,9 @@ export class SessionsService {
       },
       update: {
         present,
+        // Manual tutor/admin mark — an explicit override that always counts as
+        // qualifying attendance regardless of captured minutes.
+        markedByTutor: true,
         minutesAttended,
         ...(present === false && { leftAt: new Date() }),
         ...(present === true && { leftAt: null }),
@@ -522,6 +562,7 @@ export class SessionsService {
         sessionId,
         studentId,
         present,
+        markedByTutor: true,
         minutesAttended,
         joinedAt: present ? new Date() : null,
         ...(present === false && { leftAt: new Date() }),
@@ -843,18 +884,26 @@ export class SessionsService {
 
     if (!session) throw new NotFoundException('Session not found');
 
-    const participants: any[] = [];
+    const students: any[] = [];
     if (session.bookings?.students) {
-      participants.push({
-        role: 'student',
+      students.push({
         name: `${session.bookings.students.first_name || ''} ${session.bookings.students.last_name || ''}`.trim(),
       });
     }
-    
+    if (session.attendance && session.attendance.length > 0) {
+      session.attendance.forEach(att => {
+        if (att.students) {
+          students.push({
+            name: `${att.students.first_name || ''} ${att.students.last_name || ''}`.trim(),
+          });
+        }
+      });
+    }
+
+    const tutors: any[] = [];
     if (session.bookings?.tutors?.users) {
       const t = session.bookings.tutors.users;
-      participants.push({
-        role: 'tutor',
+      tutors.push({
         name: `${t.first_name || ''} ${t.last_name || ''}`.trim()
       });
     }
@@ -867,7 +916,8 @@ export class SessionsService {
     }
 
     return {
-      participants,
+      students,
+      tutors,
       duration: durationMinutes > 0 ? durationMinutes : 0,
       recordingLinks: session.session_recordings.map(r => r.file_url),
       chatLogCount: session.session_messages.length,
@@ -1330,10 +1380,41 @@ export class SessionsService {
     });
     if (!session) throw new NotFoundException('Session not found');
 
-    // Only tutor or admin can share notes
+    // Authorization: admins may share with anyone; a tutor may ONLY share on a
+    // session they actually taught (the session's assigned tutor). This is what
+    // establishes the tutor↔student connection — a tutor with no shared session
+    // with a student cannot reach them. Sharing is also only allowed once the
+    // session has actually happened (post-session handoff).
     const user = await this.prisma.users.findUnique({ where: { id: userId } });
     if (user?.role !== 'tutor' && user?.role !== 'admin') {
       throw new ForbiddenException('Only tutors and admins can share notes');
+    }
+
+    if (user.role === 'tutor') {
+      const tutor = await this.prisma.tutors.findFirst({
+        where: { user_id: userId },
+        select: { id: true },
+      });
+      const assignedTutorId = session.bookings?.assigned_tutor_id ?? null;
+      if (!tutor || !assignedTutorId || assignedTutorId !== tutor.id) {
+        throw new ForbiddenException(
+          'You can only share materials for sessions you taught this student.',
+        );
+      }
+
+      // Must be a session that has actually occurred (completed or past).
+      const now = new Date();
+      const occurred =
+        session.status === 'completed' ||
+        (session.status !== 'cancelled' &&
+          ((session.end_time && new Date(session.end_time) < now) ||
+            (session.bookings?.requested_end &&
+              new Date(session.bookings.requested_end) < now)));
+      if (!occurred) {
+        throw new ForbiddenException(
+          'You can share materials only after the session has taken place.',
+        );
+      }
     }
 
     let blobName: string | null = null;

@@ -620,7 +620,7 @@ export class BookingsService {
 
       if (!booking) throw new NotFoundException('Booking not found');
 
-      if (booking.assigned_tutor_id || booking.status === 'confirmed') {
+      if (!booking.fallback_broadcasted_at && (booking.assigned_tutor_id || booking.status === 'confirmed')) {
         throw new ConflictException(
           'Session already claimed by another tutor.',
         );
@@ -856,7 +856,8 @@ export class BookingsService {
         OR: [
           { student_id: stud.id },
           { students: { user_id: studentUserId } }, 
-          { students: { email: stud.email } }
+          { students: { email: stud.email } },
+          { sessions: { some: { attendance: { some: { studentId: stud.id } } } } }
         ]
       },
       include: {
@@ -1077,6 +1078,23 @@ export class BookingsService {
             session_recordings: {
               take: 1,
               orderBy: { created_at: 'desc' }
+            },
+            attendance: {
+              include: {
+                students: {
+                  select: {
+                    id: true,
+                    user_id: true,
+                    parent_user_id: true,
+                    first_name: true,
+                    last_name: true,
+                    grade: true,
+                    interests: true,
+                    recent_focus: true,
+                    struggle_areas: true,
+                  }
+                }
+              }
             }
           }
         },
@@ -1123,6 +1141,23 @@ export class BookingsService {
                   session_recordings: {
                     take: 1,
                     orderBy: { created_at: 'desc' }
+                  },
+                  attendance: {
+                    include: {
+                      students: {
+                        select: {
+                          id: true,
+                          user_id: true,
+                          parent_user_id: true,
+                          first_name: true,
+                          last_name: true,
+                          grade: true,
+                          interests: true,
+                          recent_focus: true,
+                          struggle_areas: true,
+                        }
+                      }
+                    }
                   }
                 }
               },
@@ -1141,16 +1176,27 @@ export class BookingsService {
     }
 
     // Check authorization: user must be the student, parent, assigned tutor, or admin
-    const isStudent =
-      user.role === 'student' && booking.students?.user_id === user.userId;
-    const isParent =
-      user.role === 'parent' &&
-      booking.students?.parent_user_id === user.userId;
-    const isTutor =
-      user.role === 'tutor' && booking.tutors?.user_id === user.userId;
+    // For group sessions, check if user is in attendance
+    let isStudent = user.role === 'student' && booking.students?.user_id === user.userId;
+    let isParent = user.role === 'parent' && booking.students?.parent_user_id === user.userId;
+    const isTutor = user.role === 'tutor' && booking.tutors?.user_id === user.userId;
     const isAdmin = user.role === 'admin';
 
     const session = booking.sessions?.[0]; // Get the latest session
+
+    // If it's a group session (no primary student), populate students from attendance
+    if (!booking.student_id && session?.attendance) {
+      const attendanceStudents = session.attendance.map(a => a.students).filter(Boolean);
+      booking.students = attendanceStudents as any;
+
+      if (user.role === 'student') {
+        isStudent = attendanceStudents.some(s => s.user_id === user.userId);
+      }
+      if (user.role === 'parent') {
+        isParent = attendanceStudents.some(s => s.parent_user_id === user.userId);
+      }
+    }
+
     return {
       ...booking,
       subject_name: booking.subjects?.name,
