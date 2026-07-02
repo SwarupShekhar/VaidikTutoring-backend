@@ -1,9 +1,12 @@
 import {
   Controller,
   Get,
+  Patch,
+  Body,
   UseGuards,
   Req,
   UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import { BookingsService } from '../bookings/bookings.service';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
@@ -60,6 +63,35 @@ export class TutorsController {
   @Get('reviews')
   async getReviews(@Req() req: any) {
     return this.tutorsService.getTutorReviews(req.user.userId);
+  }
+
+  @Get('me')
+  async getMe(@Req() req: any) {
+    return this.tutorsService.getTutorProfile(req.user.userId);
+  }
+
+  @Patch('me')
+  async updateMe(
+    @Req() req: any,
+    @Body()
+    body: {
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+      bio?: string;
+      qualifications?: string[];
+      skills?: string[];
+    },
+  ) {
+    try {
+      return await this.tutorsService.updateTutorProfile(req.user.userId, body);
+    } catch (e: any) {
+      // Unique-constraint clash (phone is @unique)
+      if (e?.code === 'P2002') {
+        throw new BadRequestException('That phone number is already in use.');
+      }
+      throw e;
+    }
   }
 
   // Students this tutor has actually taught (+ their past sessions) — powers the

@@ -129,7 +129,9 @@ export class TutorsService {
         engagement: engagementScore,
         punctuality: 100, // Placeholder until attendance tracking is fully implemented
         techScore: 90,    // Placeholder for now
-        isInitial: totalHours === 0
+        // "Initial" = no rating feedback yet. Gating this on session count
+        // wrongly blanked the stars for tutors who DO have ratings.
+        isInitial: reviewsCount === 0
       }
     };
   }
@@ -239,5 +241,78 @@ export class TutorsService {
       // Silently fail - this is a non-critical background update
       console.error(`Failed to update last_seen for user ${userId}:`, error.message);
     }
+  }
+
+  /**
+   * The tutor's own profile for the profile screen — combines editable `users`
+   * identity fields with the `tutors` professional fields. Read-only fields
+   * (approval/employment/rate) are surfaced for display but not editable here.
+   */
+  async getTutorProfile(userId: string) {
+    const tutor = await this.prisma.tutors.findFirst({
+      where: { user_id: userId },
+      include: {
+        users: {
+          select: { first_name: true, last_name: true, email: true, phone: true },
+        },
+      },
+    });
+    if (!tutor) return null;
+
+    return {
+      id: tutor.id,
+      firstName: tutor.users?.first_name ?? '',
+      lastName: tutor.users?.last_name ?? '',
+      email: tutor.users?.email ?? '',
+      phone: tutor.users?.phone ?? '',
+      bio: tutor.bio ?? '',
+      qualifications: Array.isArray(tutor.qualifications) ? tutor.qualifications : [],
+      skills: Array.isArray(tutor.skills) ? tutor.skills : [],
+      employmentType: tutor.employment_type ?? null,
+      isApproved: tutor.tutor_approved,
+    };
+  }
+
+  /**
+   * Update the tutor's own editable profile fields. Only the tutor's name/phone
+   * (on `users`) and bio/qualifications/skills (on `tutors`) can be changed —
+   * approval, employment type and pay rate are admin-controlled.
+   */
+  async updateTutorProfile(
+    userId: string,
+    dto: {
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+      bio?: string;
+      qualifications?: string[];
+      skills?: string[];
+    },
+  ) {
+    const tutor = await this.prisma.tutors.findFirst({
+      where: { user_id: userId },
+      select: { id: true },
+    });
+    if (!tutor) return null;
+
+    const userData: Record<string, any> = {};
+    if (dto.firstName !== undefined) userData.first_name = dto.firstName.trim();
+    if (dto.lastName !== undefined) userData.last_name = dto.lastName.trim();
+    if (dto.phone !== undefined) userData.phone = dto.phone.trim() || null;
+
+    const tutorData: Record<string, any> = {};
+    if (dto.bio !== undefined) tutorData.bio = dto.bio.trim();
+    if (dto.qualifications !== undefined)
+      tutorData.qualifications = dto.qualifications.filter(Boolean);
+    if (dto.skills !== undefined) tutorData.skills = dto.skills.filter(Boolean);
+
+    if (Object.keys(userData).length) {
+      await this.prisma.users.update({ where: { id: userId }, data: userData });
+    }
+    if (Object.keys(tutorData).length) {
+      await this.prisma.tutors.update({ where: { id: tutor.id }, data: tutorData });
+    }
+
+    return this.getTutorProfile(userId);
   }
 }

@@ -27,9 +27,14 @@ import {
   IsOptional,
   IsString,
   IsArray,
+  ArrayNotEmpty,
   MinLength,
   IsUUID,
+  IsNumber,
+  IsBoolean,
+  ValidateNested
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { Request } from 'express';
 
 class CreateTutorDto {
@@ -70,11 +75,31 @@ class AllocateTutorDto {
   bookingId?: string;
 }
 
+class RecurrenceRuleDto {
+  @IsString()
+  frequency!: 'weekly';
+
+  @IsArray()
+  @IsNumber({}, { each: true })
+  daysOfWeek!: number[];
+
+  @IsString()
+  endDate!: string;
+}
+class RescheduleGroupSessionDto {
+  @IsString()
+  startTime!: string;
+
+  @IsString()
+  endTime!: string;
+}
+
 class CreateGroupSessionDto {
   @IsUUID()
   tutorId!: string;
 
   @IsArray()
+  @ArrayNotEmpty()
   @IsUUID('4', { each: true })
   studentIds!: string[];
 
@@ -94,6 +119,15 @@ class CreateGroupSessionDto {
 
   @IsString()
   provider!: 'ZOOM' | 'DAILYCO';
+
+  @IsOptional()
+  @IsBoolean()
+  isRecurring?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RecurrenceRuleDto)
+  recurrence?: RecurrenceRuleDto;
 }
 
 @Controller('admin')
@@ -120,6 +154,25 @@ export class AdminController {
       this.logger.error('GET /admin/stats failed', e);
       throw e;
     }
+  }
+
+  // ---- Reschedule requests queue ----
+  @Get('reschedule-requests')
+  async listRescheduleRequests(@Query('status') status?: string) {
+    return this.adminService.listRescheduleRequests(status);
+  }
+
+  @Patch('reschedule-requests/:id')
+  async handleRescheduleRequest(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Body() body: { action: 'approved' | 'declined'; adminNote?: string; newStart?: string; newEnd?: string },
+  ) {
+    return this.adminService.handleRescheduleRequest(id, req.user?.userId, body?.action, {
+      adminNote: body?.adminNote,
+      newStart: body?.newStart,
+      newEnd: body?.newEnd,
+    });
   }
 
   @Get('reports/finance')
@@ -344,7 +397,21 @@ export class AdminController {
       startTime: new Date(dto.startTime),
       endTime: new Date(dto.endTime),
       provider: dto.provider,
+      isRecurring: dto.isRecurring,
+      recurrence: dto.recurrence,
     });
+  }
+
+  @Patch('group-sessions/:id/reschedule')
+  async rescheduleGroupSession(
+    @Param('id') bookingId: string,
+    @Body() dto: RescheduleGroupSessionDto
+  ) {
+    return await this.adminService.rescheduleGroupSession(
+      bookingId,
+      new Date(dto.startTime),
+      new Date(dto.endTime)
+    );
   }
 
   @Patch('bookings/:id/assign-tutor')

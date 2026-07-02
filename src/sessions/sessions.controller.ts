@@ -68,6 +68,36 @@ export class SessionsController {
     res.send(ics);
   }
 
+  @UseGuards(ClerkAuthGuard)
+  @Get(':id/zoom/join')
+  async joinZoomSession(@Param('id') id: string, @Req() req: any) {
+    const session = await this.prisma.sessions.findUnique({
+      where: { id },
+    });
+
+    if (!session || !session.zoom_meeting_id) {
+      throw new NotFoundException('Zoom meeting not found for this session');
+    }
+
+    const userId = req.user.userId;
+    // Attempt to mark attendance if the user is a student
+    try {
+      const student = await this.prisma.students.findFirst({
+        where: { user_id: userId }
+      });
+      if (student) {
+        await this.sessionsService.markStudentPresent(session.id, student.id);
+      }
+    } catch (err) {
+      console.error('Failed to mark attendance on Zoom join:', err);
+    }
+
+    return {
+      url: session.zoom_join_url || session.meet_link,
+    };
+  }
+
+
   @UseGuards(ClerkAuthGuard, PhoneVerifiedGuard)
   @Post(':id/recordings')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))

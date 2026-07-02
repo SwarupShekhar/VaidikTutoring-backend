@@ -1,4 +1,4 @@
-import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -10,7 +10,6 @@ import { redisStore } from 'cache-manager-ioredis-yet';
 import * as path from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { RawBodyMiddleware } from './common/middleware/raw-body.middleware';
 
 import { AuthModule } from './auth/auth.module';
 import { StudentsModule } from './students/students.module';
@@ -169,10 +168,12 @@ import { ZoomModule } from './zoom/zoom.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(RawBodyMiddleware)
-      .forRoutes('payments', 'webhooks');
-  }
+export class AppModule {
+  // Raw-body capture for webhook signature verification is handled centrally in
+  // main.ts via express.json({ verify }) for /payments/webhook, /webhooks/daily
+  // and /webhooks/zoom. The previous RawBodyMiddleware that read the request
+  // stream manually has been removed: it raced against the global json() parser
+  // (which already drained the stream), leaving req.rawBody empty and breaking
+  // every signed webhook. Do not re-add stream-reading middleware for these
+  // paths — it will double-consume the request.
 }

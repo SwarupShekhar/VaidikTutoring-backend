@@ -74,6 +74,7 @@ model bookings {
   is_free_session         Boolean      @default(false)
   is_trial_session        Boolean      @default(false)
   enrollment_id           String?      @db.Uuid
+  series_id               String?      @db.Uuid
   fallback_broadcasted_at DateTime?    @db.Timestamptz(6)
   tutors                  tutors?      @relation(fields: [assigned_tutor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   curricula               curricula?   @relation(fields: [curriculum_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -94,6 +95,7 @@ model bookings {
   @@index([status])
   @@index([requested_start])
   @@index([status, requested_start])
+  @@index([series_id])
   @@schema("app")
 }
 
@@ -294,6 +296,31 @@ model session_recordings {
   @@schema("app")
 }
 
+// A paid student's request to reschedule a pre-scheduled class. Admin actions it
+// (approve → reschedule via existing tools, or decline). Display fields are
+// snapshotted at request time so the admin queue needs no joins and stays accurate
+// even if the underlying session changes.
+model reschedule_requests {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  session_id      String?   @db.Uuid
+  student_id      String?   @db.Uuid
+  requested_by    String?   @db.Uuid
+  student_name    String?
+  subject         String?
+  class_time      DateTime? @db.Timestamptz(6)
+  reason          String?
+  preferred_slots String?
+  status          String    @default("pending") // pending | approved | declined
+  admin_note      String?
+  handled_by      String?   @db.Uuid
+  handled_at      DateTime? @db.Timestamptz(6)
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([student_id])
+  @@index([status])
+  @@schema("app")
+}
+
 model sessions {
   id                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   booking_id              String?              @db.Uuid
@@ -378,6 +405,14 @@ model students {
   target_grade                         String?
   exam_date                            DateTime?             @db.Date
   target_exam                          String?
+  // Verifiable parental consent to record this child's live sessions.
+  // Captured once at onboarding (required prompt) and toggleable from
+  // Profile → Settings. Sessions may still run live without it, but no
+  // recording is produced or shared until granted. COPPA/GDPR-K/DPDP.
+  recording_consent_granted            Boolean               @default(false)
+  recording_consent_at                 DateTime?             @db.Timestamptz(6)
+  recording_consent_version            String?
+  recording_consent_by                 String?               @db.Uuid
   assessment_attempts                  assessment_attempts[]
   attendance                           Attendance[]
   bookings                             bookings[]

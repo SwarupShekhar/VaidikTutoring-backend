@@ -222,6 +222,54 @@ export class EmailService {
     });
   }
 
+  /** Send notification to a student when a group session is rescheduled. */
+  async sendGroupSessionRescheduledNotification(opts: {
+    to: string;
+    userId: string;
+    firstName: string;
+    tutorName: string;
+    oldStartTime: Date;
+    newStartTime: Date;
+    meetLink: string;
+  }) {
+    const name = this.firstName(opts.firstName);
+    
+    // Format the date/time nicely
+    const dateOptions: Intl.DateTimeFormatOptions = { 
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 
+      hour: 'numeric', minute: '2-digit', timeZoneName: 'short' 
+    };
+    const formattedOldTime = opts.oldStartTime.toLocaleString('en-US', dateOptions);
+    const formattedNewTime = opts.newStartTime.toLocaleString('en-US', dateOptions);
+
+    const body = `
+      <h1 style="color:#fff;font-size:24px;font-weight:800;margin:0 0 12px;line-height:1.3">Update: Group Session Rescheduled</h1>
+      <p style="color:#e5e5e5;font-size:15px;line-height:1.6;margin:0 0 16px">
+        Hi ${name}, your upcoming group session with ${opts.tutorName} has been <strong>rescheduled</strong>.
+      </p>
+      <p style="color:#e5e5e5;font-size:15px;line-height:1.6;margin:0 0 16px">
+        <del style="color:#9ca3af">Original time: ${formattedOldTime}</del><br/>
+        <strong>New time: ${formattedNewTime}</strong>
+      </p>
+      <p style="color:#e5e5e5;font-size:15px;line-height:1.6;margin:0 0 24px">
+        Please make sure to update your calendar. You can join the session at the new time using the button below.
+      </p>
+      <a href="${opts.meetLink}" style="display:inline-block;background:#fff;color:#000;text-decoration:none;padding:13px 22px;border-radius:50px;font-weight:600;font-size:14px;margin:0 0 8px">
+        Join Session →
+      </a>
+      <p style="color:#9ca3af;font-size:13px;line-height:1.6;margin:24px 0 0">
+        See you there! — The StudyHours team
+      </p>`;
+
+    return this.sendMail({
+      to: opts.to,
+      from: 'StudyHours <hellostudents@studyhours.com>',
+      replyTo: 'StudyHours <hellostudents@studyhours.com>',
+      subject: `Rescheduled: Group Session with ${opts.tutorName}`,
+      html: this.wrapper(body, opts.userId),
+    });
+  }
+
   // ── Builder helpers ──────────────────────────────────────────────────────────
 
   private firstName(firstName?: string): string {

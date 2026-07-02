@@ -39,6 +39,26 @@ export class SessionsService {
     private readonly studentsService: StudentsService,
   ) { }
 
+  /**
+   * Guards against concurrent ZOOM meetings: throws BadRequestException if any
+   * non-cancelled/non-completed ZOOM session overlaps the given [start, end) window.
+   * Shared by 1:1 session creation and group session creation.
+   */
+  async assertNoZoomOverlap(start: Date, end: Date): Promise<void> {
+    const overlapping = await this.prisma.sessions.findFirst({
+      where: {
+        video_provider: 'ZOOM',
+        status: { notIn: ['cancelled', 'completed'] },
+        start_time: { lt: end },
+        end_time: { gt: start },
+      },
+    });
+
+    if (overlapping) {
+      throw new BadRequestException('A Zoom meeting is already scheduled for this time slot. Concurrent Zoom meetings are not allowed.');
+    }
+  }
+
   async create(dto: any) {
     if (!dto?.booking_id && !dto?.start_time)
       throw new BadRequestException('booking_id or start_time is required');
@@ -76,18 +96,7 @@ export class SessionsService {
     let zoomJoinUrl: string | null = null;
 
     if (dto.video_provider === 'ZOOM') {
-      const overlapping = await this.prisma.sessions.findFirst({
-        where: {
-          video_provider: 'ZOOM',
-          status: { notIn: ['cancelled', 'completed'] },
-          start_time: { lt: end },
-          end_time: { gt: start },
-        }
-      });
-
-      if (overlapping) {
-        throw new BadRequestException('A Zoom meeting is already scheduled for this time slot. Concurrent Zoom meetings are not allowed.');
-      }
+      await this.assertNoZoomOverlap(start, end);
 
       const duration = Math.round((end.getTime() - start.getTime()) / 60000);
       const zoomMeeting = await this.zoomService.createMeeting(`Tutoring Session`, start, duration);
@@ -484,6 +493,24 @@ export class SessionsService {
         throw new ForbiddenException('Only tutors and admins can upload recordings');
     }
 
+    // Recording-consent gate. A minor's session is never stored without verifiable
+    // parental consent (COPPA / GDPR-K / India DPDP). The live class still runs —
+    // only the recording is blocked. This is the authoritative server-side check;
+    // the tutor UI also suppresses the "record" prompt, but this is what guarantees
+    // no recording is ever persisted or shared without consent. Admins are not
+    // exempt: consent is about the child, not the uploader.
+    if (booking.student_id) {
+      const student = await this.prisma.students.findUnique({
+        where: { id: booking.student_id },
+        select: { recording_consent_granted: true },
+      });
+      if (!student?.recording_consent_granted) {
+        throw new ForbiddenException(
+          'Recording blocked: the parent has not consented to recording this student’s sessions. Consent can be granted from Profile → Settings.',
+        );
+      }
+    }
+
     // Upload to Azure
     const blobName = await this.azureStorageService.uploadRecording(sessionId, buffer, mimeType);
 
@@ -714,6 +741,11 @@ export class SessionsService {
     const session = await this.prisma.sessions.findUnique({
       where: { id: sessionId },
       include: {
+        attendance: {
+          include: {
+            students: true,
+          }
+        },
         bookings: {
           include: {
             students: true,
@@ -732,7 +764,7 @@ export class SessionsService {
       throw new NotFoundException('Booking not found for this session');
     }
 
-    return this.checkBookingAccess(booking, userId);
+    return this.checkBookingAccess(booking, userId, session.attendance);
   }
 
   /**
@@ -743,22 +775,36 @@ export class SessionsService {
     // 1. Try as Session ID
     const session = await this.prisma.sessions.findUnique({
       where: { id },
-      include: { bookings: { include: { students: true, tutors: true } } },
+      include: { 
+        bookings: { include: { students: true, tutors: true } },
+        attendance: { include: { students: true } }
+      },
     });
 
     if (session) {
       if (!session.bookings) throw new NotFoundException('Booking data missing');
-      return this.checkBookingAccess(session.bookings, userId);
+      return this.checkBookingAccess(session.bookings, userId, session.attendance);
     }
 
     // 2. Try as Booking ID
     const booking = await this.prisma.bookings.findUnique({
       where: { id },
-      include: { students: true, tutors: true },
+      include: { 
+        students: true, 
+        tutors: true,
+        sessions: {
+          orderBy: { created_at: 'desc' },
+          take: 1,
+          include: {
+            attendance: { include: { students: true } }
+          }
+        }
+      },
     });
 
     if (booking) {
-      return this.checkBookingAccess(booking, userId);
+      const attendance = booking.sessions?.[0]?.attendance || [];
+      return this.checkBookingAccess(booking, userId, attendance);
     }
 
     // 3. Neither found
@@ -780,7 +826,7 @@ export class SessionsService {
     });
   }
 
-  private async checkBookingAccess(booking: any, userId: string): Promise<boolean> {
+  private async checkBookingAccess(booking: any, userId: string, attendance?: any[]): Promise<boolean> {
     // 0. check if user is admin
     const currentUser = await this.prisma.users.findUnique({
         where: { id: userId },
@@ -799,6 +845,34 @@ export class SessionsService {
 
     // Check if user is the tutor
     let isTutor = tutor?.user_id === userId;
+
+    // Group sessions logic: Check attendance
+    if (attendance && attendance.length > 0) {
+      for (const att of attendance) {
+        const attStudent = att.students;
+        if (attStudent?.user_id === userId) {
+            isStudent = true;
+            break;
+        }
+        if (attStudent?.parent_user_id === userId) {
+            isParent = true;
+            break;
+        }
+        // Identity drift check for attendance students
+        if (!isStudent && attStudent && currentUser?.email) {
+            if (attStudent.email && attStudent.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase()) {
+                isStudent = true;
+                break;
+            } else if (attStudent.user_id) {
+                const attStudentUser = await this.prisma.users.findUnique({ where: { id: attStudent.user_id }, select: { email: true } });
+                if (attStudentUser?.email && attStudentUser.email.trim().toLowerCase() === currentUser.email.trim().toLowerCase()) {
+                    isStudent = true;
+                    break;
+                }
+            }
+        }
+      }
+    }
 
     // Identity drift auto-heal fallback: Compare emails case-insensitively and trim spaces
     // This fixes 403s where the DB record was created with a different email casing/spacing

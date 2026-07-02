@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Req, UseGuards, ForbiddenException, Param } from '@nestjs/common';
+import { Controller, Post, Patch, Get, Body, Req, UseGuards, ForbiddenException, Param } from '@nestjs/common';
 import { ParentService } from './parent.service';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -31,5 +31,16 @@ export class ParentController {
         @Param('childId') childId: string
     ) {
         return this.parentService.getChildSessions(req.user.userId, childId);
+    }
+
+    // Grant/revoke consent to record this child's sessions (Profile → Settings
+    // and the onboarding consent step both call this).
+    @Patch('children/:childId/recording-consent')
+    async setRecordingConsent(
+        @Req() req: any,
+        @Param('childId') childId: string,
+        @Body() dto: { granted: boolean }
+    ) {
+        return this.parentService.setRecordingConsent(req.user.userId, childId, !!dto.granted);
     }
 }

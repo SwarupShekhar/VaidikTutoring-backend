@@ -9,6 +9,8 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket, Namespace } from 'socket.io';
 import { Logger, UseGuards, NotFoundException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { clerkClient } from '@clerk/clerk-sdk-node';
 import { SessionsService } from './sessions.service';
 import { AttentionEventsService } from '../attention-events/attention-events.service';
 import { SessionPhasesService } from '../session-phases/session-phases.service';
@@ -63,10 +65,100 @@ export class SessionsGateway
     private readonly attentionEventsService: AttentionEventsService,
     private readonly sessionPhasesService: SessionPhasesService,
     private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
   ) { }
 
+  /**
+   * SECURITY: Authenticate every socket at connection time. The frontend sends
+   * the JWT in the handshake auth (`io(URL, { auth: { token } })`); we also
+   * accept an `Authorization: Bearer <token>` header as a fallback. The verified
+   * user id is stored on `client.data.userId` and is the ONLY identity trusted by
+   * downstream handlers — client-supplied `userId`/`senderId` in message payloads
+   * are ignored for authentication/authorization decisions.
+   */
   handleConnection(client: Socket) {
-    this.logger.log(`Client connected: ${client.id}`);
+    // Authenticate asynchronously (Clerk verification is a network call). Store the
+    // resolving promise on the socket so sensitive handlers (joinSession) can
+    // `await client.data.authReady` and can NEVER race ahead of auth resolution.
+    client.data.authReady = this.authenticateSocket(client).catch((e) => {
+      this.logger.warn(`Socket ${client.id} auth error: ${e?.message}`);
+      client.disconnect(true);
+    });
+  }
+
+  /**
+   * Resolves the socket's identity from its handshake token, supporting BOTH auth
+   * schemes the HTTP layer accepts (see ClerkAuthGuard): a Clerk session JWT
+   * (primary) and a backend-signed JWT (fallback). The resolved backend users.id
+   * is stored on client.data.userId. On any failure the socket is disconnected.
+   * NOTE: unlike ClerkAuthGuard this never creates/syncs users — a socket joiner
+   * must already exist; we only look them up (by email for Clerk, by sub for JWT).
+   */
+  private async authenticateSocket(client: Socket): Promise<void> {
+    const authToken = client.handshake?.auth?.token as string | undefined;
+    const headerAuth = client.handshake?.headers?.authorization as string | undefined;
+    const bearer = headerAuth?.startsWith('Bearer ') ? headerAuth.slice(7) : headerAuth;
+    const token = authToken || bearer;
+
+    if (!token || token === 'undefined' || token === 'null') {
+      this.logger.warn(`Socket ${client.id} rejected: no auth token`);
+      client.disconnect(true);
+      return;
+    }
+
+    let userId: string | undefined;
+    let role: string | undefined;
+
+    // 1. Try Clerk first (primary auth), then fall back to backend JWT.
+    try {
+      const claims: any = await (clerkClient as any).verifyToken(token);
+      let email =
+        claims.email ||
+        claims.primary_email_address ||
+        claims.email_address ||
+        (claims.emails && claims.emails[0]);
+      if (!email && typeof claims.sub === 'string' && claims.sub.startsWith('user_')) {
+        try {
+          const cu = await clerkClient.users.getUser(claims.sub);
+          email =
+            cu.emailAddresses.find((e) => e.id === cu.primaryEmailAddressId)?.emailAddress ||
+            cu.emailAddresses[0]?.emailAddress;
+        } catch {
+          /* best-effort email resolution */
+        }
+      }
+      if (email) {
+        const dbUser = await this.prisma.users.findFirst({
+          where: { email },
+          select: { id: true, role: true },
+        });
+        if (dbUser) {
+          userId = dbUser.id;
+          role = dbUser.role ?? undefined;
+        }
+      }
+    } catch {
+      // 2. Backend-signed JWT fallback (sub === users.id).
+      try {
+        const payload: any = this.jwtService.verify(token);
+        userId = payload.sub || payload.userId;
+        role = payload.role;
+      } catch (e: any) {
+        this.logger.warn(`Socket ${client.id} rejected: token failed Clerk + JWT (${e?.message})`);
+        client.disconnect(true);
+        return;
+      }
+    }
+
+    if (!userId) {
+      this.logger.warn(`Socket ${client.id} rejected: could not resolve user from token`);
+      client.disconnect(true);
+      return;
+    }
+
+    client.data.userId = userId;
+    client.data.role = role;
+    this.logger.log(`Client connected: ${client.id} (user ${userId})`);
   }
 
   /**
@@ -139,18 +231,38 @@ export class SessionsGateway
     @MessageBody() data: { sessionId: string; userId: string },
   ) {
     try {
+      // SECURITY: wait for connection-time auth to resolve (Clerk verify is async)
+      // so a fast joinSession can't bypass it, then trust ONLY the verified
+      // identity from the handshake — never the client-supplied data.userId.
+      if (client.data?.authReady) await client.data.authReady;
+      const verifiedUserId: string | undefined = client.data?.userId;
+      if (!verifiedUserId) {
+        this.logger.warn(`joinSession rejected: socket ${client.id} is not authenticated`);
+        client.disconnect(true);
+        return { success: false, error: 'Unauthenticated' };
+      }
+
       // 1. Resolve canonical Session ID or Booking ID
       let finalSessionId = this.sessionMap.get(data.sessionId);
       if (!finalSessionId) {
           finalSessionId = await this.sessionsService.ensureSessionId(data.sessionId);
           this.sessionMap.set(data.sessionId, finalSessionId);
       }
+
+      // SECURITY: enforce access control BEFORE joining the room. Throws
+      // Forbidden/NotFound for anyone who is not the student, parent, tutor,
+      // admin, or a group-session attendance student for this session.
+      await this.sessionsService.verifySessionOrBookingAccess(finalSessionId, verifiedUserId);
+
       this.clientSessionMap.set(client.id, finalSessionId);
 
       // 2. Resolve session details
       const session = await this.prisma.sessions.findUnique({
         where: { id: finalSessionId },
-        include: { bookings: { include: { tutors: true } } }
+        include: {
+          bookings: { include: { tutors: true } },
+          attendance: { include: { students: true } },
+        }
       });
 
       if (!session) {
@@ -158,10 +270,10 @@ export class SessionsGateway
       }
 
       await client.join(`session:${finalSessionId}`);
-      this.logger.log(`User ${data.userId} joined session room: session:${finalSessionId}`);
+      this.logger.log(`User ${verifiedUserId} joined session room: session:${finalSessionId}`);
 
-      // 3. Determine if the joiner is the tutor
-      const isTutor = session.bookings?.tutors?.user_id === data.userId;
+      // 3. Determine if the joiner is the tutor (from the verified identity)
+      const isTutor = session.bookings?.tutors?.user_id === verifiedUserId;
 
       // 4. GAP FIX: Update session status to 'in_progress' if the tutor joins a 'scheduled' session
       if (isTutor && session.status === 'scheduled') {
@@ -178,7 +290,7 @@ export class SessionsGateway
           await this.prisma.audit_logs.create({
             data: {
               action: 'SESSION_JOINED',
-              actor_user_id: data.userId,
+              actor_user_id: verifiedUserId,
               details: { sessionId: finalSessionId, isTutor }
             }
           });
@@ -224,8 +336,8 @@ export class SessionsGateway
 
       // 10. Handle pen access for late joiners
       const accessSet = this.penAccessState.get(finalSessionId);
-      if (accessSet && accessSet.has(data.userId)) {
-        client.emit('whiteboard.penAccessUpdated', { studentId: data.userId, hasAccess: true });
+      if (accessSet && accessSet.has(verifiedUserId)) {
+        client.emit('whiteboard.penAccessUpdated', { studentId: verifiedUserId, hasAccess: true });
       }
 
       // 11. Calculate return data
@@ -243,33 +355,51 @@ export class SessionsGateway
       // attendance failure can NEVER abort the join flow or whiteboard replay.
       try {
         if (!isTutor) {
-          // Resolve the joining user to a students.id. Attendance.studentId
-          // references the students table, not users. The booking carries the
-          // student_id (students.id); confirm this user IS that student.
-          const studentId = session.bookings?.student_id;
-          if (studentId) {
+          // Resolve the joining (verified) user to a students.id. Attendance.studentId
+          // references the students table, not users.
+          let resolvedStudentId: string | null = null;
+
+          // 1:1 path — the booking carries the student_id (students.id); confirm
+          // this user IS that student (skip parents/admins).
+          const bookingStudentId = session.bookings?.student_id;
+          if (bookingStudentId) {
             const student = await this.prisma.students.findUnique({
-              where: { id: studentId },
+              where: { id: bookingStudentId },
               select: { id: true, user_id: true },
             });
-            // Only the student themselves get an attendance row — skip parents/admins.
-            if (student && student.user_id === data.userId) {
-              // Ref-count: open an interval only on the 0->1 transition. Extra
-              // clients (multi-tab/device) join the SAME open interval so minutes
-              // are counted once and finalized only when the last client leaves.
-              const alreadyActive =
-                this.countActiveStudentClients(finalSessionId, student.id) > 0;
-              this.clientAttendanceMap.set(client.id, {
-                sessionId: finalSessionId,
-                studentId: student.id,
-              });
-              if (!alreadyActive) {
-                await this.sessionsService.markStudentPresent(finalSessionId, student.id);
-              }
-              this.logger.log(
-                `Attendance: student ${student.id} present for session ${finalSessionId} (clients now: ${this.countActiveStudentClients(finalSessionId, student.id)})`,
-              );
+            if (student && student.user_id === verifiedUserId) {
+              resolvedStudentId = student.id;
             }
+          }
+
+          // GROUP path — group bookings have NO student_id; group students live
+          // only in pre-seeded attendance rows. Match the verified joiner against
+          // those rows so they also get live attendance tracking.
+          if (!resolvedStudentId && session.attendance?.length) {
+            const att = session.attendance.find(
+              (a: any) => a.students?.user_id === verifiedUserId,
+            );
+            if (att) {
+              resolvedStudentId = att.studentId; // == att.students.id
+            }
+          }
+
+          if (resolvedStudentId) {
+            // Ref-count: open an interval only on the 0->1 transition. Extra
+            // clients (multi-tab/device) join the SAME open interval so minutes
+            // are counted once and finalized only when the last client leaves.
+            const alreadyActive =
+              this.countActiveStudentClients(finalSessionId, resolvedStudentId) > 0;
+            this.clientAttendanceMap.set(client.id, {
+              sessionId: finalSessionId,
+              studentId: resolvedStudentId,
+            });
+            if (!alreadyActive) {
+              await this.sessionsService.markStudentPresent(finalSessionId, resolvedStudentId);
+            }
+            this.logger.log(
+              `Attendance: student ${resolvedStudentId} present for session ${finalSessionId} (clients now: ${this.countActiveStudentClients(finalSessionId, resolvedStudentId)})`,
+            );
           }
         }
       } catch (e) {
@@ -341,6 +471,14 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; text: string; senderName: string; senderId: string },
   ) {
     try {
+      // SECURITY: the author is the JWT-verified user, NOT the client-supplied
+      // senderId (which could be spoofed to impersonate another participant).
+      const senderId = client.data?.userId;
+      if (!senderId) {
+        client.disconnect(true);
+        return { success: false, error: 'Unauthenticated' };
+      }
+
       // 1. Resolve canonical ID
       let finalSessionId = payload.sessionId;
       const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
@@ -351,7 +489,7 @@ export class SessionsGateway
       // 2. Save message to Database (Optional but recommended for history)
       await this.sessionsService.postMessage(
         finalSessionId,
-        payload.senderId,
+        senderId,
         payload.text,
       );
 
@@ -359,7 +497,7 @@ export class SessionsGateway
       client.broadcast.to(`session:${finalSessionId}`).emit('receiveMessage', {
         text: payload.text,
         senderName: payload.senderName,
-        senderId: payload.senderId,
+        senderId: senderId,
         timestamp: new Date(),
       });
 
@@ -786,11 +924,13 @@ export class SessionsGateway
 
       const tutorUserId = session?.bookings?.tutors?.user_id;
 
-      if (!tutorUserId || tutorUserId !== payload.userId) {
+      // SECURITY: authorize against the JWT-verified identity, not payload.userId.
+      const actorUserId = client.data?.userId;
+      if (!tutorUserId || tutorUserId !== actorUserId) {
           throw new Error('Unauthorized: Only the assigned tutor can launch polls');
       }
 
-      this.logger.log(`Poll launched in session ${finalSessionId}: ${payload.question} by ${payload.userId}`);
+      this.logger.log(`Poll launched in session ${finalSessionId}: ${payload.question} by ${actorUserId}`);
       
       const poll = {
         question: payload.question,
@@ -836,8 +976,11 @@ export class SessionsGateway
         return { success: false, error: 'No active poll found' };
       }
 
+      // SECURITY: key the response by the JWT-verified identity so a client cannot
+      // stuff the ballot under another user's id.
+      const responderId = client.data?.userId || payload.userId;
       // Record response
-      poll.responses[payload.userId] = payload.optionIndex;
+      poll.responses[responderId] = payload.optionIndex;
       
       // Calculate results for tutor
       const results = poll.options.map((_: any, idx: number) => {
@@ -881,7 +1024,9 @@ export class SessionsGateway
 
       const tutorUserId = session?.bookings?.tutors?.user_id;
 
-      if (!tutorUserId || tutorUserId !== payload.userId) {
+      // SECURITY: authorize against the JWT-verified identity, not payload.userId.
+      const actorUserId = client.data?.userId;
+      if (!tutorUserId || tutorUserId !== actorUserId) {
           throw new Error('Unauthorized: Only the assigned tutor can close polls');
       }
 
@@ -900,7 +1045,7 @@ export class SessionsGateway
           await this.prisma.audit_logs.create({
             data: {
               action: 'SESSION_POLL_COMPLETED',
-              actor_user_id: payload.userId,
+              actor_user_id: actorUserId,
               details: {
                 sessionId: finalSessionId,
                 question: poll.question,

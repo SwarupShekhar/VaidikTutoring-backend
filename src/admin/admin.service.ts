@@ -5,6 +5,8 @@ import {
     BadRequestException,
     NotFoundException,
     Inject,
+    HttpException,
+    HttpStatus
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
@@ -17,6 +19,7 @@ import { hash } from 'bcrypt';
 import { Prisma, bookings, users, VideoProvider } from '@prisma/client';
 import * as crypto from 'crypto';
 import { ZoomService } from '../zoom/zoom.service';
+
 
 // Define a type for skills structure
 interface TutorSkills {
@@ -34,6 +37,7 @@ export class AdminService {
         private readonly email: EmailService,
         private readonly azureStorageService: AzureStorageService,
         private readonly zoomService: ZoomService,
+
     ) { }
 
     async cleanupRecordings() {
@@ -245,6 +249,95 @@ export class AdminService {
         return updated;
     }
 
+    // ---- Reschedule requests queue ----
+    async listRescheduleRequests(status?: string) {
+        return this.prisma.reschedule_requests.findMany({
+            where: status ? { status } : {},
+            orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
+        });
+    }
+
+    // Approving ACTUALLY moves the class: it reschedules the underlying session +
+    // booking (via rescheduleGroupSession) to the admin-chosen time, then records the
+    // request as approved and notifies the student. Declining just closes the request
+    // (with an optional note) and notifies the student. Approve therefore requires a
+    // concrete new start/end — an "approve" that didn't change the time would be
+    // meaningless.
+    async handleRescheduleRequest(
+        id: string,
+        adminUserId: string,
+        action: 'approved' | 'declined',
+        opts: { adminNote?: string; newStart?: string; newEnd?: string } = {},
+    ) {
+        if (action !== 'approved' && action !== 'declined') {
+            throw new BadRequestException("action must be 'approved' or 'declined'");
+        }
+        const request = await this.prisma.reschedule_requests.findUnique({ where: { id } });
+        if (!request) throw new NotFoundException('Reschedule request not found');
+        if (request.status !== 'pending') {
+            throw new BadRequestException('This request has already been handled.');
+        }
+
+        let newClassTime = request.class_time;
+
+        if (action === 'approved') {
+            if (!opts.newStart || !opts.newEnd) {
+                throw new BadRequestException('A new date and time are required to approve a reschedule.');
+            }
+            const start = new Date(opts.newStart);
+            const end = new Date(opts.newEnd);
+            if (isNaN(start.getTime()) || isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+                throw new BadRequestException('Invalid new time window: end must be after start.');
+            }
+            if (!request.session_id) {
+                throw new BadRequestException('This request has no linked class to reschedule.');
+            }
+            const session = await this.prisma.sessions.findUnique({
+                where: { id: request.session_id },
+                select: { booking_id: true },
+            });
+            if (!session?.booking_id) {
+                throw new NotFoundException('Class not found for this request.');
+            }
+            // Actually move the class (updates booking + session times, and Zoom if any).
+            await this.rescheduleGroupSession(session.booking_id, start, end);
+            newClassTime = start;
+        }
+
+        const updated = await this.prisma.reschedule_requests.update({
+            where: { id },
+            data: {
+                status: action,
+                admin_note: opts.adminNote ?? null,
+                class_time: newClassTime,
+                handled_by: adminUserId,
+                handled_at: new Date(),
+            },
+        });
+
+        // Notify the student who requested it (DB notification → surfaced by the
+        // frontend NotificationContext).
+        if (request.requested_by) {
+            const when = newClassTime ? new Date(newClassTime).toLocaleString() : '';
+            const message =
+                action === 'approved'
+                    ? `Your ${request.subject ?? 'class'} has been rescheduled to ${when}.`
+                    : `Your reschedule request for ${request.subject ?? 'your class'} was declined.${opts.adminNote ? ` ${opts.adminNote}` : ''}`;
+            await this.prisma.notifications
+                .create({
+                    data: {
+                        user_id: request.requested_by,
+                        type: action === 'approved' ? 'reschedule_approved' : 'reschedule_declined',
+                        payload: { message },
+                        is_read: false,
+                    },
+                })
+                .catch((e) => this.logger.warn(`Failed to create reschedule notification: ${e?.message}`));
+        }
+
+        return updated;
+    }
+
     async createGroupSession(data: {
         tutorId: string;
         studentIds: string[];
@@ -253,71 +346,175 @@ export class AdminService {
         startTime: Date;
         endTime: Date;
         provider: VideoProvider;
+        isRecurring?: boolean;
+        recurrence?: { frequency: string; daysOfWeek: number[]; endDate: string };
     }) {
-        const { tutorId, studentIds, subjectId, curriculumId, startTime, endTime, provider } = data;
+        const { tutorId, studentIds, subjectId, curriculumId, startTime, endTime, provider, isRecurring, recurrence } = data;
 
-        // 1. Create a Booking (so tutor has it on their calendar)
-        const booking = await this.prisma.bookings.create({
-            data: {
-                assigned_tutor_id: tutorId,
-                status: 'confirmed',
-                subject_id: subjectId,
-                curriculum_id: curriculumId,
-                requested_start: startTime,
-                requested_end: endTime,
-            },
-        });
+        // Hard cap on recurrence to avoid generating an unbounded number of sessions
+        // (each ZOOM date fires a synchronous Zoom API call).
+        const MAX_OCCURRENCES = 52;
+        const MAX_RECURRENCE_MONTHS = 6;
 
-        // 2. Prepare Zoom meeting if chosen
-        let zoomMeetingId: string | null = null;
-        let zoomJoinUrl: string | null = null;
-        let meetLink: string | null = null;
+        // --- Basic input validation (Finding 13/14) ---
+        if (!studentIds || studentIds.length === 0) {
+            throw new BadRequestException('At least one student is required to create a group session.');
+        }
+        if (endTime.getTime() <= startTime.getTime()) {
+            throw new BadRequestException('endTime must be after startTime.');
+        }
+        if (startTime.getTime() < Date.now()) {
+            throw new BadRequestException('startTime cannot be in the past.');
+        }
+
+        let sessionDates: { start: Date; end: Date }[] = [];
+
+        if (isRecurring && recurrence && recurrence.daysOfWeek && recurrence.daysOfWeek.length > 0) {
+            const end = new Date(recurrence.endDate);
+            end.setHours(23, 59, 59, 999);
+
+            // --- Recurrence bound (Finding 11): cap how far out the series may run ---
+            const maxEnd = new Date(startTime);
+            maxEnd.setMonth(maxEnd.getMonth() + MAX_RECURRENCE_MONTHS);
+            if (end.getTime() > maxEnd.getTime()) {
+                throw new BadRequestException(
+                    `Recurrence endDate cannot be more than ${MAX_RECURRENCE_MONTHS} months after the start date.`,
+                );
+            }
+
+            let currentStart = new Date(startTime);
+            let currentEnd = new Date(endTime);
+            const durationMs = currentEnd.getTime() - currentStart.getTime();
+
+            while (currentStart <= end) {
+                if (recurrence.daysOfWeek.includes(currentStart.getDay())) {
+                    sessionDates.push({
+                        start: new Date(currentStart),
+                        end: new Date(currentStart.getTime() + durationMs)
+                    });
+                    if (sessionDates.length > MAX_OCCURRENCES) {
+                        throw new BadRequestException(
+                            `Recurrence generates too many sessions (limit ${MAX_OCCURRENCES}). Narrow the date range or days of week.`,
+                        );
+                    }
+                }
+                currentStart.setDate(currentStart.getDate() + 1);
+            }
+        } else {
+            sessionDates.push({ start: startTime, end: endTime });
+        }
+
+        if (sessionDates.length === 0) {
+            throw new BadRequestException('No valid dates found for the given recurrence rule.');
+        }
+
+        const seriesId = isRecurring ? require('crypto').randomUUID() : null;
+
+        // 1. Prepare Zoom Meetings first (outside DB transaction to prevent holding locks during network requests)
+        const zoomMeetings: Record<string, { zoomMeetingId: string, zoomJoinUrl: string }> = {};
         if (provider === 'ZOOM') {
-            const durationMins = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
-            const zoomRes = await this.zoomService.createMeeting(
-                'Group Tutoring Session',
-                startTime,
-                durationMins
-            );
-            zoomMeetingId = zoomRes.meetingId;
-            zoomJoinUrl = zoomRes.joinUrl;
-            meetLink = zoomJoinUrl; // Set meet_link directly for zoom
+            // Track created meetings so we can compensate (delete them) if a later one fails.
+            const createdMeetingIds: string[] = [];
+            try {
+                for (const dates of sessionDates) {
+                    // Reuse the shared concurrent-ZOOM overlap guard (Finding 7).
+                    await this.assertNoZoomOverlap(dates.start, dates.end);
+
+                    const durationMins = Math.round((dates.end.getTime() - dates.start.getTime()) / 60000);
+                    const zoomRes = await this.zoomService.createMeeting(
+                        'Group Tutoring Session',
+                        dates.start,
+                        durationMins
+                    );
+                    createdMeetingIds.push(zoomRes.meetingId);
+                    zoomMeetings[dates.start.toISOString()] = {
+                        zoomMeetingId: zoomRes.meetingId,
+                        zoomJoinUrl: zoomRes.joinUrl
+                    };
+                }
+            } catch (err) {
+                // Compensation: roll back any Zoom meetings already created before the failure
+                // so we don't leave orphaned meetings behind.
+                for (const meetingId of createdMeetingIds) {
+                    try {
+                        await this.zoomService.deleteMeeting(meetingId);
+                    } catch (cleanupErr) {
+                        this.logger.error(`Failed to clean up Zoom meeting ${meetingId} after group-session creation error`, cleanupErr);
+                    }
+                }
+                throw err;
+            }
         }
 
-        // 3. Create Session
-        const session = await this.prisma.sessions.create({
-            data: {
-                booking_id: booking.id,
-                start_time: startTime,
-                end_time: endTime,
-                status: 'scheduled',
-                video_provider: provider,
-                zoom_meeting_id: zoomMeetingId,
-                zoom_join_url: zoomJoinUrl,
-                meet_link: meetLink, // Can be overwritten if Daily
-            },
+        // 2. Database Transaction
+        const createdSessions = await this.prisma.$transaction(async (tx) => {
+            const sessions: any[] = [];
+
+            for (const dates of sessionDates) {
+                const booking = await tx.bookings.create({
+                    data: {
+                        assigned_tutor_id: tutorId,
+                        status: 'confirmed',
+                        subject_id: subjectId,
+                        curriculum_id: curriculumId,
+                        requested_start: dates.start,
+                        requested_end: dates.end,
+                        series_id: seriesId,
+                    },
+                });
+
+                let zoomMeetingId: string | null = null;
+                let zoomJoinUrl: string | null = null;
+                let meetLink: string | null = null;
+
+                if (provider === 'ZOOM') {
+                    const zoomData = zoomMeetings[dates.start.toISOString()];
+                    if (zoomData) {
+                        zoomMeetingId = zoomData.zoomMeetingId;
+                        zoomJoinUrl = zoomData.zoomJoinUrl;
+                        meetLink = zoomJoinUrl;
+                    }
+                }
+
+                const session = await tx.sessions.create({
+                    data: {
+                        booking_id: booking.id,
+                        start_time: dates.start,
+                        end_time: dates.end,
+                        status: 'scheduled',
+                        video_provider: provider,
+                        zoom_meeting_id: zoomMeetingId,
+                        zoom_join_url: zoomJoinUrl,
+                        meet_link: meetLink,
+                    },
+                });
+
+                if (provider === 'DAILYCO') {
+                    await tx.sessions.update({
+                        where: { id: session.id },
+                        data: { meet_link: `${process.env.FRONTEND_URL}/session/${session.id}` },
+                    });
+                }
+
+                if (studentIds.length > 0) {
+                    const attendanceData = studentIds.map(studentId => ({
+                        sessionId: session.id,
+                        studentId
+                    }));
+                    await tx.attendance.createMany({
+                        data: attendanceData
+                    });
+                }
+                
+                sessions.push(session);
+            }
+            return sessions;
         });
 
-        // If Daily, meet_link is the session URL on our domain
-        if (provider === 'DAILYCO') {
-            await this.prisma.sessions.update({
-                where: { id: session.id },
-                data: { meet_link: `${process.env.FRONTEND_URL}/session/${session.id}` },
-            });
-        }
-
-        // 4. Create Attendance records for each student
-        const attendanceData = studentIds.map(studentId => ({
-            sessionId: session.id,
-            studentId
-        }));
-
-        if (attendanceData.length > 0) {
-            await this.prisma.attendance.createMany({
-                data: attendanceData
-            });
-
-            // 5. Send Email Notifications
+        // 3. Send Email Notifications (Only for the first session to avoid spamming the student)
+        if (createdSessions.length > 0) {
+            const firstSession = createdSessions[0];
+            const firstDates = sessionDates[0];
             try {
                 const [tutor, students] = await Promise.all([
                     this.prisma.tutors.findUnique({
@@ -332,9 +529,9 @@ export class AdminService {
 
                 if (tutor && students.length > 0) {
                     const tutorName = `${tutor.users?.first_name || ''} ${tutor.users?.last_name || ''}`.trim();
-                    const finalMeetLink = provider === 'DAILYCO' 
-                        ? `${process.env.FRONTEND_URL}/session/${session.id}` 
-                        : meetLink;
+                    let finalMeetLink = provider === 'DAILYCO' 
+                        ? `${process.env.FRONTEND_URL}/session/${firstSession.id}` 
+                        : (zoomMeetings[firstDates.start.toISOString()]?.zoomJoinUrl || null);
 
                     await Promise.all(students.map(student => {
                         const email = student.email || student.users_students_user_idTousers?.email;
@@ -348,8 +545,9 @@ export class AdminService {
                             userId: userId,
                             firstName: firstName,
                             tutorName: tutorName,
-                            startTime: startTime,
-                            meetLink: finalMeetLink || ''
+                            startTime: firstDates.start,
+                            // To force platform usage, we send them to their dashboard
+                            meetLink: `${process.env.FRONTEND_URL}/students/dashboard`
                         });
                     }));
                 }
@@ -358,7 +556,145 @@ export class AdminService {
             }
         }
 
-        return session;
+        return createdSessions;
+    }
+
+    async rescheduleGroupSession(bookingId: string, startTime: Date, endTime: Date) {
+        // Fetch the booking to verify it exists and get zoom_meeting_id if applicable
+        const booking = await this.prisma.bookings.findUnique({
+            where: { id: bookingId },
+            include: { sessions: true }
+        });
+
+        if (!booking) {
+            throw new NotFoundException('Booking not found');
+        }
+
+        const session = booking.sessions?.[0];
+
+        if (!(startTime instanceof Date) || isNaN(startTime.getTime()) ||
+            !(endTime instanceof Date) || isNaN(endTime.getTime()) ||
+            endTime.getTime() <= startTime.getTime()) {
+            throw new BadRequestException('Invalid reschedule window: endTime must be a valid time after startTime.');
+        }
+
+        const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
+
+        // If it's a zoom session, reflect the new time in Zoom. We try an in-place
+        // update first (cheap, preserves the join URL). If that fails — most commonly
+        // because the Zoom Server-to-Server app lacks the meeting:update scope — we
+        // fall back to RECREATING the meeting at the new time. Recreate uses the
+        // meeting-create scope, which is known-good (group sessions are created the
+        // same way), so reschedule succeeds regardless of the update scope. The new
+        // meeting's join URL is persisted below and surfaced to students via the
+        // dashboard automatically.
+        let recreated: { meetingId: string; joinUrl: string } | null = null;
+        if (session && session.zoom_meeting_id) {
+            try {
+                await this.zoomService.updateMeeting(
+                    session.zoom_meeting_id,
+                    'StudyHours Group Class (Rescheduled)',
+                    startTime,
+                    durationMinutes
+                );
+            } catch (err) {
+                this.logger.warn(
+                    `Zoom updateMeeting failed during reschedule (${err?.message}); recreating meeting instead.`
+                );
+                // Fallback: create a fresh meeting at the new time.
+                const newMeeting = await this.zoomService.createMeeting(
+                    'StudyHours Group Class (Rescheduled)',
+                    startTime,
+                    durationMinutes
+                );
+                recreated = newMeeting;
+                // Best-effort delete the stale meeting — never block the reschedule.
+                this.zoomService
+                    .deleteMeeting(session.zoom_meeting_id)
+                    .catch((e) => this.logger.warn(`Failed to delete stale Zoom meeting: ${e?.message}`));
+            }
+        }
+
+        // Update the database
+        const updatedBooking = await this.prisma.$transaction(async (tx) => {
+            const b = await tx.bookings.update({
+                where: { id: bookingId },
+                data: {
+                    requested_start: startTime,
+                    requested_end: endTime,
+                }
+            });
+
+            if (session) {
+                await tx.sessions.update({
+                    where: { id: session.id },
+                    data: {
+                        start_time: startTime,
+                        end_time: endTime,
+                        ...(recreated && {
+                            zoom_meeting_id: recreated.meetingId,
+                            zoom_join_url: recreated.joinUrl,
+                            meet_link: recreated.joinUrl,
+                        }),
+                    }
+                });
+            }
+
+            return b;
+        });
+
+        // Send Email Notifications
+        if (session) {
+            try {
+                const oldStartTime = session.start_time as Date;
+
+                const tutor = booking.assigned_tutor_id ? await this.prisma.tutors.findUnique({
+                    where: { id: booking.assigned_tutor_id },
+                    include: { users: true }
+                }) : null;
+
+                const attendances = await this.prisma.attendance.findMany({
+                    where: { sessionId: session.id },
+                    include: { 
+                        students: {
+                            include: { users_students_user_idTousers: true }
+                        }
+                    }
+                });
+
+                if (tutor && attendances.length > 0) {
+                    const tutorName = `${tutor.users?.first_name || ''} ${tutor.users?.last_name || ''}`.trim();
+                    let finalMeetLink = recreated ? recreated.joinUrl : (session.meet_link || session.zoom_join_url || '');
+
+                    await Promise.all(attendances.map(att => {
+                        const student = att.students;
+                        if (!student) return Promise.resolve();
+
+                        const email = student.email || student.users_students_user_idTousers?.email;
+                        const firstName = student.first_name || student.users_students_user_idTousers?.first_name || 'Student';
+                        const userId = student.user_id || student.id;
+
+                        if (email) {
+                            return this.email.sendGroupSessionRescheduledNotification({
+                                to: email,
+                                userId,
+                                firstName,
+                                tutorName,
+                                oldStartTime,
+                                newStartTime: startTime,
+                                meetLink: finalMeetLink,
+                            }).catch(err => {
+                                this.logger.error(`Failed to send group session rescheduled email to ${email}`, err);
+                            });
+                        }
+                    }));
+                }
+            } catch (emailErr) {
+                this.logger.error('Failed to process group session rescheduled emails', emailErr);
+            }
+        }
+
+        return updatedBooking;
     }
 
     async getTutorRecommendations(subjectId: string) {
@@ -1464,5 +1800,20 @@ export class AdminService {
     private safeIso(d: Date | null | undefined): string | null {
         if (!d || !(d instanceof Date) || isNaN(d.getTime())) return null;
         return d.toISOString();
+    }
+
+    private async assertNoZoomOverlap(start: Date, end: Date): Promise<void> {
+        const overlapping = await this.prisma.sessions.findFirst({
+            where: {
+                video_provider: 'ZOOM',
+                status: { notIn: ['cancelled', 'completed'] },
+                start_time: { lt: end },
+                end_time: { gt: start },
+            },
+        });
+
+        if (overlapping) {
+            throw new BadRequestException('A Zoom meeting is already scheduled for this time slot. Concurrent Zoom meetings are not allowed.');
+        }
     }
 }

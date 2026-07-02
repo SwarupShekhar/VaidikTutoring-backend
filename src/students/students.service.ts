@@ -3,11 +3,13 @@ import {
   BadRequestException,
   NotFoundException,
   UnauthorizedException,
+  ForbiddenException,
   Inject,
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { PrismaService } from '../prisma/prisma.service';
+import { RECORDING_CONSENT_VERSION } from '../common/recording-consent';
 import * as bcrypt from 'bcrypt';
 
 const ATTENDANCE_GRACE_MINUTES = 5;
@@ -104,6 +106,7 @@ export class StudentsService {
       interests?: any[];
       recent_focus?: string;
       struggle_areas?: any[];
+      recording_consent_granted?: boolean;
     },
     parentUserId: string,
   ) {
@@ -140,6 +143,10 @@ export class StudentsService {
       throw new BadRequestException('Student with this name already exists.');
     }
 
+    // Onboarding recording-consent choice (opt-in). Defaults to off; only stamps
+    // consent metadata when the parent affirmatively opts in at onboarding.
+    const consentGranted = data.recording_consent_granted === true;
+
     // Create Student directly
     const created = await this.prisma.students.create({
       data: {
@@ -153,6 +160,12 @@ export class StudentsService {
         interests: data.interests || [],
         recent_focus: data.recent_focus || '',
         struggle_areas: data.struggle_areas || [],
+        recording_consent_granted: consentGranted,
+        recording_consent_at: consentGranted ? new Date() : null,
+        recording_consent_version: consentGranted
+          ? RECORDING_CONSENT_VERSION
+          : null,
+        recording_consent_by: consentGranted ? parentUserId : null,
       },
     });
 
@@ -162,6 +175,75 @@ export class StudentsService {
       .catch(() => undefined);
 
     return created;
+  }
+
+  // Self-consent to recording, for STANDALONE ADULT LEARNERS only. A minor can
+  // never consent to their own recording — that requires a parent/guardian (see
+  // ParentService.setRecordingConsent). We gate strictly on a known birth date
+  // showing 18+; unknown/under-18 is refused so we never let a minor self-consent.
+  async setMyRecordingConsent(userId: string, granted: boolean, birthDate?: string) {
+    const student = await this.prisma.students.findFirst({
+      where: { user_id: userId },
+      select: { id: true, birth_date: true, parent_user_id: true },
+    });
+    if (!student) {
+      throw new NotFoundException('Student profile not found');
+    }
+
+    // Age verification. Standalone accounts are adult learners, but we still
+    // verify 18+ so a minor can never self-consent. If we don't yet have a birth
+    // date on file, the caller must supply one (self-attested) the first time they
+    // enable recording — we store it once for the audit trail.
+    const updateData: any = {};
+    let effectiveDob: Date | null | undefined = student.birth_date;
+
+    if (!effectiveDob && birthDate) {
+      const d = new Date(birthDate);
+      if (isNaN(d.getTime())) {
+        throw new BadRequestException('Invalid date of birth');
+      }
+      effectiveDob = d;
+      updateData.birth_date = d; // persist once so we don't ask again
+    }
+
+    if (granted && !this.isAdult(effectiveDob)) {
+      // Distinguish "we don't know your age yet" from "you're a minor" so the UI
+      // can prompt for a birth date vs. explain a parent must consent.
+      if (!effectiveDob) {
+        throw new BadRequestException('DOB_REQUIRED');
+      }
+      throw new ForbiddenException(
+        'Only adult learners (18+) can consent to recording themselves. For a student under 18, a parent or guardian must give consent.',
+      );
+    }
+
+    updateData.recording_consent_granted = granted;
+    updateData.recording_consent_at = granted ? new Date() : null;
+    updateData.recording_consent_version = granted ? RECORDING_CONSENT_VERSION : null;
+    updateData.recording_consent_by = granted ? userId : null; // self
+
+    return this.prisma.students.update({
+      where: { id: student.id },
+      data: updateData,
+      select: {
+        id: true,
+        recording_consent_granted: true,
+        recording_consent_at: true,
+        recording_consent_version: true,
+      },
+    });
+  }
+
+  // True only when birth_date is present AND the person is at least 18 today.
+  private isAdult(birthDate: Date | null | undefined): boolean {
+    if (!birthDate) return false;
+    const dob = new Date(birthDate);
+    if (isNaN(dob.getTime())) return false;
+    const now = new Date();
+    let age = now.getFullYear() - dob.getFullYear();
+    const m = now.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < dob.getDate())) age--;
+    return age >= 18;
   }
 
   async update(
@@ -722,34 +804,119 @@ export class StudentsService {
     });
   }
 
-  async getStudentNotes(userId: string) {
+  // A paid student requests to reschedule one of their pre-scheduled classes.
+  // Verifies the class is theirs, blocks duplicate pending requests, and snapshots
+  // subject/time/name so the admin queue is self-contained.
+  async createRescheduleRequest(
+    userId: string,
+    dto: { sessionId: string; reason?: string; preferredSlots?: string },
+  ) {
+    if (!dto?.sessionId) throw new BadRequestException('sessionId is required');
+
     const student = await this.prisma.students.findFirst({
       where: { user_id: userId },
-      include: {
-        bookings: {
-          include: { sessions: true },
-        },
-      },
+      select: { id: true, first_name: true, last_name: true },
     });
     if (!student) throw new NotFoundException('Student not found');
 
-    // If user is a parent, find ALL their students' notes
-    const parent = await this.prisma.users.findUnique({
-      where: { id: userId },
-      include: { students_students_parent_user_idTousers: true }
+    const session = await this.prisma.sessions.findUnique({
+      where: { id: dto.sessionId },
+      select: {
+        id: true,
+        start_time: true,
+        bookings: { select: { student_id: true, subjects: { select: { name: true } } } },
+      },
     });
-
-    let studentIds: string[] = [];
-    if (student) {
-      studentIds = [student.id];
-    } else if (parent && parent.students_students_parent_user_idTousers.length > 0) {
-      studentIds = parent.students_students_parent_user_idTousers.map(s => s.id);
-    } else {
-      throw new NotFoundException('Student or Parent profile not found');
+    if (!session || session.bookings?.student_id !== student.id) {
+      throw new ForbiddenException('This class is not on your schedule.');
     }
 
+    const existing = await this.prisma.reschedule_requests.findFirst({
+      where: { session_id: dto.sessionId, student_id: student.id, status: 'pending' },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new BadRequestException('You already have a pending reschedule request for this class.');
+    }
+
+    const created = await this.prisma.reschedule_requests.create({
+      data: {
+        session_id: session.id,
+        student_id: student.id,
+        requested_by: userId,
+        student_name: `${student.first_name ?? ''} ${student.last_name ?? ''}`.trim() || null,
+        subject: session.bookings?.subjects?.name ?? null,
+        class_time: session.start_time,
+        reason: dto.reason ?? null,
+        preferred_slots: dto.preferredSlots ?? null,
+        status: 'pending',
+      },
+    });
+
+    // Notify admins so the request surfaces beyond the queue (best-effort).
+    try {
+      const admins = await this.prisma.users.findMany({
+        where: { role: 'admin' },
+        select: { id: true },
+      });
+      if (admins.length) {
+        await this.prisma.notifications.createMany({
+          data: admins.map((a) => ({
+            user_id: a.id,
+            type: 'reschedule_requested',
+            payload: {
+              message: `${created.student_name ?? 'A student'} requested to reschedule ${created.subject ?? 'a class'}.`,
+              requestId: created.id,
+            },
+            is_read: false,
+          })),
+        });
+      }
+    } catch {
+      /* notification is best-effort — never block the request */
+    }
+
+    return created;
+  }
+
+  // The student's own reschedule requests (drives the "requested" badge on classes).
+  async getMyRescheduleRequests(userId: string) {
+    const student = await this.prisma.students.findFirst({
+      where: { user_id: userId },
+      select: { id: true },
+    });
+    if (!student) return [];
+    return this.prisma.reschedule_requests.findMany({
+      where: { student_id: student.id },
+      orderBy: { created_at: 'desc' },
+      select: { id: true, session_id: true, status: true, created_at: true, admin_note: true },
+    });
+  }
+
+  // Notes for the caller's own student record, OR — when a PARENT passes a child's
+  // `requestedStudentId` — that child's notes (parent-owns-child verified). Scoping
+  // to one child mirrors the vault, so the parent's per-child pages line up.
+  async getStudentNotes(userId: string, requestedStudentId?: string) {
+    const ownStudent = await this.prisma.students.findFirst({
+      where: { user_id: userId },
+      select: { id: true },
+    });
+
+    let targetStudentId: string | null = null;
+    if (ownStudent) {
+      targetStudentId = ownStudent.id;
+    } else if (requestedStudentId) {
+      const child = await this.prisma.students.findFirst({
+        where: { id: requestedStudentId, parent_user_id: userId },
+        select: { id: true },
+      });
+      if (!child) throw new ForbiddenException('Access denied - not your child');
+      targetStudentId = child.id;
+    }
+    if (!targetStudentId) throw new NotFoundException('Student not found');
+
     const bookings = await this.prisma.bookings.findMany({
-      where: { student_id: { in: studentIds } },
+      where: { student_id: targetStudentId },
       include: { sessions: true }
     });
 

@@ -64,16 +64,16 @@ export class AzureStorageService implements OnModuleInit {
   }
 
   /**
-   * Pipes a video from a URL (Daily.co) directly to Azure.
+   * Pipes a video from a URL (Daily.co or Zoom) directly to Azure.
    * This is memory efficient and handles large video files easily.
    */
-  async uploadFromUrl(sessionId: string, url: string): Promise<string> {
+  async uploadFromUrl(sessionId: string, url: string, customHeaders?: Record<string, string>): Promise<string> {
     const containerClient = this.blobServiceClient.getContainerClient(this.RECORDINGS_CONTAINER);
     const blobName = `${sessionId}/${Date.now()}.mp4`;
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
-    const headers: Record<string, string> = {};
-    if (url.includes('daily.co')) {
+    const headers: Record<string, string> = { ...customHeaders };
+    if (url.includes('daily.co') && !headers['Authorization']) {
         const dailyKey = process.env.DAILY_API_KEY;
         if (dailyKey) {
             headers['Authorization'] = `Bearer ${dailyKey}`;

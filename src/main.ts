@@ -130,8 +130,30 @@ async function bootstrap() {
   await redisIoAdapter.connectToRedis();
   app.useWebSocketAdapter(redisIoAdapter);
 
-  // Default body limit (restrict DOS attacks)
-  app.use(json({ limit: '2mb' }));
+  // Default body limit (restrict DOS attacks).
+  //
+  // Webhook signature verification (Razorpay /payments/webhook, Daily
+  // /webhooks/daily, Zoom /webhooks/zoom) requires the EXACT raw request bytes,
+  // not a re-serialized JSON.stringify(body) — those would not byte-match the
+  // provider's HMAC. We capture the raw buffer here, during normal JSON parsing,
+  // via the `verify` hook. This is the single, robust source of truth for
+  // req.rawBody and replaces the old stream-reading RawBodyMiddleware (which
+  // raced against this global json() parser and left rawBody empty).
+  const rawBodyPaths = ['/payments/webhook', '/webhooks/daily', '/webhooks/zoom'];
+  app.use(
+    json({
+      limit: '2mb',
+      verify: (req: any, _res, buf) => {
+        if (!buf || buf.length === 0) return;
+        const url: string = req.originalUrl || req.url || '';
+        // Strip any query string before matching the path prefix.
+        const pathOnly = url.split('?')[0];
+        if (rawBodyPaths.some((p) => pathOnly === p || pathOnly.startsWith(p))) {
+          req.rawBody = buf.toString('utf8');
+        }
+      },
+    }),
+  );
   app.use(urlencoded({ limit: '2mb', extended: true }));
 
   // Response Compression

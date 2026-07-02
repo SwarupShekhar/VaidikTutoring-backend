@@ -3,6 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StudentsService } from '../students/students.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { RatingsService } from '../ratings/ratings.service';
+import { CreditsService } from '../credits/credits.service';
+import { RECORDING_CONSENT_VERSION } from '../common/recording-consent';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -12,6 +14,7 @@ export class ParentService {
         private studentsService: StudentsService,
         private bookingsService: BookingsService,
         private ratingsService: RatingsService,
+        private creditsService: CreditsService,
     ) { }
 
     async createStudent(parentId: string, dto: { name: string; grade: string; email?: string }) {
@@ -86,12 +89,58 @@ export class ParentService {
             }),
         );
 
+        // Per-child credit/trial status so the dashboard can show a real session
+        // gauge (trial → 3 free classes; paid/learning → plan sessions) instead of
+        // the misleading "0 of 0" that packageSessionsRemaining gives on a trial.
+        const creditEntries = await Promise.all(
+            students.map(async (student) => {
+                try {
+                    const status = await this.creditsService.getCreditStatus(student);
+                    return [student.id, status] as const;
+                } catch {
+                    return [student.id, null] as const;
+                }
+            }),
+        );
+
         return {
             students,
             bookings,
             pendingRatings,
             childSummaries: Object.fromEntries(progressEntries),
+            childCredits: Object.fromEntries(creditEntries),
         };
+    }
+
+    // Grant or revoke a parent's consent to record a specific child's sessions.
+    // Verifiable parental consent for a minor (COPPA / GDPR-K / India DPDP): only
+    // the owning parent can set it, and we stamp who/when/which-policy-version.
+    async setRecordingConsent(parentId: string, childId: string, granted: boolean) {
+        const student = await this.prisma.students.findFirst({
+            where: { id: childId, parent_user_id: parentId },
+            select: { id: true },
+        });
+        if (!student) {
+            throw new ForbiddenException('Access denied - not your child');
+        }
+
+        return this.prisma.students.update({
+            where: { id: childId },
+            data: {
+                recording_consent_granted: granted,
+                recording_consent_at: granted ? new Date() : null,
+                recording_consent_version: granted
+                    ? RECORDING_CONSENT_VERSION
+                    : null,
+                recording_consent_by: granted ? parentId : null,
+            },
+            select: {
+                id: true,
+                recording_consent_granted: true,
+                recording_consent_at: true,
+                recording_consent_version: true,
+            },
+        });
     }
 
     async getChildSessions(parentId: string, childId: string) {

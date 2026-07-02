@@ -8,6 +8,7 @@ import { CreditsModule } from '../credits/credits.module';
 
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AzureModule } from '../azure/azure.module';
+import { ZoomModule } from '../zoom/zoom.module';
 
 import { BookingsCleanupService } from './bookings.cleanup.service';
 import { BookingFallbackSchedulerService } from './booking-fallback-scheduler.service';
@@ -22,6 +23,7 @@ import { TutorStatusGuard } from '../auth/tutor-status.guard';
     AuthModule,
     CreditsModule,
     AzureModule,
+    ZoomModule,
   ],
   controllers: [BookingsController],
   providers: [BookingsService, BookingsCleanupService, BookingFallbackSchedulerService, BookingAlertsService, TutorStatusGuard],

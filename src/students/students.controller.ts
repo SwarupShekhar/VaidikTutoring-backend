@@ -8,6 +8,7 @@ import {
   Delete,
   Param,
   Patch,
+  Query,
   NotFoundException,
   Inject,
 } from '@nestjs/common';
@@ -41,6 +42,19 @@ export class StudentsController {
     }
 
     return this.studentsService.create(body, parentUserId);
+  }
+
+  // Adult learner (18+) self-consent to recording their own sessions. Minors are
+  // rejected server-side — they need a parent/guardian.
+  @Patch('me/recording-consent')
+  @UseGuards(ClerkAuthGuard)
+  async setMyRecordingConsent(
+    @Body() body: { granted: boolean; birthDate?: string },
+    @Req() req: any,
+  ) {
+    const userId = req.user?.userId;
+    if (!userId) throw new NotFoundException('User not authenticated');
+    return this.studentsService.setMyRecordingConsent(userId, !!body?.granted, body?.birthDate);
   }
 
   @Patch('me')
@@ -203,12 +217,34 @@ export class StudentsController {
     return this.studentsService.update(id, body, userId, role);
   }
 
+  // Paid student requests to reschedule a pre-scheduled class → admin queue.
+  @Post('me/reschedule-requests')
+  @UseGuards(ClerkAuthGuard)
+  async requestReschedule(
+    @Body() body: { sessionId: string; reason?: string; preferredSlots?: string },
+    @Req() req: any,
+  ) {
+    const userId = req.user?.userId;
+    if (!userId) throw new NotFoundException('User not authenticated');
+    return this.studentsService.createRescheduleRequest(userId, body);
+  }
+
+  @Get('me/reschedule-requests')
+  @UseGuards(ClerkAuthGuard)
+  async myRescheduleRequests(@Req() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) throw new NotFoundException('User not authenticated');
+    return this.studentsService.getMyRescheduleRequests(userId);
+  }
+
+  // `studentId` lets a parent fetch a specific child's notes (parent-owns-child
+  // verified in the service). Students omit it and get their own.
   @Get('me/notes')
   @UseGuards(ClerkAuthGuard)
-  async getMyNotes(@Req() req: any) {
+  async getMyNotes(@Req() req: any, @Query('studentId') studentId?: string) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
-    return this.studentsService.getStudentNotes(userId);
+    return this.studentsService.getStudentNotes(userId, studentId);
   }
 
   @Get('me/sessions')

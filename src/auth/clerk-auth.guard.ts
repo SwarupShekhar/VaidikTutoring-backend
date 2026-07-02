@@ -150,7 +150,16 @@ export class ClerkAuthGuard implements CanActivate {
                             data: { role: 'admin' }
                         });
                         this.logger.log(`Forced admin role for ${dbUser.email}`);
-                    } else if (tokenRole && tokenRole !== dbUser.role && dbUser.role !== 'admin') {
+                    } else if (
+                        tokenRole &&
+                        tokenRole !== dbUser.role &&
+                        dbUser.role !== 'admin' &&
+                        dbUser.role !== 'tutor'
+                    ) {
+                        // Only parent<->student roles are user-selectable and may sync from
+                        // the Clerk token. NEVER let the token downgrade an admin-provisioned
+                        // tutor (or admin) — a tutor whose Clerk metadata still reads 'student'
+                        // was being flipped to student on every login, causing tutor 403s.
                         dbUser = await this.prisma.users.update({
                             where: { id: dbUser.id },
                             data: { role: tokenRole }
@@ -191,15 +200,23 @@ export class ClerkAuthGuard implements CanActivate {
                         } else {
                             const linkedProfile = await this.prisma.students.findUnique({ where: { user_id: dbUser.id } });
                             if (!linkedProfile) {
-                                await this.prisma.students.create({
-                                    data: {
-                                        user_id: dbUser.id,
-                                        email: emailClaim,
-                                        first_name: firstName || dbUser.first_name || 'Student',
-                                        last_name: lastName || dbUser.last_name || '',
-                                        grade: 'TBD'
-                                    }
-                                });
+                                try {
+                                    await this.prisma.students.create({
+                                        data: {
+                                            user_id: dbUser.id,
+                                            email: emailClaim,
+                                            first_name: firstName || dbUser.first_name || 'Student',
+                                            last_name: lastName || dbUser.last_name || '',
+                                            grade: 'TBD'
+                                        }
+                                    });
+                                } catch (e: any) {
+                                    // A students row with this email may already belong to
+                                    // another user (e.g. an email reused across accounts).
+                                    // Auto-provisioning is best-effort — never fail auth
+                                    // because of it (this used to 500 /auth/profile).
+                                    this.logger.warn(`Skipped student auto-provision for ${emailClaim}: ${e?.message || e}`);
+                                }
                             } else if (firstName && linkedProfile.first_name !== firstName) {
                                 await this.prisma.students.update({
                                     where: { id: linkedProfile.id },

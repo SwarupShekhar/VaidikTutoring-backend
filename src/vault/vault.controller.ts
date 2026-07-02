@@ -48,24 +48,39 @@ export class VaultController {
   // Role-aware: admins/tutors get the full library; students/parents only see
   // assets relevant to the student (curriculum + subjects they study).
   // Optional ?subject=<name> narrows to one subject (within the student's scope).
+  // `studentId` lets a PARENT view a specific child's materials (parent-owns-child
+  // is verified server-side). Ignored for students (they always see their own).
   @Get('assets')
-  async findAll(@Req() req: any, @Query('subject') subject?: string) {
-    return this.vaultService.findAllForUser(req.user, subject);
+  async findAll(
+    @Req() req: any,
+    @Query('subject') subject?: string,
+    @Query('studentId') studentId?: string,
+  ) {
+    return this.vaultService.findAllForUser(req.user, subject, studentId);
   }
 
   // Returns a short-lived SAS URL. For students, membership is re-checked so an
   // asset id outside their scope cannot be opened by guessing it.
   @Get('assets/:id')
-  async findOne(@Param('id') id: string, @Req() req: any) {
-    return this.vaultService.findOneForUser(id, req.user);
+  async findOne(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Query('studentId') studentId?: string,
+  ) {
+    return this.vaultService.findOneForUser(id, req.user, studentId);
   }
 
   // View-only stream: pipes the asset bytes same-origin (no CORS) and never
   // exposes a SAS URL to the browser, so materials can't be pulled from the
   // Network tab. Same scope re-check as findOne for students.
   @Get('assets/:id/stream')
-  async streamOne(@Param('id') id: string, @Req() req: any, @Res() res: Response) {
-    const result = await this.vaultService.streamAssetForUser(id, req.user);
+  async streamOne(
+    @Param('id') id: string,
+    @Req() req: any,
+    @Res() res: Response,
+    @Query('studentId') studentId?: string,
+  ) {
+    const result = await this.vaultService.streamAssetForUser(id, req.user, studentId);
     if (!result) throw new NotFoundException('Asset not found');
 
     res.setHeader('Content-Type', result.contentType);

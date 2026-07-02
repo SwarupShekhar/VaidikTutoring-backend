@@ -17,6 +17,7 @@ import { Cron } from '@nestjs/schedule';
 
 import { NotificationsService } from '../notifications/notifications.service';
 import { AzureStorageService } from '../azure/azure-storage.service';
+import { ZoomService } from '../zoom/zoom.service';
 
 @Injectable()
 export class BookingsService {
@@ -28,6 +29,7 @@ export class BookingsService {
     private readonly notificationsService: NotificationsService,
     private readonly creditsService: CreditsService,
     private readonly azureStorageService: AzureStorageService,
+    private readonly zoomService: ZoomService,
   ) { }
 
   // Create booking and attempt auto-assign tutor
@@ -850,6 +852,9 @@ export class BookingsService {
       this.logger.warn(`No student profile found for user_id: ${studentUserId}`);
       throw new NotFoundException('Student profile not found');
     }
+    const studentName = `${stud.first_name || ''} ${stud.last_name || ''}`.trim() || 'Student';
+    const base64Name = Buffer.from(studentName).toString('base64');
+    
     this.logger.debug(`Found student profile ${stud.id} for user ${studentUserId}`);
     const bookings = await this.prisma.bookings.findMany({
       where: {
@@ -895,11 +900,20 @@ export class BookingsService {
           }
       }
 
+      let finalMeetLink = session?.meet_link;
+      if (finalMeetLink && finalMeetLink.includes('zoom.us')) {
+        const separator = finalMeetLink.includes('?') ? '&' : '?';
+        // We only append if uname is not already there
+        if (!finalMeetLink.includes('uname=')) {
+          finalMeetLink = `${finalMeetLink}${separator}uname=${base64Name}`;
+        }
+      }
+
       return {
         ...b,
         start_time: session?.start_time || b.requested_start,
         end_time: session?.end_time || b.requested_end,
-        meet_link: session?.meet_link,
+        meet_link: finalMeetLink,
         subject: b.subjects,
         tutor: b.tutors?.users, // Alias singular for frontend hook
       };
@@ -1057,6 +1071,7 @@ export class BookingsService {
             interests: true,
             recent_focus: true,
             struggle_areas: true,
+            recording_consent_granted: true,
           },
         },
         tutors: {
@@ -1209,7 +1224,11 @@ export class BookingsService {
 
   // Cancel booking and refund credits if applicable (GAP 7)
   async cancelBooking(bookingId: string, user: any) {
-    return this.prisma.$transaction(async (tx) => {
+    // Collected inside the tx, used for best-effort Zoom cleanup AFTER the tx commits
+    // (never hold the transaction open on a network call).
+    const zoomMeetingIds: string[] = [];
+
+    const result = await this.prisma.$transaction(async (tx) => {
       const booking = await tx.bookings.findUnique({
         where: { id: bookingId },
         include: {
@@ -1245,6 +1264,13 @@ export class BookingsService {
 
       // Cancel the associated sessions
       if (booking.sessions && booking.sessions.length > 0) {
+        // Collect any Zoom meeting ids so we can delete the meetings after the tx commits.
+        for (const s of booking.sessions) {
+          if (s.zoom_meeting_id) {
+            zoomMeetingIds.push(s.zoom_meeting_id);
+          }
+        }
+
         await tx.sessions.updateMany({
           where: { booking_id: bookingId },
           data: { status: 'cancelled' },
@@ -1305,5 +1331,17 @@ export class BookingsService {
 
       return { success: true, message: 'Booking cancelled successfully' };
     });
+
+    // Best-effort Zoom cleanup OUTSIDE the transaction. A Zoom failure must never
+    // block or roll back the cancellation that already committed.
+    for (const meetingId of zoomMeetingIds) {
+      try {
+        await this.zoomService.deleteMeeting(meetingId);
+      } catch (err) {
+        this.logger.error(`Failed to delete Zoom meeting ${meetingId} during cancellation of booking ${bookingId}`, err);
+      }
+    }
+
+    return result;
   }
 }

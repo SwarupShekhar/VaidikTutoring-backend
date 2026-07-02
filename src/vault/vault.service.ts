@@ -79,10 +79,17 @@ export class VaultService {
       select: { id: true, curriculum_preference: true },
     });
     if (!student) return null;
+    return this.buildScopeForStudent(student.id, student.curriculum_preference ?? null);
+  }
 
+  /** Build a vault scope for a specific student record id. */
+  private async buildScopeForStudent(
+    studentId: string,
+    curriculumId: string | null,
+  ): Promise<StudentScope> {
     // Subjects a student studies = the distinct subjects across their bookings.
     const bookings = await this.prisma.bookings.findMany({
-      where: { student_id: student.id, subject_id: { not: null } },
+      where: { student_id: studentId, subject_id: { not: null } },
       select: { subject_id: true },
       distinct: ['subject_id'],
     });
@@ -90,11 +97,26 @@ export class VaultService {
       .map((b) => b.subject_id)
       .filter((s): s is string => !!s);
 
-    return {
-      studentId: student.id,
-      curriculumId: student.curriculum_preference ?? null,
-      subjectIds,
-    };
+    return { studentId, curriculumId, subjectIds };
+  }
+
+  /**
+   * Resolve the scope for whoever is asking. A PARENT may pass a child's
+   * `studentId` to view that child's materials — we verify parent-owns-child
+   * first. Everyone else resolves to their own student scope.
+   */
+  private async resolveScope(user: AuthUser, studentId?: string): Promise<StudentScope | null> {
+    if (studentId && user?.role === 'parent') {
+      const child = await this.prisma.students.findFirst({
+        where: { id: studentId, parent_user_id: user.userId },
+        select: { id: true, curriculum_preference: true },
+      });
+      if (!child) {
+        throw new ForbiddenException('Access denied - not your child');
+      }
+      return this.buildScopeForStudent(child.id, child.curriculum_preference ?? null);
+    }
+    return this.getStudentScope(user?.userId);
   }
 
   /**
@@ -133,7 +155,7 @@ export class VaultService {
    * students. Optional `subjectName` narrows to a single subject (deep-link
    * from the dashboard "Your subjects" pills) — still inside the student's scope.
    */
-  async findAllForUser(user: AuthUser, subjectName?: string) {
+  async findAllForUser(user: AuthUser, subjectName?: string, studentId?: string) {
     let subjectId: string | null = null;
     if (subjectName) {
       subjectId = await this.resolveSubjectId(subjectName);
@@ -147,7 +169,7 @@ export class VaultService {
       });
     }
 
-    const scope = await this.getStudentScope(user?.userId);
+    const scope = await this.resolveScope(user, studentId);
     if (!scope) return [];
 
     const curriculumOr = scope.curriculumId
@@ -167,12 +189,12 @@ export class VaultService {
   }
 
   /** Role-aware single asset + SAS URL, with a membership re-check for students. */
-  async findOneForUser(id: string, user: AuthUser) {
+  async findOneForUser(id: string, user: AuthUser, studentId?: string) {
     const asset = await this.prisma.vault_assets.findUnique({ where: { id } });
     if (!asset) return null;
 
     if (!this.isPrivileged(user)) {
-      const scope = await this.getStudentScope(user?.userId);
+      const scope = await this.resolveScope(user, studentId);
       const allowed = scope ? await this.assetVisibleToStudent(asset, scope) : false;
       if (!allowed) {
         throw new ForbiddenException('You do not have access to this material.');
@@ -188,12 +210,12 @@ export class VaultService {
    * (stream) instead of a SAS URL — so the controller can pipe them to the
    * browser same-origin. The SAS never leaves the server.
    */
-  async streamAssetForUser(id: string, user: AuthUser) {
+  async streamAssetForUser(id: string, user: AuthUser, studentId?: string) {
     const asset = await this.prisma.vault_assets.findUnique({ where: { id } });
     if (!asset) return null;
 
     if (!this.isPrivileged(user)) {
-      const scope = await this.getStudentScope(user?.userId);
+      const scope = await this.resolveScope(user, studentId);
       const allowed = scope ? await this.assetVisibleToStudent(asset, scope) : false;
       if (!allowed) {
         throw new ForbiddenException('You do not have access to this material.');
