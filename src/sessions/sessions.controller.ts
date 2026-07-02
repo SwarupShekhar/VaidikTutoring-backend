@@ -57,7 +57,10 @@ export class SessionsController {
   // Generate downloadable ICS invite
   @UseGuards(ClerkAuthGuard)
   @Get(':id/invite')
-  async getInvite(@Param('id') id: string, @Res() res: Response) {
+  async getInvite(@Param('id') id: string, @Req() req: any, @Res() res: Response) {
+    // ICS leaks student+tutor name/email/meet link — only a participant/admin.
+    const ok = await this.sessionsService.verifySessionAccess(id, req.user?.userId);
+    if (!ok) throw new ForbiddenException('Not authorized for this session');
     const ics = await this.sessionsService.generateIcsInvite(id);
 
     res.setHeader('Content-Type', 'text/calendar');
@@ -80,6 +83,10 @@ export class SessionsController {
     }
 
     const userId = req.user.userId;
+    // Gate BEFORE returning the join URL — otherwise any logged-in user could
+    // pull any session's live meeting link (and get marked present).
+    const ok = await this.sessionsService.verifySessionAccess(id, userId);
+    if (!ok) throw new ForbiddenException('Not authorized for this session');
     // Attempt to mark attendance if the user is a student
     try {
       const student = await this.prisma.students.findFirst({
@@ -234,9 +241,17 @@ export class SessionsController {
   async uploadSlides(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
   ) {
     if (!file) {
       throw new BadRequestException('No file uploaded');
+    }
+    // Slides are teaching material — only the session's tutor or an admin may
+    // upload. Blocks arbitrary authenticated users writing files + minting SAS URLs.
+    const role = req.user?.role;
+    const ok = await this.sessionsService.verifySessionAccess(id, req.user?.userId);
+    if (!ok || (role !== 'tutor' && role !== 'admin')) {
+      throw new ForbiddenException('Only the session tutor or an admin can upload slides');
     }
 
     // 1. Upload to Azure

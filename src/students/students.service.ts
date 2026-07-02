@@ -324,6 +324,9 @@ export class StudentsService {
       exam_date?: string | Date;
       struggle_areas?: any[];
       recent_focus?: string;
+      curriculum_preference?: string;
+      interests?: any[];
+      target_exam?: string;
     },
   ) {
     let student = await this.prisma.students.findFirst({
@@ -356,6 +359,9 @@ export class StudentsService {
         ...(data.exam_date && { exam_date: new Date(data.exam_date) }),
         ...(data.struggle_areas && { struggle_areas: data.struggle_areas }),
         ...(data.recent_focus && { recent_focus: data.recent_focus }),
+        ...(data.curriculum_preference && { curriculum_preference: data.curriculum_preference }),
+        ...(data.interests && { interests: data.interests }),
+        ...(data.target_exam && { target_exam: data.target_exam }),
       },
     });
 
@@ -936,6 +942,49 @@ export class StudentsService {
         },
       },
     });
+  }
+
+  /**
+   * Ownership/authorization gate for any `/students/:id/*` read or mutation.
+   * Parent-who-owns, the student themselves, an admin, or the assigned tutor
+   * (trial tutor or active-enrollment tutor). Throws otherwise. Call this from
+   * controller handlers that take a `:id` param BEFORE returning student data —
+   * internal service callers (e.g. parent dashboard) skip it by design.
+   */
+  async assertStudentAccess(
+    studentId: string,
+    userId: string,
+    userRole?: string,
+  ): Promise<void> {
+    const student = await this.prisma.students.findUnique({
+      where: { id: studentId },
+      select: { parent_user_id: true, user_id: true, trial_tutor_id: true },
+    });
+    if (!student) throw new NotFoundException('Student not found');
+
+    const isParentOwner = student.parent_user_id === userId;
+    const isStudentSelf = student.user_id === userId;
+    const isAdmin = userRole === 'admin';
+
+    let isAssignedStaff = false;
+    if (!isParentOwner && !isStudentSelf && !isAdmin) {
+      const tutor = await this.prisma.tutors.findFirst({
+        where: { user_id: userId },
+        select: { id: true },
+      });
+      if (tutor) {
+        const isAssignedTrial = student.trial_tutor_id === tutor.id;
+        const hasActiveEnrollment = await this.prisma.enrollments.findFirst({
+          where: { student_id: studentId, tutor_id: tutor.id, status: 'active' },
+          select: { id: true },
+        });
+        isAssignedStaff = isAssignedTrial || !!hasActiveEnrollment;
+      }
+    }
+
+    if (!isParentOwner && !isStudentSelf && !isAdmin && !isAssignedStaff) {
+      throw new ForbiddenException('Not authorized to access this student');
+    }
   }
 
   /**

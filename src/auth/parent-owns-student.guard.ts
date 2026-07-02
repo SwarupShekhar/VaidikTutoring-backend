@@ -8,28 +8,33 @@ export class ParentOwnsStudentGuard implements CanActivate {
     async canActivate(context: ExecutionContext): Promise<boolean> {
         const request = context.switchToHttp().getRequest();
         const user = request.user;
-        const body = request.body;
+        const body = request.body || {};
 
-        if (!user || user.role !== 'parent') {
-            return true; // Let other guards handle role, or pass if logic is "Parent check only"
-        }
+        if (!user) throw new ForbiddenException('Unauthenticated');
 
-        // Check if `student_id` is in body or params
+        // This guard scopes PARENTS and STUDENTS to their own student record.
+        // Admins/tutors are governed by their own role checks — pass through.
+        const role = user.role;
+        if (role !== 'parent' && role !== 'student') return true;
+
         const studentId = body.student_id || request.params.studentId;
+        if (!studentId) return true; // nothing to scope
 
-        if (!studentId) return true; // Nothing to check
-
-        // Logic: Is this student a child of this parent?
-        // We check the `students` table or `users` table. 
-        // Since we maintain both links, `students` table is reliable for profile ID.
-        // If studentId refers to `students.id` (Profile ID):
         const student = await this.prisma.students.findUnique({
             where: { id: studentId },
+            select: { parent_user_id: true, user_id: true },
         });
 
-        if (!student) return true; // Let downstream fail if not found
+        // Fail CLOSED — a non-existent id must not slip through to a handler that
+        // trusts the guard. (Previously returned true → student-role bypass.)
+        if (!student) throw new ForbiddenException('You do not have access to this student');
 
-        if (student.parent_user_id !== user.userId) {
+        const owns =
+            role === 'parent'
+                ? student.parent_user_id === user.userId
+                : student.user_id === user.userId;
+
+        if (!owns) {
             throw new ForbiddenException('You do not have access to this student');
         }
 

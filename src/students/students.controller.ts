@@ -159,7 +159,8 @@ export class StudentsController {
 
   @Get(':id')
   @UseGuards(ClerkAuthGuard)
-  async getById(@Param('id') id: string) {
+  async getById(@Param('id') id: string, @Req() req: any) {
+    await this.studentsService.assertStudentAccess(id, req.user?.userId, req.user?.role);
     const student = await this.studentsService.findUniqueById(id);
     if (!student) throw new NotFoundException('Student not found');
     return student;
@@ -170,6 +171,7 @@ export class StudentsController {
   async getEnrollmentStatus(@Param('id') id: string, @Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
+    await this.studentsService.assertStudentAccess(id, userId, req.user?.role);
     return this.studentsService.getEnrollmentStatus(id);
   }
 
@@ -178,6 +180,7 @@ export class StudentsController {
   async getProgressSummary(@Param('id') id: string, @Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
+    await this.studentsService.assertStudentAccess(id, userId, req.user?.role);
     return this.studentsService.getProgressSummary(id);
   }
 
@@ -195,6 +198,7 @@ export class StudentsController {
   async updateStreak(@Param('id') id: string, @Req() req: any) {
     const userId = req.user?.userId;
     if (!userId) throw new Error('User not authenticated');
+    await this.studentsService.assertStudentAccess(id, userId, req.user?.role);
     return this.studentsService.updateStreak(id);
   }
 

@@ -12,6 +12,7 @@ import {
   UploadedFile,
   Logger,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -28,12 +29,18 @@ export class VaultController {
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   async uploadAsset(
+    @Req() req: any,
     @UploadedFile() file: Express.Multer.File,
     @Body('title') title: string,
     @Body('description') description: string,
     @Body('file_type') file_type: string,
-    @Body('uploaded_by') uploaded_by?: string,
   ) {
+    // Only staff may add to the shared library — otherwise any student/parent
+    // could inject files. `uploaded_by` is taken from the token, never the body.
+    const role = req.user?.role;
+    if (role !== 'tutor' && role !== 'admin') {
+      throw new ForbiddenException('Only tutors or admins can upload vault materials');
+    }
     return this.vaultService.createAsset({
       title,
       description,
@@ -41,7 +48,7 @@ export class VaultController {
       buffer: file.buffer,
       mimeType: file.mimetype,
       originalName: file.originalname,
-      uploaded_by,
+      uploaded_by: req.user?.userId,
     });
   }
 
