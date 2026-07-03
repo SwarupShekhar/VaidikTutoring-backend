@@ -208,6 +208,7 @@ export class SessionsController {
   }
 
 
+  @UseGuards(ClerkAuthGuard)
   @Post('validate-token')
   async validateToken(@Body() body: { sessionId: string; token: string }) {
     // Validate the specific session join token.

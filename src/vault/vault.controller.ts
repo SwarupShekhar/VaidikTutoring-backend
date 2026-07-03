@@ -18,13 +18,17 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
 import { VaultService } from './vault.service';
+import { SessionsService } from '../sessions/sessions.service';
 
 @Controller('vault')
 @UseGuards(ClerkAuthGuard)
 export class VaultController {
   private readonly logger = new Logger(VaultController.name);
 
-  constructor(private readonly vaultService: VaultService) {}
+  constructor(
+    private readonly vaultService: VaultService,
+    private readonly sessionsService: SessionsService,
+  ) {}
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
@@ -105,6 +109,7 @@ export class VaultController {
 
   @Post('annotations')
   async saveAnnotations(
+    @Req() req: any,
     @Body() data: {
       session_id: string;
       asset_id: string;
@@ -113,15 +118,18 @@ export class VaultController {
       current_page: number;
     },
   ) {
+    await this.sessionsService.verifySessionAccess(data.session_id, req.user?.userId);
     return this.vaultService.saveAnnotations(data);
   }
 
   @Get('annotations/:sessionId/:assetId')
   async getAnnotations(
+    @Req() req: any,
     @Param('sessionId') sessionId: string,
     @Param('assetId') assetId: string,
-    @Param('studentId') studentId?: string,
+    @Query('studentId') studentId?: string,
   ) {
+    await this.sessionsService.verifySessionAccess(sessionId, req.user?.userId);
     return this.vaultService.getAnnotations(sessionId, assetId, studentId);
   }
 }
