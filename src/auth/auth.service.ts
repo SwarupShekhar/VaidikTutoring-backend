@@ -434,6 +434,29 @@ export class AuthService {
       return this.getUserProfile(userId);
     }
 
+    // Never let the onboarding role-picker silently overwrite an account that
+    // already has real history under the OTHER role. This destroyed a live paid
+    // student's account by flipping it to 'parent' (Jul 3 2026 incident) — the
+    // frontend's "is this a fresh signup" check trusted onboarding_status alone,
+    // which was stale for this legacy account even though the role was real. This
+    // is the actual mutation, so it's the right place for the hard stop: a genuine
+    // role conversion for an established account is an admin action, not a picker
+    // click, regardless of what the frontend thinks it knows.
+    const [ownStudentProfile, existingChildrenCount] = await Promise.all([
+      this.prisma.students.findUnique({ where: { user_id: userId } }),
+      this.prisma.students.count({ where: { parent_user_id: userId } }),
+    ]);
+    if (role === 'parent' && ownStudentProfile) {
+      throw new BadRequestException(
+        'This account already has a student profile and cannot self-convert to a parent account. Contact support.',
+      );
+    }
+    if (role === 'student' && existingChildrenCount > 0) {
+      throw new BadRequestException(
+        'This account already manages one or more children and cannot self-convert to a student account. Contact support.',
+      );
+    }
+
     // Updates both Clerk publicMetadata and the DB role.
     await this.syncClerkService.syncUserRoleToClerk(userId, role).catch((err) =>
       this.logger.error(`[updateRole] Clerk sync failed for ${userId}: ${err.message}`),

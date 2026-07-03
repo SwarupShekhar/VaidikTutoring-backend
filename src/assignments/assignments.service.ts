@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AzureStorageService } from '../azure/azure-storage.service';
 import { StudentsService } from '../students/students.service';
@@ -125,13 +125,24 @@ export class AssignmentsService {
     });
   }
 
-  async gradeAssignment(submissionId: string, score: number, feedback: string) {
+  async gradeAssignment(submissionId: string, score: number, feedback: string, userId?: string) {
     const existing = await this.prisma.submissions.findUnique({
-      where: { id: submissionId }
+      where: { id: submissionId },
+      include: { assignments: true }
     });
 
     if (!existing) {
       throw new NotFoundException('Submission not found');
+    }
+
+    if (userId) {
+      const user = await this.prisma.users.findUnique({ where: { id: userId }, include: { tutors: true } });
+      if (user?.role !== 'admin') {
+        const isAssignedTutor = existing.assignments?.created_by === userId;
+        if (!isAssignedTutor) {
+          throw new ForbiddenException('You can only grade submissions for assignments you created');
+        }
+      }
     }
 
     return this.prisma.submissions.update({

@@ -73,7 +73,7 @@ export class ProgramsController {
 
     @Get(':id/attendance-report')
     async getAttendanceReport(@Req() req: any, @Param('id') id: string) {
-        // this.checkAdmin(req); // Or maybe teachers can see this? keeping admin only for now per spec
+        this.checkAdmin(req);
         return this.programsService.getAttendanceReport(id);
     }
 

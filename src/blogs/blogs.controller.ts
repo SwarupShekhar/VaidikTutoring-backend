@@ -164,6 +164,9 @@ export class BlogsController {
         if (user.role === 'tutor' && blog.author_id !== user.userId) {
             throw new UnauthorizedException('You can only edit your own blogs');
         }
+        if (user.role !== 'admin' && user.role !== 'tutor') {
+            throw new UnauthorizedException('Only admins and tutors can edit blogs');
+        }
 
         return this.blogsService.update(id, updateBlogDto, user);
     }

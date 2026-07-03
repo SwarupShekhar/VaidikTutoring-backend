@@ -42,8 +42,9 @@ export class AssignmentsController {
   @Roles('admin', 'tutor')
   async gradeAssignment(
     @Param('id') submissionId: string,
-    @Body() body: { score: number; feedback: string }
+    @Body() body: { score: number; feedback: string },
+    @Request() req: any
   ) {
-    return this.assignmentsService.gradeAssignment(submissionId, body.score, body.feedback);
+    return this.assignmentsService.gradeAssignment(submissionId, body.score, body.feedback, req.user?.userId);
   }
 }

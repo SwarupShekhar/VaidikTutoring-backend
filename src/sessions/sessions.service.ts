@@ -416,8 +416,15 @@ export class SessionsService {
   async validateJoinToken(sessionId: string, token: string) {
     try {
       const payload = this.jwtService.verify(token);
-      // Optional: Check if payload.sessionId === sessionId if your token structure dictates it
-      // For now, valid signature is enough to prove generic access, or payload.role check.
+      // The app's login JWT never carries a sessionId claim, so we can't check
+      // one against the requested session. Instead verify the token's own user
+      // (payload.sub) is an actual participant in this session — the same
+      // ownership check every other session endpoint uses. Without this, a
+      // valid signature on ANY login token would "validate" for ANY session.
+      if (!payload.sub) {
+        throw new Error('Token missing subject');
+      }
+      await this.verifySessionAccess(sessionId, payload.sub);
 
       return {
         valid: true,
@@ -1093,9 +1100,8 @@ export class SessionsService {
       finalSessionId = booking.sessions[0].id;
     }
 
-    // 2. Verify user has access (only tutor/admin)
-    // Controller role guard handles basic role, check ownership if needed
-    // But since it's a snapshot of the whiteboard, let's keep it simple
+    // 2. Verify user has access
+    await this.verifySessionAccess(finalSessionId, userId);
 
     // 3. Convert base64 to Buffer
     const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
@@ -1151,6 +1157,14 @@ export class SessionsService {
         include: { bookings: { include: { students: true } } }
     });
     if (!session) throw new NotFoundException('Session not found');
+
+    // 'system' is the internal sentinel used by the Daily.co webhook
+    // (daily-webhook.controller.ts) to auto-complete a session when the video
+    // call ends — there's no real user to check ownership against, and it isn't
+    // a client-reachable value since callers only ever supply req.user.userId.
+    if (userId && userId !== 'system') {
+        await this.verifySessionAccess(sessionId, userId);
+    }
 
     // Perform the update with optimistic concurrency control if completing
     let updated;
@@ -1254,7 +1268,17 @@ export class SessionsService {
 
     // Permission checks: user must be tutor, the student, parent of student, or admin
     const isAdmin = user.role === 'admin';
-    const isTutor = user.role === 'tutor' || (user.tutors && user.tutors.length > 0);
+    let isTutor = false;
+    if (user.role === 'tutor' || (user.tutors && user.tutors.length > 0)) {
+      if (session.bookings?.assigned_tutor_id) {
+        const assignedTutor = await this.prisma.tutors.findUnique({
+          where: { id: session.bookings.assigned_tutor_id }
+        });
+        if (assignedTutor && assignedTutor.user_id === userId) {
+          isTutor = true;
+        }
+      }
+    }
 
     // Check if user is the student in this session
     let isStudent = false;
