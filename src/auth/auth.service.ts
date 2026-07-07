@@ -408,12 +408,20 @@ export class AuthService {
 
     if (!user) return null;
 
+    // Check if user has real history to prevent onboarding traps
+    const [ownStudentProfileCount, existingChildrenCount, paidPurchasesCount] = await Promise.all([
+      this.prisma.students.count({ where: { user_id: userId } }),
+      this.prisma.students.count({ where: { parent_user_id: userId } }),
+      this.prisma.purchases.count({ where: { user_id: userId, status: 'PAID' } })
+    ]);
+    const has_onboarded_history = ownStudentProfileCount > 0 || existingChildrenCount > 0 || paidPurchasesCount > 0;
+
     this.logger.debug(`User profile requested: ${userId} role=${user.role}`);
 
     // return safe user object (exclude password hash)
     // We can use a mapper or just return what we need + spread
     const { password_hash, email_verification_token, ...safeUser } = user;
-    return safeUser;
+    return { ...safeUser, has_onboarded_history };
   }
 
   /**
@@ -431,6 +439,9 @@ export class AuthService {
 
     // Never let onboarding downgrade a privileged account.
     if (user.role === 'admin' || user.role === 'tutor') {
+      this.logger.warn(
+        `ROLE_CHANGE_AUDIT: userId=${userId} previousRole=${user.role} requestedRole=${role} outcome=rejected:privileged_role_protected timestamp=${new Date().toISOString()}`,
+      );
       return this.getUserProfile(userId);
     }
 
@@ -442,16 +453,31 @@ export class AuthService {
     // is the actual mutation, so it's the right place for the hard stop: a genuine
     // role conversion for an established account is an admin action, not a picker
     // click, regardless of what the frontend thinks it knows.
-    const [ownStudentProfile, existingChildrenCount] = await Promise.all([
+    const [ownStudentProfile, existingChildrenCount, paidPurchasesCount] = await Promise.all([
       this.prisma.students.findUnique({ where: { user_id: userId } }),
       this.prisma.students.count({ where: { parent_user_id: userId } }),
+      this.prisma.purchases.count({ where: { user_id: userId, status: 'PAID' } })
     ]);
     if (role === 'parent' && ownStudentProfile) {
+      this.logger.warn(
+        `ROLE_CHANGE_AUDIT: userId=${userId} previousRole=${user.role} requestedRole=${role} outcome=rejected:parent_has_student_profile timestamp=${new Date().toISOString()}`,
+      );
       throw new BadRequestException(
         'This account already has a student profile and cannot self-convert to a parent account. Contact support.',
       );
     }
+    if (role === 'parent' && paidPurchasesCount > 0) {
+      this.logger.warn(
+        `ROLE_CHANGE_AUDIT: userId=${userId} previousRole=${user.role} requestedRole=${role} outcome=rejected:parent_has_paid_history timestamp=${new Date().toISOString()}`,
+      );
+      throw new BadRequestException(
+        'This account has purchase history and cannot self-convert to a parent account. Contact support.',
+      );
+    }
     if (role === 'student' && existingChildrenCount > 0) {
+      this.logger.warn(
+        `ROLE_CHANGE_AUDIT: userId=${userId} previousRole=${user.role} requestedRole=${role} outcome=rejected:student_has_children timestamp=${new Date().toISOString()}`,
+      );
       throw new BadRequestException(
         'This account already manages one or more children and cannot self-convert to a student account. Contact support.',
       );
@@ -466,6 +492,10 @@ export class AuthService {
       where: { id: userId },
       data: { role, onboarding_status: 'in_progress' },
     });
+
+    this.logger.warn(
+      `ROLE_CHANGE_AUDIT: userId=${userId} previousRole=${user.role} requestedRole=${role} outcome=allowed timestamp=${new Date().toISOString()}`,
+    );
 
     // Welcome email now fires at account creation (ClerkAuthGuard), not here.
 
