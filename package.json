@@ -26,6 +26,7 @@
     "@azure/storage-blob": "^12.31.0",
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@clerk/nextjs": "^6.37.1",
+    "@google/genai": "^2.10.0",
     "@logtail/node": "^0.5.8",
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/cache-manager": "^3.1.0",

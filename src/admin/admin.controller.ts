@@ -501,4 +501,32 @@ export class AdminController {
     }
     return this.adminService.cleanupRecordings();
   }
+
+  @Get('chat-leads')
+  async getChatLeads(
+    @Req() req: any,
+    @Query('limit') limitStr?: string,
+    @Query('offset') offsetStr?: string,
+  ) {
+    if (req.user.role !== 'admin') {
+      throw new UnauthorizedException('Admin only');
+    }
+    const limit = limitStr ? parseInt(limitStr, 10) : 100;
+    const offset = offsetStr ? parseInt(offsetStr, 10) : 0;
+    return this.adminService.getChatLeads(limit, offset);
+  }
+
+  @Get('chat-transcripts')
+  async getChatTranscripts(
+    @Req() req: any,
+    @Query('limit') limitStr?: string,
+    @Query('offset') offsetStr?: string,
+  ) {
+    if (req.user.role !== 'admin') {
+      throw new UnauthorizedException('Admin only');
+    }
+    const limit = limitStr ? parseInt(limitStr, 10) : 100;
+    const offset = offsetStr ? parseInt(offsetStr, 10) : 0;
+    return this.adminService.getChatTranscripts(limit, offset);
+  }
 }

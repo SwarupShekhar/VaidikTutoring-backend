@@ -48,6 +48,7 @@ import { LeadsModule } from './leads/leads.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { EngagementModule } from './engagement/engagement.module';
 import { ZoomModule } from './zoom/zoom.module';
+import { ChatbotModule } from './chatbot/chatbot.module';
 
 @Module({
   imports: [
@@ -164,6 +165,7 @@ import { ZoomModule } from './zoom/zoom.module';
       serveRoot: '/',
     }),
     ZoomModule,
+    ChatbotModule,
   ],
   controllers: [AppController],
   providers: [AppService],

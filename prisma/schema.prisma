@@ -964,6 +964,38 @@ model submissions {
   @@schema("app")
 }
 
+model chat_transcripts {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ip           String?
+  user_message String
+  bot_response String
+  flagged      Boolean   @default(false)
+  created_at   DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at])
+  @@schema("app")
+}
+
+model chat_leads {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String?
+  email        String
+  phone        String?
+  level        String?
+  curriculum   String?
+  region       String?
+  goal         String?
+  subject      String?
+  note         String?
+  source_route String?
+  ip           String?
+  contacted    Boolean   @default(false)
+  created_at   DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at])
+  @@schema("app")
+}
+
 enum TutorStatus {
   ACTIVE
   SUSPENDED

@@ -1816,4 +1816,20 @@ export class AdminService {
             throw new BadRequestException('A Zoom meeting is already scheduled for this time slot. Concurrent Zoom meetings are not allowed.');
         }
     }
+
+    async getChatLeads(limit = 100, offset = 0) {
+        return this.prisma.chat_leads.findMany({
+            orderBy: { created_at: 'desc' },
+            take: limit,
+            skip: offset,
+        });
+    }
+
+    async getChatTranscripts(limit = 100, offset = 0) {
+        return this.prisma.chat_transcripts.findMany({
+            orderBy: { created_at: 'desc' },
+            take: limit,
+            skip: offset,
+        });
+    }
 }
