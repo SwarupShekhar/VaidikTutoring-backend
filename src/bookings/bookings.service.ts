@@ -18,6 +18,7 @@ import { Cron } from '@nestjs/schedule';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AzureStorageService } from '../azure/azure-storage.service';
 import { ZoomService } from '../zoom/zoom.service';
+import { SlackService } from '../slack/slack.service';
 
 @Injectable()
 export class BookingsService {
@@ -30,6 +31,7 @@ export class BookingsService {
     private readonly creditsService: CreditsService,
     private readonly azureStorageService: AzureStorageService,
     private readonly zoomService: ZoomService,
+    private readonly slackService: SlackService,
   ) { }
 
   // Create booking and attempt auto-assign tutor
@@ -342,6 +344,7 @@ export class BookingsService {
       // Notify Admins (NON-BLOCKING)
       try {
         this.notificationsService.notifyAdminBooking(user.first_name || 'Student');
+        this.slackService.sendAlert(`New booking created by ${user.first_name || 'Student'}!`);
       } catch (e) {
         this.logger.error(`Failed to notify admin: ${e.message}`);
       }

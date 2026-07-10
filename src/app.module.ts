@@ -36,6 +36,8 @@ import { EnrollmentsModule } from './enrollments/enrollments.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { MediaModule } from './media/media.module';
 import { StorageModule } from './storage/storage.module';
+import { AssessmentsModule } from './assessments/assessments.module';
+import { SlackModule } from './slack/slack.module';
 import { DailyModule } from './daily/daily.module';
 import { PhoneVerificationModule } from './phone-verification/phone-verification.module';
 import { SupportModule } from './support/support.module';
@@ -144,10 +146,11 @@ import { ChatbotModule } from './chatbot/chatbot.module';
     SessionPhasesModule,
     SubjectsModule,
     PaymentsModule,
-    CreditsModule,
-    RatingsModule,
+    ZoomModule,
+    PaymentsModule,
     PhoneVerificationModule,
-    StorageModule,
+    VaultModule,
+    SlackModule,
     MediaModule,
     DailyModule,
     SupportModule,

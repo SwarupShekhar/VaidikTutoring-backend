@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { SlackService } from '../slack/slack.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -11,6 +12,7 @@ export class LeadsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
+    private readonly slackService: SlackService,
   ) {}
 
   async capture(emailAddr: string, source: string) {
@@ -19,6 +21,8 @@ export class LeadsService {
     });
 
     this.logger.log(`Lead captured: ${emailAddr} from ${source}`);
+
+    this.slackService.sendAlert(`New lead captured: ${emailAddr} from ${source}`);
 
     const adminEmail = process.env.ADMIN_EMAIL || 'swarupshekhar.vaidikedu@gmail.com';
     await this.email.sendMail({
@@ -42,6 +46,8 @@ export class LeadsService {
     });
 
     this.logger.log(`Test Prep Lead captured: ${data.email} for ${data.target_test}`);
+
+    this.slackService.sendAlert(`New Test Prep Lead: ${data.name} (${data.email}) for ${data.target_test}`);
 
     const adminEmail = process.env.ADMIN_EMAIL || 'swarupshekhar.vaidikedu@gmail.com';
     await this.email.sendMail({

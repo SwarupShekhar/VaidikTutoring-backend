@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { SlackService } from '../slack/slack.service';
 import { CreateEnrollmentDto } from './create-enrollment.dto';
 import { BookingsService } from '../bookings/bookings.service';
 import { CreditsService } from '../credits/credits.service';
@@ -14,6 +15,7 @@ export class EnrollmentsService {
     private prisma: PrismaService,
     private bookingsService: BookingsService,
     private creditsService: CreditsService,
+    private slackService: SlackService,
   ) {}
 
   async createEnrollment(dto: CreateEnrollmentDto) {
@@ -105,6 +107,12 @@ export class EnrollmentsService {
 
       return enrollment;
     });
+
+    try {
+      this.slackService.sendAlert(`New enrollment created for student ${dto.student_id}!`);
+    } catch (err) {
+      console.error('Failed to send slack alert:', err);
+    }
 
     // 3. Generate initial sessions (credit-checked inside) outside the transaction to prevent timeout
     try {

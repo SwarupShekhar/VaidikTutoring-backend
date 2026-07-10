@@ -16,6 +16,7 @@ import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata';
 import { CreditsService } from '../credits/credits.service';
 import { TutorsService } from '../tutors/tutors.service';
 import * as crypto from 'crypto';
+import { SlackService } from '../slack/slack.service';
 
 @Injectable()
 export class AuthService {
@@ -27,6 +28,7 @@ export class AuthService {
     private emailService: EmailService,
     private syncClerkService: SyncClerkMetadataService,
     private creditsService: CreditsService,
+    private slackService: SlackService,
     @Inject(forwardRef(() => TutorsService))
     @Optional()
     private tutorsService?: TutorsService,
@@ -106,40 +108,10 @@ export class AuthService {
         email_verified: false,
         email_verification_token: token,
         email_verification_expires: expires,
-        // Create related student/tutor record handled elsewhere? 
-        // Original code didn't do it in 'signup' method explicitly, 
-        // but often it's needed. The prompt didn't strictly ask to fix that structure, 
-        // just harden signup. 
-        // However, if we add grade, we typically need to create the 'students' record.
-        // I will stick to what the prompt strictly asked: "Model Changes... User model...".
-        // If the original 'signup' didn't create student/tutor profiles, I won't add it unless I see it missing.
-        // Original code: just created 'users'. So I will stick to that to avoid breaking unknown logic, 
-        // although real app usually needs profile creation.
-        // Validating 'grade' in schema without saving it seems pointless, but maybe it's saved later?
-        // Wait, the prompt schema has 'grade' but where does it go?
-        // 'students' model has 'grade'. 'users' model does NOT.
-        // If I validate it, I should save it.
-        // I will modify this to create the student record if role is student.
-        // But prompt only said: "Modify User model... Add Zod...".
-        // It didn't explicitly ask to implementation profile creation if it wasn't there.
-        // Let's check 'students' table again. It has 'user_id'.
-        // If I don't create it, the data is lost.
-        // The prompt says "Existing functionality is not broken".
-        // I'll stick to MINIMAL changes. The original 'auth.service.ts' ONLY created 'users'.
-        // So potentially profile creation happens elsewhere or IS missing. 
-        // I will just ignore 'grade' saving for now to be safe, OR better:
-        // transactionally create student profile if provided.
-        // Let's safe side: just User model update as requested.
       },
     });
 
     await this.logAudit('USER_SIGNED_UP_UNVERIFIED', user.id, { ip: data.ip });
-
-    // If role is student and grade is provided, we should probably create the student record
-    // but the original code was broken/incomplete? 
-    // I'll leave a TODO or comment, but mostly focus on Verification.
-    // Actually, I'll add the student creation if simple, otherwise skip.
-    // Let's check if 'students' table is used. Yes.
 
     if (data.role === 'student' && data.grade) {
       const studentRecord = await this.prisma.students.create({
@@ -151,7 +123,6 @@ export class AuthService {
         }
       });
 
-      // Initialize trial credits for the new student
       try {
         await this.creditsService.initTrialCredits(studentRecord.id);
       } catch (e) {
@@ -159,22 +130,16 @@ export class AuthService {
       }
     }
 
-    // For tutor, we might need 'tutors' record.
-    // Tutors are now admin-created only.
-    // if (data.role === 'tutor') { ... } // Removed unreachable code
-
     try {
       await this.emailService.sendVerificationEmail(user.email, token);
     } catch (e) {
-      // Log error but don't fail signup? Or fail?
-      // If email fails, user can't verify.
-      // Better to fail or rely on resend.
       this.logger.error('Failed to send verification email', e);
     }
 
+    this.slackService.sendAlert(`New signup: ${user.email} joined as a ${user.role}!`);
+
     return {
       message: 'Signup successful. Please check your email to verify your account.',
-      // No token returned!
     };
   }
 
@@ -330,6 +295,8 @@ export class AuthService {
       force_password_change: user.force_password_change, // Crucial for PasswordChangeGuard
       tutor_status: user.tutor_status, // For TutorStatusGuard
     });
+
+    this.slackService.sendAlert(`User signed in: ${email} (${user.role})`);
 
     return {
       message: 'Login successful',

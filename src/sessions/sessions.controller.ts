@@ -31,6 +31,7 @@ import { EmailVerifiedGuard } from '../auth/email-verified.guard';
 import { PasswordChangeGuard } from '../auth/password-change.guard';
 import { PhoneVerifiedGuard } from '../auth/phone-verified.guard';
 import { memoryStorage } from 'multer';
+import { SlackService } from '../slack/slack.service';
 
 @Controller('sessions')
 export class SessionsController {
@@ -38,6 +39,7 @@ export class SessionsController {
     private readonly sessionsService: SessionsService,
     private readonly dailyService: DailyService,
     private readonly prisma: PrismaService,
+    private readonly slackService: SlackService,
   ) { }
 
   // Create a session (basic)
@@ -97,6 +99,14 @@ export class SessionsController {
       }
     } catch (err) {
       console.error('Failed to mark attendance on Zoom join:', err);
+    }
+
+    try {
+      const user = await this.prisma.users.findUnique({ where: { id: userId } });
+      const name = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email : userId;
+      this.slackService.sendAlert(`${name} joined session ${id}`);
+    } catch (err) {
+      console.error('Failed to send slack alert:', err);
     }
 
     return {
@@ -200,6 +210,12 @@ export class SessionsController {
       userName,
       user.id
     );
+
+    try {
+      this.slackService.sendAlert(`${userName} joined Daily session ${sessionId}`);
+    } catch (err) {
+      console.error('Failed to send slack alert:', err);
+    }
 
     return {
       roomUrl: room.url,
