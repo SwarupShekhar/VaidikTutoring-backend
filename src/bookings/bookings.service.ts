@@ -341,6 +341,34 @@ export class BookingsService {
         }),
       );
 
+      // Notify Student (NON-BLOCKING)
+      try {
+        if (user && user.email) {
+          const formattedTime = new Date(booking.requested_start).toLocaleString('en-US', {
+            weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' // We format in UTC just to have a clean string, ideally frontend converts, but we can just say "at the requested time".
+          });
+          
+          await this.emailService.sendMail({
+            to: user.email,
+            subject: 'Your Session Request is Confirmed! - StudyHours',
+            text: `Hi ${user.first_name || 'Student'},\n\nWe have received your session request.\n\nYour session is confirmed, and we are currently matching you with an expert tutor! We will assign your tutor shortly.\n\nBest,\nThe StudyHours Team`,
+            html: `
+              <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+                <h2 style="color: #4F46E5;">Session Request Confirmed! 🎉</h2>
+                <p>Hi ${user.first_name || 'Student'},</p>
+                <p>We have successfully received your tutoring session request.</p>
+                <p><strong>Your session is confirmed!</strong> We are currently matching you with one of our expert tutors to ensure you get the best learning experience.</p>
+                <p>You will see your assigned tutor in your dashboard shortly.</p>
+                <br/>
+                <p>Best regards,<br/><strong>The StudyHours Team</strong></p>
+              </div>
+            `
+          });
+        }
+      } catch (e) {
+        this.logger.error(`Failed to send confirmation email to student: ${e.message}`);
+      }
+
       // Notify Admins (NON-BLOCKING)
       try {
         this.notificationsService.notifyAdminBooking(user.first_name || 'Student');

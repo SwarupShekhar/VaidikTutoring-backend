@@ -3,20 +3,24 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Querying bookings with tutors...');
+  console.log('Querying for mandshagunk...');
   const bookings = await prisma.bookings.findMany({
-    where: { assigned_tutor_id: { not: null } },
-    include: { tutors: { include: { users: true } } },
-    take: 5,
-    orderBy: { created_at: 'desc' }
+    orderBy: { created_at: 'desc' },
+    include: { student: { include: { user: true } } },
+    take: 100
   });
 
   for (const b of bookings) {
-    console.log(`Booking ID: ${b.id}`);
-    console.log(`Tutor ID: ${b.assigned_tutor_id}`);
-    console.log(`Tutor User ID: ${b.tutors?.user_id}`);
-    console.log(`Tutor Email: ${b.tutors?.users?.email}`);
-    console.log('---');
+    const studentFirstName = b.student?.user?.first_name || b.student?.first_name || '';
+    const studentLastName = b.student?.user?.last_name || b.student?.last_name || '';
+    const studentEmail = b.student?.user?.email || b.student?.email || '';
+    
+    if (studentFirstName.toLowerCase().includes('mandsha') || studentLastName.toLowerCase().includes('mandsha') || studentEmail.toLowerCase().includes('mandsha')) {
+       console.log(`Booking ID: ${b.id}`);
+       console.log(`Name: ${studentFirstName} ${studentLastName}`);
+       console.log(`Email: ${studentEmail}`);
+       console.log('---');
+    }
   }
 
   // Find users with role tutor that don't have a tutor record

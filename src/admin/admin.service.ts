@@ -1559,6 +1559,33 @@ export class AdminService {
             // Don't fail the allocation if email fails
         }
 
+        // Send notification email to student
+        try {
+            const studentUser = await this.prisma.users.findUnique({ where: { id: student.user_id } });
+            if (studentUser && studentUser.email) {
+                const studentHtml = `
+                    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+                        <h2 style="color: #4F46E5;">Your Tutor is Assigned! 🎉</h2>
+                        <p>Hi ${student.first_name},</p>
+                        <p>Great news! We have assigned an expert tutor for your upcoming <strong>${subject.name}</strong> session.</p>
+                        <p><strong>Your Tutor:</strong> ${tutor.users.first_name} ${tutor.users.last_name || ''}</p>
+                        <p>You can view all the details and access the class link directly from your student dashboard.</p>
+                        <br/>
+                        <p>Best regards,<br/><strong>The StudyHours Team</strong></p>
+                    </div>
+                `;
+
+                await this.email.sendMail({
+                    to: studentUser.email,
+                    subject: 'Your Tutor has been Assigned! - StudyHours',
+                    text: `Hi ${student.first_name}, great news! We have assigned ${tutor.users.first_name} as your tutor for ${subject.name}. Check your dashboard for details.`,
+                    html: studentHtml,
+                });
+            }
+        } catch (e) {
+            this.logger.error('Failed to send student notification email', e);
+        }
+
         return {
             success: true,
             message: 'Tutor assigned successfully',
