@@ -511,6 +511,7 @@ model users {
   tutor_invite_expires                    DateTime?            @db.Timestamptz(6)
   created_at                              DateTime?            @default(now()) @db.Timestamptz(6)
   parent_id                               String?              @db.Uuid
+  referred_by                             String?              @db.Uuid
   school_id                               String?              @db.Uuid
   tutor_status                            TutorStatus          @default(ACTIVE)
   phone_verified                          Boolean              @default(false)
@@ -542,9 +543,12 @@ model users {
   user_credits                            user_credits[]
   parent                                  users?               @relation("ParentChildren", fields: [parent_id], references: [id])
   children                                users[]              @relation("ParentChildren")
+  referrer                                users?               @relation("UserReferrals", fields: [referred_by], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  referrals                               users[]              @relation("UserReferrals")
   school                                  School?              @relation(fields: [school_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([parent_id])
+  @@index([referred_by])
   @@index([school_id])
   @@index([role])
   @@index([role, is_active])

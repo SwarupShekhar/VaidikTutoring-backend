@@ -6,7 +6,6 @@ import {
   Param,
   Query,
   Req,
-  Res,
   UseGuards,
   UnauthorizedException,
   NotFoundException,
@@ -16,7 +15,6 @@ import {
 import { SanityService } from './sanity.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClerkAuthGuard } from '../auth/clerk-auth.guard';
-import { Response } from 'express';
 
 @Controller('cms')
 export class CmsController {
@@ -34,7 +32,10 @@ export class CmsController {
     @Req() req: any,
     @Body() payload: any,
   ) {
-    const webhookSecret = process.env.SANITY_WEBHOOK_SECRET || 'vaidiktutoring_cms_secret';
+    const webhookSecret = process.env.SANITY_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      throw new Error('SANITY_WEBHOOK_SECRET is not configured. Webhooks are disabled for security.');
+    }
     const headerSecret = req.headers['x-webhook-secret'];
 
     // Verify secret to prevent spam or malicious updates
@@ -182,161 +183,6 @@ export class CmsController {
     return { success: true, message: 'Webhook received. Document sync not required for this type.' };
   }
 
-  // 2. GET all dynamic landing pages (for sitemap indexation)
-  @Get('landing-pages')
-  async getAllLandingPages() {
-    const query = `*[_type == "landingPage" && !(_id in path("drafts.**"))] | order(title asc) {
-      _id,
-      title,
-      "slug": slug.current,
-      addToFooter
-    }`;
-    return this.sanityService.query<any[]>(query);
-  }
-
-  // 2b. GET programmatic SEO landing page
-  @Get('landing-pages/:slug')
-  async getLandingPage(
-    @Param('slug') slug: string,
-    @Query('preview') preview?: string,
-  ) {
-    const isPreview = preview === 'true';
-    const query = `*[_type == "landingPage" && (slug.current == $slug || slug.current == " " + $slug || slug.current == $slug + " " || slug.current == " " + $slug + " ")] | order(_updatedAt desc)[0] {
-      _id,
-      title,
-      "slug": slug.current,
-      targetKeywords,
-      addToFooter,
-      seo {
-        metaTitle,
-        metaDescription,
-        canonicalUrl
-      },
-      heroSection {
-        heading,
-        subheading,
-        ctaText,
-        backgroundImage {
-          asset->{
-            url
-          }
-        }
-      },
-      featuredResource-> {
-        _id,
-        title,
-        "slug": slug.current,
-        description,
-        "fileUrl": file.asset->url,
-        subject,
-        examBoard,
-        accessType,
-        requiredReferrals
-      },
-      pageBlocks[] {
-        _type,
-        heading,
-        subheading,
-        body,
-        layout,
-
-        html,
-        css,
-        scopeClass,
-        sectionBackground,
-        sectionPadding,
-        maxWidth,
-
-        content,
-
-        features[] {
-          title,
-          description,
-          icon
-        },
-
-        testimonials[] {
-          quote,
-          name,
-          examBoard,
-          grade,
-          avatar {
-            asset->{ url }
-          }
-        },
-
-        faqs[] {
-          question,
-          answer
-        },
-
-        stats[] {
-          value,
-          label,
-          icon
-        },
-
-        ctaText,
-        ctaUrl,
-        image {
-          asset->{ url },
-          alt
-        },
-        imagePosition,
-
-        variant,
-
-        url,
-        caption
-      }
-    }`;
-
-    const data = await this.sanityService.query<any>(query, { slug }, !isPreview, 60000, isPreview);
-    if (!data) {
-      throw new NotFoundException(`Landing page with slug '${slug}' not found.`);
-    }
-    return data;
-  }
-
-  // 3. GET all available PDF lead magnet resources
-  @Get('resources')
-  async getResources() {
-    const query = `*[_type == "pdfResource" && !(_id in path("drafts.**"))] | order(title asc) {
-      _id,
-      title,
-      "slug": slug.current,
-      description,
-      subject,
-      examBoard,
-      accessType,
-      requiredReferrals
-    }`;
-
-    return this.sanityService.query<any[]>(query);
-  }
-
-  // 4. GET specific resource details
-  @Get('resources/:slug')
-  async getResource(@Param('slug') slug: string) {
-    const query = `*[_type == "pdfResource" && (slug.current == $slug || slug.current == " " + $slug || slug.current == $slug + " " || slug.current == " " + $slug + " ")][0] {
-      _id,
-      title,
-      "slug": slug.current,
-      description,
-      "fileUrl": file.asset->url,
-      subject,
-      examBoard,
-      accessType,
-      requiredReferrals
-    }`;
-
-    const resource = await this.sanityService.query<any>(query, { slug });
-    if (!resource) {
-      throw new NotFoundException(`PDF Resource with slug '${slug}' not found.`);
-    }
-    return resource;
-  }
-
   // 5. Protected: Verify student referrals and unlock gated resource
   @UseGuards(ClerkAuthGuard)
   @Get('resources/:slug/verify-referral')
@@ -350,7 +196,7 @@ export class CmsController {
     }
 
     // 1. Get resource requirements
-    const query = `*[_type == "pdfResource" && (slug.current == $slug || slug.current == " " + $slug || slug.current == $slug + " " || slug.current == " " + $slug + " ")][0] {
+    const query = `*[_type == "pdfResource" && slug.current == $slug][0] {
       _id,
       title,
       accessType,
@@ -373,23 +219,58 @@ export class CmsController {
       };
     }
 
-    // 2. Query user invite count in Postgres
-    // In our system, parent_id/parent relationships represents family signups,
-    // or we can count student/user invitations.
-    // Let's perform a dynamic check. We count users whose parent_id matches the current user's ID
-    const directInvitesCount = await this.prisma.users.count({
-      where: { parent_id: userId },
+    // 2. Count peer referrals: users who signed up via this user's referral link
+    // (/signup?ref=<userId>), attributed at signup to users.referred_by. This is the
+    // real invite graph — NOT parent_id, which is the family ParentChildren relation.
+    const referralsCount = await this.prisma.users.count({
+      where: { referred_by: userId },
     });
 
-    // Also check school signups or custom fields. Let's count standard invite signups
-    // We will consider direct parent-child invites + any student accounts created via referral
-    const isUnlocked = directInvitesCount >= resource.requiredReferrals;
+    const isUnlocked = referralsCount >= resource.requiredReferrals;
 
     return {
       unlocked: isUnlocked,
-      referralsCount: directInvitesCount,
+      referralsCount,
       requiredReferrals: resource.requiredReferrals,
       fileUrl: isUnlocked ? resource.fileUrl : null,
     };
+  }
+
+  // 6. Protected: attribute a peer referral. The frontend persists ?ref=<inviterId>
+  // from the signup link and calls this once the new user is authenticated. One-shot:
+  // only sets referred_by if unset, the inviter exists, and it isn't a self-referral.
+  @UseGuards(ClerkAuthGuard)
+  @Post('attribute-referral')
+  async attributeReferral(
+    @Body() body: { referredBy?: string },
+    @Req() req: any,
+  ) {
+    const userId = req.user.sub || req.user.userId;
+    const inviterId = body?.referredBy?.trim();
+    if (!userId || !inviterId || inviterId === userId) {
+      return { attributed: false };
+    }
+
+    const me = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: { referred_by: true },
+    });
+    if (!me || me.referred_by) {
+      return { attributed: false };
+    }
+
+    const inviter = await this.prisma.users.findUnique({
+      where: { id: inviterId },
+      select: { id: true },
+    });
+    if (!inviter) {
+      return { attributed: false };
+    }
+
+    await this.prisma.users.update({
+      where: { id: userId },
+      data: { referred_by: inviterId },
+    });
+    return { attributed: true };
   }
 }

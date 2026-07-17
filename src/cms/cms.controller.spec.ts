@@ -29,6 +29,8 @@ describe('CmsController', () => {
           useValue: {
             users: {
               findFirst: jest.fn(),
+              findUnique: jest.fn(),
+              update: jest.fn(),
               count: jest.fn(),
             },
             blogs: {
@@ -226,7 +228,7 @@ describe('CmsController', () => {
       );
 
       expect(prisma.users.count).toHaveBeenCalledWith({
-        where: { parent_id: 'user_123' },
+        where: { referred_by: 'user_123' },
       });
 
       expect(result).toEqual({
@@ -259,6 +261,44 @@ describe('CmsController', () => {
         referralsCount: 1,
         requiredReferrals: 3,
         fileUrl: null,
+      });
+    });
+  });
+
+  describe('attributeReferral', () => {
+    const req = { user: { sub: 'user_123' } };
+
+    it('rejects self-referral without touching the DB', async () => {
+      const result = await controller.attributeReferral({ referredBy: 'user_123' }, req);
+      expect(result).toEqual({ attributed: false });
+      expect(prisma.users.update).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when already attributed', async () => {
+      (prisma.users.findUnique as jest.Mock).mockResolvedValueOnce({ referred_by: 'someone_else' });
+      const result = await controller.attributeReferral({ referredBy: 'inviter_1' }, req);
+      expect(result).toEqual({ attributed: false });
+      expect(prisma.users.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an inviter that does not exist', async () => {
+      (prisma.users.findUnique as jest.Mock)
+        .mockResolvedValueOnce({ referred_by: null }) // current user, unattributed
+        .mockResolvedValueOnce(null); // inviter lookup
+      const result = await controller.attributeReferral({ referredBy: 'ghost' }, req);
+      expect(result).toEqual({ attributed: false });
+      expect(prisma.users.update).not.toHaveBeenCalled();
+    });
+
+    it('attributes a valid first-time referral', async () => {
+      (prisma.users.findUnique as jest.Mock)
+        .mockResolvedValueOnce({ referred_by: null }) // current user, unattributed
+        .mockResolvedValueOnce({ id: 'inviter_1' }); // inviter exists
+      const result = await controller.attributeReferral({ referredBy: 'inviter_1' }, req);
+      expect(result).toEqual({ attributed: true });
+      expect(prisma.users.update).toHaveBeenCalledWith({
+        where: { id: 'user_123' },
+        data: { referred_by: 'inviter_1' },
       });
     });
   });
