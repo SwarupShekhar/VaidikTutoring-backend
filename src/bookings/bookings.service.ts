@@ -343,8 +343,8 @@ export class BookingsService {
 
       // Notify Student (NON-BLOCKING)
       try {
-        if (user && user.email) {
-          const formattedTime = new Date(booking.requested_start).toLocaleString('en-US', {
+        if (user && user.email && booking.requested_start) {
+          const formattedTime = new Date(booking.requested_start as Date).toLocaleString('en-US', {
             weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'UTC' // We format in UTC just to have a clean string, ideally frontend converts, but we can just say "at the requested time".
           });
           

@@ -1561,7 +1561,7 @@ export class AdminService {
 
         // Send notification email to student
         try {
-            const studentUser = await this.prisma.users.findUnique({ where: { id: student.user_id } });
+            const studentUser = student.user_id ? await this.prisma.users.findUnique({ where: { id: student.user_id as string } }) : null;
             if (studentUser && studentUser.email) {
                 const studentHtml = `
                     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
