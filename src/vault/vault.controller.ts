@@ -13,6 +13,7 @@ import {
   Logger,
   NotFoundException,
   ForbiddenException,
+  Delete,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -29,6 +30,14 @@ export class VaultController {
     private readonly vaultService: VaultService,
     private readonly sessionsService: SessionsService,
   ) {}
+
+  @Delete('assets/:id')
+  async deleteAsset(@Param('id') id: string, @Req() req: any) {
+    if (!this.vaultService.isPrivileged(req.user)) {
+      throw new ForbiddenException('Only tutors or admins can delete vault materials');
+    }
+    return this.vaultService.deleteAsset(id);
+  }
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))

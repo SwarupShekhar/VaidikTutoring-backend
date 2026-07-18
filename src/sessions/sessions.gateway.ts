@@ -479,11 +479,11 @@ export class SessionsGateway
         return { success: false, error: 'Unauthenticated' };
       }
 
-      // 1. Resolve canonical ID
-      let finalSessionId = payload.sessionId;
-      const booking = await this.sessionsService.resolveBookingToSession(payload.sessionId);
-      if (booking && booking.sessions.length > 0) {
-        finalSessionId = booking.sessions[0].id;
+      // 1. Resolve canonical ID from memory
+      const finalSessionId = this.clientSessionMap.get(client.id);
+      if (!finalSessionId) {
+        this.logger.warn(`sendMessage: No session mapping for client ${client.id}`);
+        return { success: false, error: 'Not joined to a session' };
       }
 
       // 2. Save message to Database (Optional but recommended for history)
@@ -517,7 +517,8 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; update: any },
   ) {
     try {
-      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      const finalSessionId = this.clientSessionMap.get(client.id);
+      if (!finalSessionId) return { success: false, error: 'Not joined' };
       const payloadSize = JSON.stringify(payload.update).length / 1024; // in KB
       
       this.logger.debug(`Whiteboard update for ${finalSessionId}: ${payloadSize.toFixed(2)} KB`);
@@ -547,7 +548,8 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; files: any },
   ) {
     try {
-      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      const finalSessionId = this.clientSessionMap.get(client.id);
+      if (!finalSessionId) return { success: false, error: 'Not joined' };
 
       // Update cache
       let currentFiles = this.filesState.get(finalSessionId) || {};
@@ -573,7 +575,8 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; slides: string[] },
   ) {
     try {
-      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      const finalSessionId = this.clientSessionMap.get(client.id);
+      if (!finalSessionId) return { success: false, error: 'Not joined' };
       const slideCount = payload.slides?.length || 0;
       const totalSize = JSON.stringify(payload.slides).length / (1024 * 1024); // in MB
       
@@ -597,7 +600,8 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; studentId: string; hasAccess: boolean },
   ) {
     try {
-      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      const finalSessionId = this.clientSessionMap.get(client.id);
+      if (!finalSessionId) return { success: false, error: 'Not joined' };
       
       // Update cache
       let accessSet = this.penAccessState.get(finalSessionId);
@@ -724,7 +728,8 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string; centerX: number; centerY: number; zoom: number },
   ) {
     try {
-      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      const finalSessionId = this.clientSessionMap.get(client.id);
+      if (!finalSessionId) return { success: false, error: 'Not joined' };
 
       // Broadcast to everyone ELSE in the room (the students)
       client.broadcast.to(`session:${finalSessionId}`).emit('viewport:update', {
@@ -749,7 +754,8 @@ export class SessionsGateway
     @MessageBody() payload: { sessionId: string },
   ) {
     try {
-      const finalSessionId = this.sessionMap.get(payload.sessionId) || payload.sessionId;
+      const finalSessionId = this.clientSessionMap.get(client.id);
+      if (!finalSessionId) return { success: false, error: 'Not joined' };
       // Broadcast sync request to the room so tutor responds
       client.broadcast.to(`session:${finalSessionId}`).emit('whiteboard.syncRequest');
       return { success: true };

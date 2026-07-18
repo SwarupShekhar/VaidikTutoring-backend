@@ -1,4 +1,4 @@
-import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AzureStorageService } from '../azure/azure-storage.service';
 
@@ -65,9 +65,18 @@ export class VaultService {
     return null;
   }
 
+  async deleteAsset(id: string) {
+    const asset = await this.prisma.vault_assets.findUnique({ where: { id } });
+    if (!asset) {
+      throw new NotFoundException('Asset not found');
+    }
+    await this.azureStorage.deleteBlob('vault-assets', asset.azure_blob_name);
+    return this.prisma.vault_assets.delete({ where: { id } });
+  }
+
   // ---- Authorization-aware access (used by the guarded controller) ----
 
-  private isPrivileged(user: AuthUser): boolean {
+  isPrivileged(user: AuthUser): boolean {
     return user?.role === 'admin' || user?.role === 'tutor';
   }
 
