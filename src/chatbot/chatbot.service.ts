@@ -3,6 +3,7 @@ import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai';
 import Redis from 'ioredis';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { SlackService } from '../slack/slack.service';
 
 // Define the shape of the incoming messages
 export interface ChatMessage {
@@ -52,6 +53,7 @@ export class ChatbotService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
+    private readonly slackService: SlackService,
   ) {
     // Initialize Redis
     const redisUrl = process.env.REDIS_URL;
@@ -443,6 +445,8 @@ So when someone asks about SAT/ACT (or other competitive-exam) pricing or plans,
         replyTo: email,
         html,
       });
+
+      this.slackService.sendAlert(`New Chatbot Lead: ${contact.name || 'Unknown'} (${email})`);
     } catch (err) {
       this.logger.error(
         'Failed to send lead notification email',
