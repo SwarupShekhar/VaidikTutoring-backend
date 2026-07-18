@@ -338,6 +338,21 @@ export class AdminService {
         return updated;
     }
 
+    /**
+     * Returns true only when the provided list is non-empty AND every student in
+     * it has recording_consent_granted === true. Used to gate cloud recording for
+     * group sessions: if any participant lacks verified consent, we must not
+     * record. Fail-safe deny (empty/unknown → false).
+     */
+    private async allStudentsConsentedToRecording(studentIds: string[]): Promise<boolean> {
+        const ids = [...new Set((studentIds || []).filter(Boolean))];
+        if (ids.length === 0) return false;
+        const consented = await this.prisma.students.count({
+            where: { id: { in: ids }, recording_consent_granted: true },
+        });
+        return consented === ids.length;
+    }
+
     async createGroupSession(data: {
         tutorId: string;
         studentIds: string[];
@@ -410,6 +425,12 @@ export class AdminService {
 
         const seriesId = isRecurring ? require('crypto').randomUUID() : null;
 
+        // Consent gate: a group session may only be cloud-recorded when EVERY
+        // participating student has verified recording consent. If a single
+        // student lacks consent we must not record (a non-consenting minor would
+        // otherwise be captured). Fail-safe deny.
+        const enableRecording = await this.allStudentsConsentedToRecording(studentIds);
+
         // 1. Prepare Zoom Meetings first (outside DB transaction to prevent holding locks during network requests)
         const zoomMeetings: Record<string, { zoomMeetingId: string, zoomJoinUrl: string }> = {};
         if (provider === 'ZOOM') {
@@ -424,7 +445,8 @@ export class AdminService {
                     const zoomRes = await this.zoomService.createMeeting(
                         'Group Tutoring Session',
                         dates.start,
-                        durationMins
+                        durationMins,
+                        enableRecording
                     );
                     createdMeetingIds.push(zoomRes.meetingId);
                     zoomMeetings[dates.start.toISOString()] = {
@@ -601,11 +623,22 @@ export class AdminService {
                 this.logger.warn(
                     `Zoom updateMeeting failed during reschedule (${err?.message}); recreating meeting instead.`
                 );
+                // Consent gate: preserve the same all-students-consented rule when
+                // recreating the meeting so a reschedule never silently starts
+                // recording a non-consenting participant. Fail-safe deny.
+                const attendees = await this.prisma.attendance.findMany({
+                    where: { sessionId: session.id },
+                    select: { studentId: true },
+                });
+                const enableRecording = await this.allStudentsConsentedToRecording(
+                    attendees.map((a) => a.studentId),
+                );
                 // Fallback: create a fresh meeting at the new time.
                 const newMeeting = await this.zoomService.createMeeting(
                     'StudyHours Group Class (Rescheduled)',
                     startTime,
-                    durationMinutes
+                    durationMinutes,
+                    enableRecording
                 );
                 recreated = newMeeting;
                 // Best-effort delete the stale meeting — never block the reschedule.

@@ -99,7 +99,10 @@ export class SessionsService {
       await this.assertNoZoomOverlap(start, end);
 
       const duration = Math.round((end.getTime() - start.getTime()) / 60000);
-      const zoomMeeting = await this.zoomService.createMeeting(`Tutoring Session`, start, duration);
+      // Consent gate: only enable Zoom cloud recording when the student on this
+      // booking has granted recording consent. Fail-safe deny when unknown.
+      const enableRecording = booking?.students?.recording_consent_granted === true;
+      const zoomMeeting = await this.zoomService.createMeeting(`Tutoring Session`, start, duration, enableRecording);
       zoomMeetingId = zoomMeeting.meetingId;
       zoomJoinUrl = zoomMeeting.joinUrl;
       if (!dto.meet_link) dto.meet_link = zoomJoinUrl;

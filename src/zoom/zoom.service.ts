@@ -61,7 +61,7 @@ export class ZoomService {
     }
   }
 
-  async createMeeting(topic: string, startTime: Date, durationMinutes: number) {
+  async createMeeting(topic: string, startTime: Date, durationMinutes: number, enableRecording: boolean = false) {
     const token = await this.getAccessToken();
 
     try {
@@ -87,7 +87,11 @@ export class ZoomService {
             approval_type: 2,
             meeting_authentication: false, // Ensure participants don't have to log in to Zoom
             audio: 'both',
-            auto_recording: 'cloud',
+            // Consent gate: only cloud-record when recording consent has been
+            // verified for the participant(s). Defaults to 'none' (fail-safe deny)
+            // so a session is never recorded without explicit consent. Mirrors the
+            // Daily.co start_cloud_recording gate. COPPA/GDPR-K/DPDP.
+            auto_recording: enableRecording ? 'cloud' : 'none',
             waiting_room: false,
           },
         },
