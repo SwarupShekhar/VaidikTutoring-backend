@@ -202,13 +202,17 @@ export class SessionsController {
     // Determine if user is owner (tutor/admin)
     const isOwner = user.role === 'tutor' || user.role === 'admin';
 
+    // Fetch recording consent
+    const hasRecordingConsent = await this.sessionsService.hasRecordingConsent(sessionId);
+
     // Generate meeting token
     const userName = user.first_name || user.display_name || user.email || 'User';
     const token = await this.dailyService.createMeetingToken(
       room.name,
       isOwner,
       userName,
-      user.id
+      user.id,
+      hasRecordingConsent
     );
 
     try {

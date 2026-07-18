@@ -221,6 +221,24 @@ export class SessionsService {
     return [];
   }
 
+  async hasRecordingConsent(sessionId: string): Promise<boolean> {
+    const session = await this.prisma.sessions.findUnique({
+      where: { id: sessionId },
+      include: {
+        bookings: {
+          include: {
+            students: true
+          }
+        }
+      }
+    });
+    
+    if (session?.bookings?.students) {
+      return session.bookings.students.recording_consent_granted === true;
+    }
+    return false;
+  }
+
   private toIcsDate(d: Date) {
     const yyyy = d.getUTCFullYear().toString().padStart(4, '0');
     const mm = (d.getUTCMonth() + 1).toString().padStart(2, '0');
