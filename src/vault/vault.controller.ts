@@ -14,6 +14,7 @@ import {
   NotFoundException,
   ForbiddenException,
   Delete,
+  Header,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
@@ -71,6 +72,7 @@ export class VaultController {
   // `studentId` lets a PARENT view a specific child's materials (parent-owns-child
   // is verified server-side). Ignored for students (they always see their own).
   @Get('assets')
+  @Header('Cache-Control', 'no-store')
   async findAll(
     @Req() req: any,
     @Query('subject') subject?: string,
