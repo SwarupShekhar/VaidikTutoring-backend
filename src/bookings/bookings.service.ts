@@ -150,7 +150,16 @@ export class BookingsService {
 
     // VALIDATION: Check dates
     const start = new Date(createDto.requested_start);
-    const end = new Date(createDto.requested_end);
+    let end = new Date(createDto.requested_end);
+
+    // Enforce exactly 30 minutes duration for 2nd and 3rd trial sessions
+    let creditStatus: any = null;
+    if (studentRecord && user.role !== 'admin') {
+      creditStatus = await this.creditsService.getCreditStatus(studentRecord);
+      if (creditStatus.mode === 'trial_active' && (creditStatus.sessionsUsed || 0) > 0) {
+        end = new Date(start.getTime() + 30 * 60000);
+      }
+    }
 
     if (start >= end) {
       throw new BadRequestException('End time must be after start time');
@@ -201,7 +210,7 @@ export class BookingsService {
     // Only check credits for student bookings (not admin)
     let creditCostInfo: any = null;
     if (studentRecord && user.role !== 'admin') {
-      const creditStatus = await this.creditsService.getCreditStatus(studentRecord);
+      // creditStatus fetched above
       if (!creditStatus.canBook) {
         throw new ForbiddenException(
           JSON.stringify({
