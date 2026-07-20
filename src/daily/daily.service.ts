@@ -81,28 +81,9 @@ export class DailyService {
                 throw err;
             }
             
-            // 3. Synchronize properties if room exists
-            // We wrap this in a separate try-catch because it might fail if the plan doesn't support 'cloud' recording
-            // but we don't want to block the entire session if it's just a property sync failure.
-            try {
-                await axios.post(
-                    `${this.apiUrl}/rooms/${roomName}`,
-                    {
-                        properties: {
-                            enable_screenshare: true,
-                            enable_chat: false,
-                            enable_recording: 'cloud',
-                            enable_prejoin_ui: false,
-                            exp: Math.floor(Date.now() / 1000) + 7200
-                        }
-                    },
-                    { headers: { Authorization: `Bearer ${this.apiKey}` } }
-                );
-            } catch (syncErr: any) {
-                this.logger.warn(`Failed to sync recording properties for room ${roomName} (might be plan limitation):`, syncErr.response?.data || syncErr.message);
-                // Continue anyway - joining the session is more important than auto-recording sync
-            }
-
+            // 3. We no longer synchronize properties on every single join.
+            // The room was created with the correct properties initially.
+            // Removing this POST request cuts the Daily API latency in half for returning users/tutors.
             return roomData;
         } catch (err: any) {
             this.logger.error('Critical failure in DailyService.createRoom:', err.response?.data || err.message);
