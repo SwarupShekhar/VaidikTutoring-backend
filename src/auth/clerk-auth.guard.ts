@@ -50,7 +50,7 @@ export class ClerkAuthGuard implements CanActivate {
                     isClerk = false;
                     this.logger.debug(`ClerkAuthGuard: Token verified via JWT Fallback for ${path}`);
                 } catch (jwtErr) {
-                    this.logger.error(`ClerkAuthGuard Auth Fail [${path}]: Clerk(${clerkErr.message}), JWT(${jwtErr.message})`);
+                    this.logger.warn(`ClerkAuthGuard Auth Fail [${path}]: Clerk(${clerkErr.message}), JWT(${jwtErr.message})`);
                     throw new UnauthorizedException(`Invalid session. Please login again. Details: Clerk(${clerkErr.message.slice(0, 30)}), JWT(${jwtErr.message.slice(0, 30)})`);
                 }
             }
