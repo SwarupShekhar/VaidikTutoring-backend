@@ -1252,6 +1252,15 @@ export class SessionsService {
         data: { total_hours_learned: { increment: durationHours } }
     });
 
+    // Mark the associated booking as completed
+    const session = await this.prisma.sessions.findUnique({ where: { id: sessionId } });
+    if (session?.booking_id) {
+        await this.prisma.bookings.update({
+            where: { id: session.booking_id },
+            data: { status: 'completed' }
+        });
+    }
+
     // Update streak + badges
     await this.studentsService.updateStreak(studentId);
     await this.checkBadges(studentId);

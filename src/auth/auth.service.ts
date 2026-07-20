@@ -304,6 +304,26 @@ export class AuthService {
       user,
     };
   }
+
+  /**
+   * Sliding-session refresh. Re-issues a fresh JWT for a user who presents a
+   * still-valid token (the route is JwtAuthGuard-protected, so an expired token
+   * is rejected before it reaches here). Keeps an active session from expiring
+   * mid-use without any refresh-token infrastructure. Claims are re-emitted from
+   * the verified token payload (req.user).
+   */
+  refreshToken(user: any) {
+    const token = this.jwt.sign({
+      sub: user.userId,
+      email: user.email,
+      role: user.role,
+      email_verified: user.email_verified,
+      phone_verified: user.phone_verified,
+      force_password_change: user.force_password_change,
+      tutor_status: user.tutor_status,
+    });
+    return { token };
+  }
   async acceptTutorInvite(token: string, password: string) {
     // 1. Find user by invite token
     const user = await this.prisma.users.findFirst({

@@ -3,6 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { signupSchema } from './schemas/signup.schema';
 import { ClerkAuthGuard } from './clerk-auth.guard';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -32,6 +33,14 @@ export class AuthController {
   @Post('login')
   login(@Body() body: any) {
     return this.auth.login(body.email, body.password);
+  }
+
+  // Sliding-session refresh: swap a still-valid JWT for a fresh one so long
+  // sessions don't expire mid-use. Guard rejects already-expired tokens.
+  @UseGuards(JwtAuthGuard)
+  @Post('refresh')
+  refresh(@Req() req: any) {
+    return this.auth.refreshToken(req.user);
   }
 
   @Post('register-tutor')
