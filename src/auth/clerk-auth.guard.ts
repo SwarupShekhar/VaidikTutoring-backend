@@ -252,9 +252,12 @@ export class ClerkAuthGuard implements CanActivate {
             throw new UnauthorizedException('User profile sync failed');
 
         } catch (err) {
+            if (err instanceof UnauthorizedException) {
+                // Do not log normal auth failures as massive server errors
+                throw err;
+            }
             this.logger.error(`ClerkAuthGuard Failure on ${path}: ${err.message}`);
-            if (err instanceof UnauthorizedException) throw err;
-            throw new UnauthorizedException(`Auth error: ${err.message}`);
+            throw new UnauthorizedException('Authentication failed');
         }
     }
 }
