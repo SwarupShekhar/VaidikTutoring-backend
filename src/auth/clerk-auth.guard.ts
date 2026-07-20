@@ -50,8 +50,13 @@ export class ClerkAuthGuard implements CanActivate {
                     isClerk = false;
                     this.logger.debug(`ClerkAuthGuard: Token verified via JWT Fallback for ${path}`);
                 } catch (jwtErr) {
-                    this.logger.warn(`ClerkAuthGuard Auth Fail [${path}]: Clerk(${clerkErr.message}), JWT(${jwtErr.message})`);
-                    throw new UnauthorizedException(`Invalid session. Please login again. Details: Clerk(${clerkErr.message.slice(0, 30)}), JWT(${jwtErr.message.slice(0, 30)})`);
+                    const isExpired = jwtErr.message?.toLowerCase().includes('expired') || jwtErr.name === 'TokenExpiredError';
+                    if (!isExpired) {
+                        this.logger.warn(`ClerkAuthGuard Auth Fail [${path}]: Clerk(${clerkErr.message}), JWT(${jwtErr.message})`);
+                    } else {
+                        this.logger.debug(`ClerkAuthGuard: Token expired for ${path}`);
+                    }
+                    throw new UnauthorizedException(`Session expired. Please log in again.`);
                 }
             }
 
