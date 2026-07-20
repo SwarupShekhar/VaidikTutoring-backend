@@ -81,9 +81,21 @@ export class DailyService {
                 throw err;
             }
             
-            // 3. We no longer synchronize properties on every single join.
-            // The room was created with the correct properties initially.
-            // Removing this POST request cuts the Daily API latency in half for returning users/tutors.
+            // 3. Refresh the room's expiry if it has lapsed (or is about to).
+            // Rooms are created with a 2h `exp`; a reused room whose exp has passed
+            // is un-joinable (join hangs, 0 participants). We only POST when the exp
+            // actually needs bumping, so returning users still skip the extra call.
+            const now = Math.floor(Date.now() / 1000);
+            const currentExp = roomData?.config?.exp;
+            if (!currentExp || currentExp < now + 600) {
+                this.logger.log(`Room ${roomName} exp lapsed/near (${currentExp}); refreshing.`);
+                const updateResponse = await axios.post(
+                    `${this.apiUrl}/rooms/${roomName}`,
+                    { properties: { exp: now + 7200 } },
+                    { headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' } }
+                );
+                return updateResponse.data;
+            }
             return roomData;
         } catch (err: any) {
             this.logger.error('Critical failure in DailyService.createRoom:', err.response?.data || err.message);
