@@ -120,7 +120,10 @@ export class DailyService {
                         is_owner: isOwner,
                         user_name: userName,
                         user_id: userId,
-                        start_cloud_recording: isOwner && enableRecording,
+                        // Manual record: the tutor starts recording from the Daily toolbar
+                        // (owner-only) after sharing screen — never auto-started on join.
+                        // ponytail: consent-gating on hold for trials; re-gate here later.
+                        start_cloud_recording: false,
                         enable_screenshare: true,
                         start_video_off: true,
                         start_audio_off: true,
