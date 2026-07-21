@@ -26,6 +26,20 @@ import { AttentionEventType, SessionPhase } from '@prisma/client';
  * 3. Listen for 'newMessage' events
  * 4. Emit 'sendMessage' with { sessionId: 'xxx', text: 'message' }
  */
+
+class BoundedMap<K, V> extends Map<K, V> {
+  constructor(private maxSize: number) {
+    super();
+  }
+  set(key: K, value: V) {
+    if (this.size >= this.maxSize && !this.has(key)) {
+      const firstKey = this.keys().next().value;
+      if (firstKey) this.delete(firstKey);
+    }
+    return super.set(key, value);
+  }
+}
+
 @WebSocketGateway({
   namespace: 'sessions',
   cors: {
@@ -48,17 +62,17 @@ export class SessionsGateway
   server: Namespace;
 
   private readonly logger = new Logger(SessionsGateway.name);
-  private whiteboardState = new Map<string, any>(); // Cache for elements
-  private slidesState = new Map<string, string[]>(); // Cache for PDF slides
-  private filesState = new Map<string, any>(); // Cache for binary files
-  private penAccessState = new Map<string, Set<string>>(); // Cache for student pen access (SessionId -> Set of StudentIds)
-  private pollState = new Map<string, any>(); // Cache for active polls
-  private sessionMap = new Map<string, string>(); // Performance cache
-  private clientSessionMap = new Map<string, string>(); // client.id → sessionId
+  private whiteboardState = new BoundedMap<string, any>(1000); // Cache for elements
+  private slidesState = new BoundedMap<string, string[]>(1000); // Cache for PDF slides
+  private filesState = new BoundedMap<string, any>(1000); // Cache for binary files
+  private penAccessState = new BoundedMap<string, Set<string>>(1000); // Cache for student pen access (SessionId -> Set of StudentIds)
+  private pollState = new BoundedMap<string, any>(1000); // Cache for active polls
+  private sessionMap = new BoundedMap<string, string>(2000); // Performance cache
+  private clientSessionMap = new BoundedMap<string, string>(5000); // client.id → sessionId
   // Separate map for attendance tracking only. Keeps existing clientSessionMap
   // value shape (sessionId string) untouched so room/whiteboard-state cleanup
   // continues to work identically. Only populated for student joiners.
-  private clientAttendanceMap = new Map<string, { sessionId: string; studentId: string }>(); // client.id → { sessionId, studentId }
+  private clientAttendanceMap = new BoundedMap<string, { sessionId: string; studentId: string }>(5000); // client.id → { sessionId, studentId }
 
   constructor(
     private readonly sessionsService: SessionsService,

@@ -115,7 +115,7 @@ export class BookingsService {
     } else {
       // Admin check
       if (user.role !== 'admin') {
-        // Fallback or error? Assuming admin for now if not student/parent
+        throw new ForbiddenException('Invalid role for booking creation');
       }
       if (!finalStudentId) throw new BadRequestException('student_id is required');
 
