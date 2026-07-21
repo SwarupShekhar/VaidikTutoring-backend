@@ -24,6 +24,12 @@ export class DailyWebhookGuard implements CanActivate {
       throw new UnauthorizedException('Webhook not configured');
     }
 
+    // Daily test payload bypass (to allow webhook creation)
+    if (request.body && request.body.test === 'test') {
+      this.logger.log('Bypassing signature validation for Daily test payload');
+      return true;
+    }
+
     if (!signatureHeader) {
       this.logger.warn('Missing Daily-Signature header');
       throw new UnauthorizedException('Missing webhook signature');
