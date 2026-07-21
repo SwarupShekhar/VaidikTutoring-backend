@@ -8,6 +8,8 @@ import {
   InternalServerErrorException,
   Inject,
   forwardRef,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -107,10 +109,9 @@ export class SessionsService {
       await this.assertNoZoomOverlap(start, end);
 
       const duration = Math.round((end.getTime() - start.getTime()) / 60000);
-      // Consent gate: only enable Zoom cloud recording when the student on this
-      // booking has granted recording consent. Fail-safe deny when unknown.
-      const enableRecording = booking?.students?.recording_consent_granted === true;
-      const zoomMeeting = await this.zoomService.createMeeting(`Tutoring Session`, start, duration, enableRecording);
+      // All tutoring sessions are recorded; participants are notified via the
+      // in-session recording notice (consent gating removed).
+      const zoomMeeting = await this.zoomService.createMeeting(`Tutoring Session`, start, duration, true);
       zoomMeetingId = zoomMeeting.meetingId;
       zoomJoinUrl = zoomMeeting.joinUrl;
       if (!dto.meet_link) dto.meet_link = zoomJoinUrl;
@@ -475,7 +476,7 @@ export class SessionsService {
     const sessionId = await this.ensureSessionId(idOrBookingId);
     await this.verifySessionAccess(sessionId, userId);
 
-    return this.prisma.session_recordings.findMany({
+    const recordings = await this.prisma.session_recordings.findMany({
       where: { session_id: sessionId },
       orderBy: { created_at: 'desc' },
       include: {
@@ -487,6 +488,31 @@ export class SessionsService {
         },
       },
     });
+
+    // Trial read-gate (mirror of generateRecordingSasUrl). A student/parent on a
+    // trial student still sees the recording rows so the UI can render a locked
+    // entry — but never the blob pointers (azure_blob_name / storage_path /
+    // file_url). Tutors, admins, and paid students get the full rows unchanged.
+    // When the student upgrades (flag flips) full rows are returned automatically.
+    const user = await this.prisma.users.findUnique({ where: { id: userId } });
+    if (user?.role === 'student' || user?.role === 'parent') {
+      const session = await this.prisma.sessions.findUnique({
+        where: { id: sessionId },
+        include: { bookings: { include: { students: true } } },
+      });
+      const student = session?.bookings?.students;
+      if (
+        student &&
+        (student.is_trial_active === true || student.enrollment_status === 'trial')
+      ) {
+        return recordings.map((r) => {
+          const { azure_blob_name, storage_path, file_url, ...rest } = r as any;
+          return { ...rest, locked: true };
+        });
+      }
+    }
+
+    return recordings;
   }
 
   async uploadRecording(
@@ -529,23 +555,8 @@ export class SessionsService {
         throw new ForbiddenException('Only tutors and admins can upload recordings');
     }
 
-    // Recording-consent gate. A minor's session is never stored without verifiable
-    // parental consent (COPPA / GDPR-K / India DPDP). The live class still runs —
-    // only the recording is blocked. This is the authoritative server-side check;
-    // the tutor UI also suppresses the "record" prompt, but this is what guarantees
-    // no recording is ever persisted or shared without consent. Admins are not
-    // exempt: consent is about the child, not the uploader.
-    if (booking.student_id) {
-      const student = await this.prisma.students.findUnique({
-        where: { id: booking.student_id },
-        select: { recording_consent_granted: true },
-      });
-      if (!student?.recording_consent_granted) {
-        throw new ForbiddenException(
-          'Recording blocked: the parent has not consented to recording this student’s sessions. Consent can be granted from Profile → Settings.',
-        );
-      }
-    }
+    // All sessions are recorded; recording is disclosed to participants via the
+    // in-session notice rather than gated on stored parental consent.
 
     // Upload to Azure
     const blobName = await this.azureStorageService.uploadRecording(sessionId, buffer, mimeType);
@@ -559,7 +570,7 @@ export class SessionsService {
         storage_path: blobName,
         file_size_bytes: fileSize,
         duration_seconds: duration,
-        auto_delete_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        auto_delete_at: new Date(Date.now() + 29 * 24 * 60 * 60 * 1000), // 29 days
       },
     });
   }
@@ -585,6 +596,46 @@ export class SessionsService {
       throw new BadRequestException('This recording is not stored on Azure');
     }
 
+    // 2b. Trial read-gate. Tutors and admins always bypass. A student/parent
+    // belonging to a trial student may see that a recording exists but must
+    // upgrade to a paid plan to watch it. When the student upgrades (the flag
+    // flips) access is granted retroactively — no extra code needed here.
+    if (user?.role !== 'admin' && user?.role !== 'tutor') {
+      const session = await this.prisma.sessions.findUnique({
+        where: { id: sessionId },
+        include: { bookings: { include: { students: true } } },
+      });
+      const student = session?.bookings?.students;
+      if (
+        student &&
+        (student.is_trial_active === true || student.enrollment_status === 'trial')
+      ) {
+        throw new ForbiddenException({
+          locked: true,
+          reason: 'UPGRADE_REQUIRED',
+          message: 'Upgrade to a paid plan to watch your session recordings.',
+        });
+      }
+    }
+
+    // 2c. Retention 410. Blobs are purged by a 29-day lifecycle policy, so the
+    // DB row can outlive the blob. Return HTTP 410 Gone rather than minting a
+    // SAS URL that points at nothing.
+    if (
+      !(await this.azureStorageService.blobExists(
+        'session-recordings',
+        recording.azure_blob_name,
+      ))
+    ) {
+      throw new HttpException(
+        {
+          reason: 'RECORDING_EXPIRED',
+          message: 'This recording has expired per our 29-day retention policy.',
+        },
+        HttpStatus.GONE,
+      );
+    }
+
     // 3. Update stats
     await this.prisma.session_recordings.update({
       where: { id: recordingId },
@@ -594,12 +645,12 @@ export class SessionsService {
       },
     });
 
-    // 4. Generate Sas URL (2 hours)
-    const sasUrl = await this.azureStorageService.generateSasUrl('session-recordings', recording.azure_blob_name, 2);
+    // 4. Generate Sas URL (1 hour)
+    const sasUrl = await this.azureStorageService.generateSasUrl('session-recordings', recording.azure_blob_name, 1);
 
     return {
       streamUrl: sasUrl,
-      expiresIn: 7200, // 2 hours in seconds
+      expiresIn: 3600, // 1 hour in seconds
     };
   }
 

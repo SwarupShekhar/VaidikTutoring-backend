@@ -144,6 +144,17 @@ export class AzureStorageService implements OnModuleInit {
     return sasUrl;
   }
 
+  /**
+   * Cheap existence check used by the recordings read path. Because a 29-day
+   * lifecycle policy purges recording blobs, the DB row can outlive the blob;
+   * callers use this to return HTTP 410 instead of a dead SAS URL.
+   */
+  async blobExists(containerName: string, blobName: string): Promise<boolean> {
+    const containerClient = this.blobServiceClient.getContainerClient(containerName);
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    return blockBlobClient.exists();
+  }
+
   async deleteBlob(containerName: string, blobName: string): Promise<void> {
     const containerClient = this.blobServiceClient.getContainerClient(containerName);
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);

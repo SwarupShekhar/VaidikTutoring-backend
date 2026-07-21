@@ -45,6 +45,9 @@ export class DailyWebhookController {
             session_id: resolvedSessionId,
             azure_blob_name: azureBlobName,
             mime_type: 'video/mp4',
+            // 29-day retention, matching the Azure blob lifecycle policy. Without
+            // this, webhook-created recordings never expire.
+            auto_delete_at: new Date(Date.now() + 29 * 24 * 60 * 60 * 1000),
           }
         });
         this.logger.log(`Successfully moved recording for session ${resolvedSessionId} to Azure: ${azureBlobName}`);
