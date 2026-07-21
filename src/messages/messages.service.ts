@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 
@@ -129,9 +129,12 @@ export class MessagesService {
     const hasActiveEnrollment = await this.prisma.enrollments.findFirst({
       where: { student_id: studentId, tutor_id: tutor.id, status: 'active' }
     });
+    const hasRecentBooking = await this.prisma.bookings.findFirst({
+      where: { student_id: studentId, assigned_tutor_id: tutor.id },
+    });
 
-    if (!isAssignedTrial && !hasActiveEnrollment) {
-      throw new UnauthorizedException('You are not authorized to message this student');
+    if (!isAssignedTrial && !hasActiveEnrollment && !hasRecentBooking) {
+      throw new ForbiddenException('You are not authorized to message this student');
     }
 
     // 2. Save message
