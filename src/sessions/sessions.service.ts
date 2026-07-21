@@ -11,6 +11,14 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+
+function gradeToNumber(grade: string | null | undefined): number {
+  if (!grade) return 99;
+  const g = grade.trim().toUpperCase();
+  if (g === 'K') return 0;
+  const n = parseInt(g, 10);
+  return isNaN(n) ? 99 : n;
+}
 import { JwtService } from '@nestjs/jwt';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StudentsService } from '../students/students.service';
@@ -1355,11 +1363,28 @@ export class SessionsService {
           status: 'completed',
           end_time: session.end_time || new Date()
         },
-        include: { bookings: true }
+        include: {
+          bookings: {
+            include: {
+              students: { include: { users_students_user_idTousers: true, users_students_parent_user_idTousers: true } },
+              tutors: { include: { users: true } },
+            },
+          },
+        }
       });
     } catch (e: any) {
       if (e?.code === 'P2025') {
-        const existing = await this.prisma.sessions.findUnique({ where: { id: sessionId }, include: { bookings: true } });
+        const existing = await this.prisma.sessions.findUnique({ 
+          where: { id: sessionId }, 
+          include: { 
+            bookings: {
+              include: {
+                students: { include: { users_students_user_idTousers: true, users_students_parent_user_idTousers: true } },
+                tutors: { include: { users: true } },
+              },
+            }
+          } 
+        });
         return {
           success: true,
           sessionId: sessionId,
@@ -1386,6 +1411,39 @@ export class SessionsService {
             updated.start_time || undefined,
             updated.end_time || new Date()
         );
+    }
+
+    // Trigger feedback email
+    try {
+      const student = updated?.bookings?.students;
+      const tutor = updated?.bookings?.tutors?.users;
+      if (student && tutor) {
+        const gradeNum = gradeToNumber(student.grade);
+        const isYoung = gradeNum <= 3;
+        
+        // If student is young, send to parent. Otherwise prefer student's email, fallback to parent.
+        const toEmail = isYoung 
+          ? student.users_students_parent_user_idTousers?.email 
+          : (student.users_students_user_idTousers?.email || student.users_students_parent_user_idTousers?.email);
+          
+        const toUserId = isYoung 
+          ? student.parent_user_id 
+          : student.user_id;
+
+        if (toEmail) {
+          // Delay email by 2 hours (2 * 60 * 60 * 1000)
+          const delayMs = 2 * 60 * 60 * 1000;
+          await this.emailService.sendPostSessionFeedbackEmail(
+            toEmail,
+            toUserId,
+            student.first_name || 'Student',
+            tutor.first_name || 'Your Tutor',
+            delayMs
+          );
+        }
+      }
+    } catch (e) {
+      this.logger.error(`Failed to enqueue feedback email: ${e.message}`);
     }
 
     // Audit Log for ending session

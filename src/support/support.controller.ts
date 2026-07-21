@@ -24,9 +24,9 @@ export class SupportController {
   async updateTicket(
     @Req() req: any,
     @Param('id') id: string,
-    @Body() body: { status: string; admin_note?: string },
+    @Body() body: { status: string; admin_note?: string; reply_message?: string },
   ) {
     if (req.user.role !== 'admin') throw new ForbiddenException();
-    return this.supportService.updateTicket(id, body.status, body.admin_note);
+    return this.supportService.updateTicket(id, body.status, body.admin_note, body.reply_message);
   }
 }

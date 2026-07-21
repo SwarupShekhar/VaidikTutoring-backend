@@ -23,11 +23,13 @@ export class EmailService {
     }>;
     from?: string;
     replyTo?: string;
+    delayMs?: number;
   }) {
     // Add the email job to the queue
     const job = await this.emailQueue.add('sendMail', opts, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 },
+      delay: opts.delayMs,
     });
 
     this.logger.log(`Enqueued background email job: ${job.id}`);
@@ -369,5 +371,45 @@ export class EmailService {
     this.logger.log(`[EmailService] Verification URL: ${verificationUrl}`);
 
     return result;
+  }
+
+  async sendPostSessionFeedbackEmail(to: string, userId: string, firstName: string, tutorName: string, delayMs: number = 3600000) {
+    const name = this.firstName(firstName);
+    const frontend = this.frontendBase();
+    
+    // The student dashboard auto-prompts pending ratings, so linking them directly to the dashboard works perfectly.
+    const feedbackUrl = `${frontend}/dashboard`;
+
+    const body = `
+      <h1 style="color:#fff;font-size:24px;font-weight:700;margin:0 0 16px;line-height:1.3">How was your session? 🎓</h1>
+      <p style="color:#e5e5e5;font-size:15px;line-height:1.6;margin:0 0 20px">
+        Hi ${name},<br><br>
+        Your session with <strong>${tutorName}</strong> has just ended. We'd love to hear how it went!
+        Your feedback helps us ensure we're matching you with the best tutors and delivering high-quality learning experiences.
+      </p>
+      
+      <div style="margin: 30px 0; text-align: center; background: #1a1a1a; padding: 20px; border-radius: 12px; border: 1px solid #333;">
+        <p style="color:#fff; font-size: 16px; margin-bottom: 15px; font-weight: 600; margin-top: 0;">Rate your session:</p>
+        <div style="display: inline-block;">
+          ${[1, 2, 3, 4, 5].map(rating => `
+            <a href="${feedbackUrl}?rating=${rating}" style="text-decoration: none; font-size: 36px; padding: 0 4px; display: inline-block; line-height: 1; filter: grayscale(100%) brightness(1.5); transition: all 0.2s;" onMouseOver="this.style.filter='none'" onMouseOut="this.style.filter='grayscale(100%) brightness(1.5)'">⭐</a>
+          `).join('')}
+        </div>
+        <p style="color:#888;font-size:12px;margin: 15px 0 0 0;">(Click a star to automatically log your rating)</p>
+      </div>
+      
+      <div style="text-align: center;">
+        <a href="${feedbackUrl}" style="display:inline-block;background:#333;color:#fff;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:8px;margin:0 0 24px">
+          Or leave a text review here
+        </a>
+      </div>
+    `;
+
+    return this.sendMail({
+      to,
+      subject: `How was your session with ${tutorName}?`,
+      html: this.wrapper(body, userId),
+      delayMs,
+    });
   }
 }

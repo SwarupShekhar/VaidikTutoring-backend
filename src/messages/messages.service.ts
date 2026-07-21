@@ -144,33 +144,9 @@ export class MessagesService {
       },
     });
 
-    // 3. Notify student via email
-    if (student?.users_students_user_idTousers?.email) {
-      const tutorName = `${tutor.users.first_name} ${tutor.users.last_name || ''}`.trim();
-      try {
-        await this.emailService.sendMail({
-          to: student.users_students_user_idTousers.email,
-          subject: `Reply from your Tutor: ${tutorName}`,
-          html: `
-            <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; padding: 30px;">
-              <h2 style="color: #6366f1; margin-top: 0;">New Message from StudyHours</h2>
-              <p>Hi ${student.first_name},</p>
-              <p>Your tutor, <strong>${tutorName}</strong>, has sent you a new message:</p>
-              <div style="background: #f8fafc; border-left: 4px solid #6366f1; padding: 20px; margin: 25px 0; font-style: italic; color: #1e293b; line-height: 1.6;">
-                "${text}"
-              </div>
-              <p style="margin-bottom: 30px;">You can view the full conversation and reply from your dashboard.</p>
-              <a href="https://studyhours.com/students/dashboard" style="background: #6366f1; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Go to Dashboard</a>
-              <p style="font-size: 12px; color: #94a3b8; margin-top: 40px; border-top: 1px solid #eee; pt: 20px;">
-                StudyHours • Premium Academic Support
-              </p>
-            </div>
-          `,
-        });
-      } catch (e) {
-        console.error('Failed to send student reply email:', e.message);
-      }
-    }
+    // 3. Notify student via dashboard (real-time fetch)
+    // Email notification disabled per user request
+    // if (student?.users_students_user_idTousers?.email) { ... }
 
     // 4. Log event
     await this.prisma.audit_logs.create({

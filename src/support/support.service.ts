@@ -77,11 +77,14 @@ export class SupportService {
     });
   }
 
-  async updateTicket(ticketId: string, status: string, adminNote?: string) {
-    const ticket = await this.prisma.support_tickets.findUnique({ where: { id: ticketId } });
+  async updateTicket(ticketId: string, status: string, adminNote?: string, replyMessage?: string) {
+    const ticket = await this.prisma.support_tickets.findUnique({ 
+      where: { id: ticketId },
+      include: { users: true }
+    });
     if (!ticket) throw new NotFoundException('Ticket not found');
 
-    return this.prisma.support_tickets.update({
+    const updated = await this.prisma.support_tickets.update({
       where: { id: ticketId },
       data: {
         status,
@@ -91,5 +94,24 @@ export class SupportService {
         users: { select: { first_name: true, last_name: true, email: true, role: true } },
       },
     });
+
+    if (replyMessage && ticket.users?.email) {
+      const formattedReply = replyMessage.replace(/\n/g, '<br/>');
+      await this.emailService.sendMail({
+        to: ticket.users.email,
+        subject: `Re: Your Support Request #${ticket.id.slice(0, 8)}`,
+        html: `
+          <p>Hi ${ticket.users.first_name || 'there'},</p>
+          <p>${formattedReply}</p>
+          <hr />
+          <p><strong>Your original message:</strong></p>
+          <blockquote style="background:#f4f4f4;padding:15px;border-left:5px solid #6366f1;">
+            ${ticket.message}
+          </blockquote>
+        `,
+      });
+    }
+
+    return updated;
   }
 }
