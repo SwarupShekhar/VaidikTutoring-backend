@@ -1,10 +1,12 @@
-
 import { CanActivate, ExecutionContext, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
 import { verifyToken, clerkClient } from '@clerk/clerk-sdk-node';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata';
 import { EmailService } from '../email/email.service';
+
+// Cache to prevent spamming Clerk API for the same user on every request
+const syncedPhoneUnverifiedUsers = new Set<string>();
 
 @Injectable()
 export class ClerkAuthGuard implements CanActivate {
@@ -176,7 +178,8 @@ export class ClerkAuthGuard implements CanActivate {
                     }
 
                     // Sync phone verification status to Clerk if not verified in DB
-                    if (dbUser.phone_verified === false && (dbUser.role === 'parent' || dbUser.role === 'student')) {
+                    if (dbUser.phone_verified === false && !syncedPhoneUnverifiedUsers.has(dbUser.id) && (dbUser.role === 'parent' || dbUser.role === 'student')) {
+                        syncedPhoneUnverifiedUsers.add(dbUser.id);
                         this.syncClerkService.syncPhoneVerifiedToClerk(dbUser.id, false).catch(err =>
                             this.logger.error(`[ClerkAuthGuard] Failed to set phone_verified:false for existing user: ${err.message}`)
                         );
