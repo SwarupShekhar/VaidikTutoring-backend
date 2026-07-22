@@ -36,27 +36,30 @@ export class DailyWebhookController {
 
       this.logger.log(`Recording ready for session room: ${room_name}. Starting transfer to Azure...`);
 
-      try {
-        const resolvedSessionId = await this.sessionsService.ensureSessionId(sessionId);
-        const downloadUrl = await this.dailyService.getRecordingAccessLink(recording_id);
-        const azureBlobName = await this.azureService.uploadFromUrl(resolvedSessionId, downloadUrl);
-        await this.prisma.session_recordings.create({
-          data: {
-            session_id: resolvedSessionId,
-            azure_blob_name: azureBlobName,
-            mime_type: 'video/mp4',
-            // 29-day retention, matching the Azure blob lifecycle policy. Without
-            // this, webhook-created recordings never expire.
-            auto_delete_at: new Date(Date.now() + 29 * 24 * 60 * 60 * 1000),
-          }
-        });
-        this.logger.log(`Successfully moved recording for session ${resolvedSessionId} to Azure: ${azureBlobName}`);
-        
-        // Mark as completed
-        await this.completeSession(resolvedSessionId);
-      } catch (error) {
-        this.logger.error(`Failed to process recording for session ${sessionId}: ${error.message}`);
-      }
+      // Process asynchronously so we can return 201 immediately to Daily.co
+      Promise.resolve().then(async () => {
+        try {
+          const resolvedSessionId = await this.sessionsService.ensureSessionId(sessionId);
+          const downloadUrl = await this.dailyService.getRecordingAccessLink(recording_id);
+          const azureBlobName = await this.azureService.uploadFromUrl(resolvedSessionId, downloadUrl);
+          await this.prisma.session_recordings.create({
+            data: {
+              session_id: resolvedSessionId,
+              azure_blob_name: azureBlobName,
+              mime_type: 'video/mp4',
+              // 29-day retention, matching the Azure blob lifecycle policy. Without
+              // this, webhook-created recordings never expire.
+              auto_delete_at: new Date(Date.now() + 29 * 24 * 60 * 60 * 1000),
+            }
+          });
+          this.logger.log(`Successfully moved recording for session ${resolvedSessionId} to Azure: ${azureBlobName}`);
+          
+          // Mark as completed
+          await this.completeSession(resolvedSessionId);
+        } catch (error) {
+          this.logger.error(`Failed to process recording for session ${sessionId}: ${error.message}`);
+        }
+      });
 
       return { received: true, transfer: 'initiated' };
     }

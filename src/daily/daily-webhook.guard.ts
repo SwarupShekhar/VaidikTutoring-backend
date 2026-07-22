@@ -16,7 +16,7 @@ export class DailyWebhookGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
-    const signatureHeader = request.headers['daily-signature'] as string;
+    const signatureHeader = request.headers['x-webhook-signature'] as string;
     const secret = this.config.get<string>('DAILY_WEBHOOK_SECRET');
 
     if (!secret) {
@@ -31,7 +31,7 @@ export class DailyWebhookGuard implements CanActivate {
     }
 
     if (!signatureHeader) {
-      this.logger.warn('Missing Daily-Signature header');
+      this.logger.warn('Missing X-Webhook-Signature header');
       throw new UnauthorizedException('Missing webhook signature');
     }
 
@@ -58,9 +58,9 @@ export class DailyWebhookGuard implements CanActivate {
     const signed = `${timestamp}.${rawBody}`;
 
     const expected = crypto
-      .createHmac('sha256', secret)
+      .createHmac('sha256', Buffer.from(secret, 'base64'))
       .update(signed)
-      .digest('hex');
+      .digest('base64');
 
     const expectedBuf = Buffer.from(expected, 'utf8');
     const receivedBuf = Buffer.from(receivedSig, 'utf8');
