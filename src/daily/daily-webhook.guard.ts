@@ -37,7 +37,10 @@ export class DailyWebhookGuard implements CanActivate {
 
     // Parse t=<timestamp>,v1=<sig>
     const parts = Object.fromEntries(
-      signatureHeader.split(',').map((p) => p.split('=')),
+      signatureHeader.split(',').map((p) => {
+        const i = p.indexOf('=');
+        return [p.slice(0, i), p.slice(i + 1)];
+      }),
     );
     const timestamp = parts['t'];
     const receivedSig = parts['v1'];
