@@ -1284,7 +1284,7 @@ export class SessionsService {
         await this.prisma.audit_logs.create({
             data: {
                 action: `SESSION_${status.toUpperCase()}`,
-                actor_user_id: userId || '00000000-0000-0000-0000-000000000000', // System fallback
+                actor_user_id: (!userId || userId === 'system') ? '00000000-0000-0000-0000-000000000000' : userId,
                 details: {
                     sessionId,
                     studentName: session.bookings?.students ? `${session.bookings.students.first_name} ${session.bookings.students.last_name || ''}`.trim() : 'Unknown',
