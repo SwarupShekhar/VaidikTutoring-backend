@@ -52,6 +52,9 @@ export class OnboardingCron {
     await this.processRule('breakup', 8, (u) =>
       this.email.sendBreakupEmail(u.email, u.id, u.first_name || undefined, u.lead_source),
     );
+
+    // Booking nudge: onboarding complete but zero bookings after 2 days.
+    await this.processBookingNudge();
   }
 
   /**
@@ -105,6 +108,84 @@ export class OnboardingCron {
           await send(user);
           // Record the send. createMany + skipDuplicates keeps this idempotent
           // even if two cron passes race or BullMQ retries upstream.
+          await this.prisma.email_events.createMany({
+            data: [{ user_id: user.id, type }],
+            skipDuplicates: true,
+          });
+        } catch (err: any) {
+          this.logger.error(`[${type}] failed for ${user.email}: ${err.message}`);
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(`[${type}] query failed: ${err.message}`);
+    }
+  }
+
+  /**
+   * Booking nudge: users who completed onboarding 2+ days ago but have
+   * zero bookings. Uses `email_events` type 'booking_nudge' for idempotency.
+   */
+  private async processBookingNudge() {
+    const type = 'booking_nudge';
+    const now = Date.now();
+    const olderThan = new Date(now - 2 * OnboardingCron.DAY);
+    const newerThan = new Date(now - 14 * OnboardingCron.DAY);
+
+    try {
+      const alreadySent = await this.prisma.email_events.findMany({
+        where: { type },
+        select: { user_id: true },
+      });
+      const excludeIds = new Set(alreadySent.map((e) => e.user_id));
+
+      // Find users with completed onboarding but no bookings at all.
+      const candidates = await this.prisma.users.findMany({
+        where: {
+          role: { in: ['parent', 'student'] },
+          onboarding_status: 'complete',
+          email_opted_out: false,
+          created_at: { lt: olderThan, gt: newerThan },
+          id: excludeIds.size ? { notIn: Array.from(excludeIds) } : undefined,
+        },
+        select: { id: true, email: true, first_name: true, lead_source: true },
+        take: 200,
+      });
+
+      if (!candidates.length) return;
+
+      // Resolve user IDs -> student IDs, then check bookings.
+      const studentRecords = await this.prisma.students.findMany({
+        where: { user_id: { in: candidates.map((c) => c.id) } },
+        select: { id: true, user_id: true },
+      });
+
+      // Users who have a student profile with at least one booking.
+      const studentIds = studentRecords.map((s) => s.id);
+      const usersWithBookings = studentIds.length
+        ? await this.prisma.bookings.findMany({
+            where: { student_id: { in: studentIds } },
+            select: { student_id: true },
+            distinct: ['student_id'],
+          })
+        : [];
+      const bookedStudentIds = new Set(usersWithBookings.map((b) => b.student_id));
+      const studentToUser = new Map(studentRecords.map((s) => [s.id, s.user_id]));
+      const bookedUserIds = new Set(
+        [...bookedStudentIds].map((sid) => studentToUser.get(sid!)).filter(Boolean),
+      );
+      const due = candidates.filter((c) => !bookedUserIds.has(c.id));
+
+      if (!due.length) return;
+      this.logger.log(`[${type}] sending to ${due.length} user(s)`);
+
+      for (const user of due) {
+        try {
+          await this.email.sendBookingNudgeEmail(
+            user.email,
+            user.id,
+            user.first_name || undefined,
+            user.lead_source,
+          );
           await this.prisma.email_events.createMany({
             data: [{ user_id: user.id, type }],
             skipDuplicates: true,

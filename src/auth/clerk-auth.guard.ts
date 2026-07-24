@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { SyncClerkMetadataService } from '../admin/sync-clerk-metadata';
 import { EmailService } from '../email/email.service';
+import { SlackService } from '../slack/slack.service';
 
 // Cache to prevent spamming Clerk API for the same user on every request
 const syncedPhoneUnverifiedUsers = new Set<string>();
@@ -19,6 +20,7 @@ export class ClerkAuthGuard implements CanActivate {
         // Optional so the JwtAuthGuard subclass (3-arg super) still constructs.
         // Welcome emails fire on the real Clerk login path, where DI supplies this.
         @Optional() private readonly email?: EmailService,
+        @Optional() private readonly slackService?: SlackService,
     ) { }
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -129,6 +131,15 @@ export class ClerkAuthGuard implements CanActivate {
                         this.syncClerkService.syncPhoneVerifiedToClerk(dbUser.id, false).catch(err =>
                             this.logger.error(`[ClerkAuthGuard] Failed to set phone_verified:false for new user: ${err.message}`)
                         );
+
+                        // Fire Slack alert for new Clerk signup — fire-and-forget.
+                        if (this.slackService) {
+                            this.slackService.sendAlert(
+                                `New signup: ${dbUser.email} joined as a ${dbUser.role}!`
+                            ).catch(err =>
+                                this.logger.error(`[ClerkAuthGuard] Slack alert failed for new user: ${err.message}`)
+                            );
+                        }
 
                         // Fire the welcome email + log it. Strictly fire-and-forget —
                         // must never block or fail authentication.

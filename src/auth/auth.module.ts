@@ -7,6 +7,7 @@ import { EmailModule } from '../email/email.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AdminModule } from '../admin/admin.module';
 import { CreditsModule } from '../credits/credits.module';
+import { SlackModule } from '../slack/slack.module';
 import { JwtStrategy } from './jwt.strategy';
 import { ClerkAuthGuard } from './clerk-auth.guard';
 
@@ -22,6 +23,7 @@ import { ClerkAuthGuard } from './clerk-auth.guard';
     EmailModule,
     AdminModule,
     CreditsModule,
+    SlackModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, ClerkAuthGuard],

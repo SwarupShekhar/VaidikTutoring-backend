@@ -347,6 +347,39 @@ export class EmailService {
     return `<p style="color:#5c9dff;font-size:14px;line-height:1.6;font-weight:600;margin:0 0 16px">${line}</p>`;
   }
 
+  /** Booking nudge: user completed onboarding but has zero bookings. */
+  async sendBookingNudgeEmail(to: string, userId: string, firstName?: string, leadSource?: string | null) {
+    const name = this.firstName(firstName);
+    const frontend = this.frontendBase();
+    const leadLine = this.leadContextLine(leadSource);
+
+    const body = `
+      <h1 style="color:#fff;font-size:24px;font-weight:800;margin:0 0 12px;line-height:1.2">Your 3 free sessions are waiting, ${name} ⏳</h1>
+      ${leadLine}
+      <p style="color:#e5e5e5;font-size:15px;line-height:1.6;margin:0 0 20px">
+        You signed up and told us what you're working on. Now comes the best part: your first live session with an expert tutor, completely free.
+      </p>
+      <p style="color:#e5e5e5;font-size:15px;line-height:1.6;margin:0 0 20px">
+        You have <strong style="color:#fde047;">3 free sessions</strong> ready to use. Your first one is a full 60-minute diagnostic where your tutor maps out exactly where you stand and what to focus on next.
+      </p>
+      <a href="${frontend}/bookings/new" style="display:inline-block;background:#4c70f5;color:#fff;text-decoration:none;padding:14px 24px;border-radius:50px;font-weight:700;font-size:15px;margin:0 0 8px">
+        Book your free session now →
+      </a>
+      <p style="color:#9ca3af;font-size:13px;line-height:1.6;margin:16px 0 0">
+        Need help picking a time? Just reply to this email and we will sort it out for you.
+      </p>`;
+
+    return this.sendMail({
+      to,
+      from: FROM,
+      replyTo: FROM,
+      subject: name === 'there'
+        ? 'Your 3 free tutoring sessions are waiting'
+        : `${name}, your 3 free sessions are waiting`,
+      html: this.wrapper(body, userId),
+    });
+  }
+
   async sendVerificationEmail(to: string, token: string) {
     // Determine Verification URL. If FRONTEND_URL is set (e.g.
     // https://studyhours.com) use it; otherwise default to the prod domain so a
