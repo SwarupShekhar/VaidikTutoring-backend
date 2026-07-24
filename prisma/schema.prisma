@@ -337,6 +337,7 @@ model sessions {
   reviewedByAdmin         Boolean?             @default(false) @map("reviewed_by_admin")
   flagged                 Boolean?             @default(false)
   created_at              DateTime?            @default(now()) @db.Timestamptz(6)
+  duration                Int?                 @default(45)
   program_id              String?              @db.Uuid
   attention_status        String?
   attention_meta          Json?
@@ -385,7 +386,7 @@ model students {
   subscription_ends                    DateTime?             @db.Timestamptz(6)
   subscription_plan                    String?               @db.VarChar(20)
   subscription_starts                  DateTime?             @db.Timestamptz(6)
-  trial_credits                        Int                   @default(10)
+  trial_credits                        Int                   @default(120)
   trial_expires_at                     DateTime?             @db.Timestamptz(6)
   trial_sessions_used                  Int                   @default(0)
   trial_started_at                     DateTime?             @db.Timestamptz(6)

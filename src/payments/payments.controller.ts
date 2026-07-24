@@ -53,7 +53,7 @@ export class PaymentsController {
 
     this.logger.log(`Creating order for user ${userId}, package ${dto.packageId}`);
 
-    return this.paymentsService.createOrder(userId, dto.packageId, ip, userAgent);
+    return this.paymentsService.createOrder(userId, dto.packageId, ip, userAgent, dto.couponCode);
   }
 
   /**

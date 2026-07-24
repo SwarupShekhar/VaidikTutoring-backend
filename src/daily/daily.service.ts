@@ -1,11 +1,14 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import axios from 'axios';
+import { SlackService } from '../slack/slack.service';
 
 @Injectable()
 export class DailyService {
     private readonly logger = new Logger(DailyService.name);
     private readonly apiKey = process.env.DAILY_API_KEY;
     private readonly apiUrl = 'https://api.daily.co/v1';
+
+    constructor(private readonly slackService: SlackService) {}
 
     async createRoom(sessionId: string) {
         if (!this.apiKey) {
@@ -51,8 +54,15 @@ export class DailyService {
                         );
                         return createResponse.data;
                     } catch (createErr: any) {
-                        // Retry without recording properties (free plan limitation)
-                        this.logger.warn(`Room creation failed (possibly plan limitation), retrying without recording: ${createErr.response?.data?.info || createErr.message}`);
+                        // Retry without recording properties (free plan limitation).
+                        // This means the session will run but NEVER be recorded — escalate
+                        // loudly so the team knows before a parent asks for the recording.
+                        this.logger.error(`⚠️ RECORDING DISABLED (Daily plan fallback) for room ${roomName} — session will NOT be recorded. Cause: ${createErr.response?.data?.info || createErr.message}`);
+                        try {
+                            await this.slackService.sendAlert(`⚠️ RECORDING DISABLED (Daily plan fallback) for room ${roomName} — session will NOT be recorded. Verify the Daily.co plan tier supports cloud recording.`);
+                        } catch (slackErr: any) {
+                            this.logger.error(`Failed to send Slack recording-disabled alert for room ${roomName}: ${slackErr.message}`);
+                        }
                         const fallbackResponse = await axios.post(
                             `${this.apiUrl}/rooms`,
                             {
@@ -150,9 +160,15 @@ export class DailyService {
             const errorData = err.response?.data;
             this.logger.error('Daily.co Token creation failed:', errorData || err.message);
             
-            // If it failed because of enable_recording: 'cloud' on a free plan, try again without recording
+            // If it failed because of enable_recording: 'cloud' on a free plan, try again without recording.
+            // The token will still work, but this session will NEVER be recorded — escalate loudly.
             if (errorData?.info?.includes('recording') || errorData?.error?.includes('recording')) {
-                this.logger.warn('Retrying token creation without cloud recording properties...');
+                this.logger.error(`⚠️ RECORDING DISABLED (Daily plan fallback) for room ${roomName} — session will NOT be recorded. Retrying token creation without cloud recording properties.`);
+                try {
+                    await this.slackService.sendAlert(`⚠️ RECORDING DISABLED (Daily plan fallback) for room ${roomName} — session will NOT be recorded. Verify the Daily.co plan tier supports cloud recording.`);
+                } catch (slackErr: any) {
+                    this.logger.error(`Failed to send Slack recording-disabled alert for room ${roomName}: ${slackErr.message}`);
+                }
                 try {
                    const fallbackResponse = await axios.post(
                         `${this.apiUrl}/meeting-tokens`,

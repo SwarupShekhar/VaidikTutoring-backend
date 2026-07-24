@@ -65,6 +65,12 @@ async function main() {
         { id: 'AP', name: 'Advanced Placement (College Board)', country: 'USA' },
         { id: 'TEKS', name: 'Texas Essential Knowledge and Skills (Texas, U.S.)', country: 'USA' },
         { id: 'Ontario', name: 'Ontario Provincial Curriculum (Canada)', country: 'Canada' },
+        // Australian Curriculums
+        { id: 'HSC', name: 'Higher School Certificate (New South Wales)', country: 'Australia' },
+        { id: 'VCE', name: 'Victorian Certificate of Education (Victoria)', country: 'Australia' },
+        { id: 'QCE', name: 'Queensland Certificate of Education (Queensland)', country: 'Australia' },
+        { id: 'WACE', name: 'Western Australian Certificate of Education', country: 'Australia' },
+        { id: 'ATAR', name: 'Australian Tertiary Admission Rank (Senior Secondary)', country: 'Australia' },
     ];
 
     console.log(`Upserting ${curriculaList.length} curricula...`);

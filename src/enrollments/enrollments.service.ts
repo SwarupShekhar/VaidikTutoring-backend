@@ -258,10 +258,13 @@ export class EnrollmentsService {
             enrollment_id: enrollment.id,
           }, dbClient);
 
-          // Deduct 1 subscription credit
+          // Deduct the session's duration in minutes from the time-bank
+          const sessionMinutes = Math.round(
+            (sessionEnd.getTime() - sessionStart.getTime()) / 60000,
+          );
           await dbClient.students.update({
             where: { id: enrollment.student_id },
-            data: { subscription_credits: { decrement: 1 } },
+            data: { subscription_credits: { decrement: sessionMinutes } },
           });
         };
 

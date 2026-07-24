@@ -152,12 +152,17 @@ export class BookingsService {
     const start = new Date(createDto.requested_start);
     let end = new Date(createDto.requested_end);
 
-    // Enforce exactly 30 minutes duration for 2nd and 3rd trial sessions
+    // Enforce specific durations for trial sessions
     let creditStatus: any = null;
     if (studentRecord && user.role !== 'admin') {
       creditStatus = await this.creditsService.getCreditStatus(studentRecord);
-      if (creditStatus.mode === 'trial_active' && (creditStatus.sessionsUsed || 0) > 0) {
-        end = new Date(start.getTime() + 30 * 60000);
+      if (creditStatus.mode === 'trial_active') {
+        const sessionsUsed = creditStatus.sessionsUsed || 0;
+        if (sessionsUsed === 0) {
+          end = new Date(start.getTime() + 60 * 60000); // 60 mins for 1st call
+        } else {
+          end = new Date(start.getTime() + 30 * 60000); // 30 mins for 2nd and 3rd calls
+        }
       }
     }
 
@@ -225,6 +230,8 @@ export class BookingsService {
 
       // FIX: Ensure they have enough credits/session-headroom for ALL subjects requested
       const requestedCount = createDto.subject_ids.length;
+      const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+      
       if (creditStatus.mode === 'trial_active') {
         const remainingSessions = 3 - (creditStatus.sessionsUsed || 0);
         if (requestedCount > remainingSessions) {
@@ -235,29 +242,29 @@ export class BookingsService {
             }),
           );
         }
-        if (creditStatus.creditsRemaining < requestedCount) {
+        if (creditStatus.creditsRemaining < requestedCount * durationMinutes) {
           throw new ForbiddenException(
             JSON.stringify({
               error: 'insufficient_credits',
-              message: `You only have ${creditStatus.creditsRemaining} credits left, but requested ${requestedCount} sessions.`,
+              message: `You only have ${creditStatus.creditsRemaining} time left, but requested ${requestedCount * durationMinutes} minutes.`,
             }),
           );
         }
       } else {
         const subscriptionExpired = studentRecord.subscription_ends && new Date(studentRecord.subscription_ends) < new Date();
-        if (subscriptionExpired || studentRecord.subscription_credits < requestedCount) {
+        if (subscriptionExpired || studentRecord.subscription_credits < requestedCount * durationMinutes) {
           throw new ForbiddenException(
             JSON.stringify({
               error: 'insufficient_credits',
               message: subscriptionExpired
                 ? 'Your subscription has expired. Please renew to book sessions.'
-                : `You only have ${studentRecord.subscription_credits} credits left, but requested ${requestedCount} sessions.`,
+                : `You only have ${studentRecord.subscription_credits} time left, but requested ${requestedCount * durationMinutes} minutes.`,
             }),
           );
         }
       }
 
-      creditCostInfo = this.creditsService.computeBookingCreditCost(studentRecord);
+      creditCostInfo = this.creditsService.computeBookingCreditCost(studentRecord, durationMinutes);
     }
 
     // Loop through each subject and create a separate booking
@@ -1330,14 +1337,17 @@ export class BookingsService {
 
         if (student) {
           if (booking.enrollment_id) {
-            // Enrollment-generated sessions refund 1 subscription credit using atomic increment
+            // Enrollment-generated sessions refund the session's minutes (matches minute-based deduction on creation)
+            const refundMinutes = booking.requested_end && booking.requested_start
+              ? Math.round((new Date(booking.requested_end).getTime() - new Date(booking.requested_start).getTime()) / 60000)
+              : 45; // ponytail: fallback to standard 45 if dates missing
             await tx.students.update({
               where: { id: student.id },
               data: {
-                subscription_credits: { increment: 1 },
+                subscription_credits: { increment: refundMinutes },
               },
             });
-            this.logger.log(`Refunded 1 subscription credit for cancelled enrollment booking ${booking.id} to student ${student.id}`);
+            this.logger.log(`Refunded ${refundMinutes} subscription minutes for cancelled enrollment booking ${booking.id} to student ${student.id}`);
           } else if (booking.credit_cost > 0) {
             // Manual/Direct bookings refund based on credit_cost and trial status
             if (booking.is_trial_session) {

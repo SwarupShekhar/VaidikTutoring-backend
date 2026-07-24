@@ -38,26 +38,49 @@ export class DailyWebhookController {
 
       // Process asynchronously so we can return 201 immediately to Daily.co
       Promise.resolve().then(async () => {
-        try {
-          const resolvedSessionId = await this.sessionsService.ensureSessionId(sessionId);
-          const downloadUrl = await this.dailyService.getRecordingAccessLink(recording_id);
-          const azureBlobName = await this.azureService.uploadFromUrl(resolvedSessionId, downloadUrl);
-          await this.prisma.session_recordings.create({
-            data: {
-              session_id: resolvedSessionId,
-              azure_blob_name: azureBlobName,
-              mime_type: 'video/mp4',
-              // 29-day retention, matching the Azure blob lifecycle policy. Without
-              // this, webhook-created recordings never expire.
-              auto_delete_at: new Date(Date.now() + 29 * 24 * 60 * 60 * 1000),
+        // Bounded retry with exponential backoff. Daily purges its copy after
+        // retention, so a transient Azure/network blip must not lose the recording.
+        // ponytail: this is in-process retry only — it survives transient failures,
+        // but a backend restart mid-retry still loses the recording. The upgrade
+        // path is a persisted "pending_transfer" DB row drained by a cron (needs a
+        // schema change — intentionally NOT built here).
+        const backoffsMs = [2000, 8000, 32000]; // 2s, 8s, 32s
+        const maxAttempts = backoffsMs.length;
+
+        let resolvedSessionId: string | null = null;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            resolvedSessionId = await this.sessionsService.ensureSessionId(sessionId);
+            const downloadUrl = await this.dailyService.getRecordingAccessLink(recording_id);
+            const azureBlobName = await this.azureService.uploadFromUrl(resolvedSessionId, downloadUrl);
+            await this.prisma.session_recordings.create({
+              data: {
+                session_id: resolvedSessionId,
+                azure_blob_name: azureBlobName,
+                mime_type: 'video/mp4',
+                // 29-day retention, matching the Azure blob lifecycle policy. Without
+                // this, webhook-created recordings never expire.
+                auto_delete_at: new Date(Date.now() + 29 * 24 * 60 * 60 * 1000),
+              }
+            });
+            this.logger.log(`Successfully moved recording for session ${resolvedSessionId} to Azure: ${azureBlobName}`);
+
+            // Mark as completed only after a successful transfer
+            await this.completeSession(resolvedSessionId);
+            return;
+          } catch (error) {
+            if (attempt < maxAttempts) {
+              const delayMs = backoffsMs[attempt - 1];
+              this.logger.warn(
+                `Recording transfer attempt ${attempt}/${maxAttempts} failed for session ${sessionId}: ${error.message}. Retrying in ${delayMs}ms...`,
+              );
+              await new Promise((resolve) => setTimeout(resolve, delayMs));
+            } else {
+              this.logger.error(
+                `RECORDING LOST: all ${maxAttempts} transfer attempts failed for session ${sessionId} (recording_id ${recording_id}, room ${room_name}). Daily will purge its copy after retention. Last error: ${error.message}`,
+              );
             }
-          });
-          this.logger.log(`Successfully moved recording for session ${resolvedSessionId} to Azure: ${azureBlobName}`);
-          
-          // Mark as completed
-          await this.completeSession(resolvedSessionId);
-        } catch (error) {
-          this.logger.error(`Failed to process recording for session ${sessionId}: ${error.message}`);
+          }
         }
       });
 

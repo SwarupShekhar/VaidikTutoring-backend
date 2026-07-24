@@ -39,7 +39,7 @@ export class CreditsService {
     await this.prisma.students.update({
       where: { id: studentId },
       data: {
-        trial_credits: 10,
+        trial_credits: 120,
         trial_started_at: now,
         trial_expires_at: expiresAt,
         trial_sessions_used: 0,
@@ -176,12 +176,12 @@ export class CreditsService {
   /**
    * Compute the credit cost for a booking.
    */
-  computeBookingCreditCost(student: any): BookingCreditCost {
+  computeBookingCreditCost(student: any, durationMinutes: number = 45): BookingCreditCost {
     const now = new Date();
 
-    // Learning mode: deduct 1 subscription credit
+    // Learning mode: deduct subscription minutes for the session duration
     if (student.enrollment_status === 'learning') {
-      return { cost: 1, isFree: false, isTrialSession: false };
+      return { cost: durationMinutes, isFree: false, isTrialSession: false };
     }
 
     // Paid plan
@@ -190,7 +190,7 @@ export class CreditsService {
       student.subscription_ends &&
       new Date(student.subscription_ends) > now
     ) {
-      return { cost: 1, isFree: false, isTrialSession: false };
+      return { cost: durationMinutes, isFree: false, isTrialSession: false };
     }
 
     // Trial: first session is free
@@ -198,8 +198,8 @@ export class CreditsService {
       return { cost: 0, isFree: true, isTrialSession: true };
     }
 
-    // Trial: subsequent sessions cost 5 credits
-    return { cost: 5, isFree: false, isTrialSession: true };
+    // Trial: subsequent sessions cost the session's minutes
+    return { cost: durationMinutes, isFree: false, isTrialSession: true };
   }
 
   /**
@@ -311,7 +311,7 @@ export class CreditsService {
       throw new ForbiddenException('Direct subscription without verified purchase is not allowed.');
     }
 
-    const creditMap = { foundation: 8, mastery: 16, elite: 24 };
+    const creditMap = { foundation: 360, mastery: 720, elite: 1080 };
     const credits = creditMap[plan];
 
     if (!credits) {
@@ -349,7 +349,7 @@ export class CreditsService {
       },
     });
 
-    this.logger.log(`Student ${studentId} subscribed to ${plan} plan with ${credits} credits`);
+    this.logger.log(`Student ${studentId} subscribed to ${plan} plan with ${credits} minutes`);
 
     return await this.getCreditStatus(updated);
   }
@@ -693,13 +693,15 @@ export class CreditsService {
   }
 
   private calculateCreditsFromPackage(pkg: any): number {
+    // Returns MINUTES (time-bank), not session counts.
+    // foundation=8×45=360, mastery=16×45=720, elite=24×45=1080.
     const name = pkg.name.toLowerCase();
-    
-    if (name.includes('foundation')) return 8;
-    if (name.includes('mastery')) return 16;
-    if (name.includes('elite')) return 24;
-    
-    return 8;
+
+    if (name.includes('foundation')) return 360;
+    if (name.includes('mastery')) return 720;
+    if (name.includes('elite')) return 1080;
+
+    return 360;
   }
 
   /**

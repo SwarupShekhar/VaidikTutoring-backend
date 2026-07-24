@@ -11,22 +11,33 @@ export class MessagesController {
 
   @Post('send')
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async sendMessage(@Req() req: any, @Body() body: { text: string; studentId?: string }) {
+  async sendMessage(@Req() req: any, @Body() body: { text: string; studentId?: string; tutorId?: string }) {
     const userId = req.user.userId;
     const role = req.user.role;
 
     if (role === 'student' || role === 'parent') {
-      // If student/parent, send to their assigned tutor
-      return this.messagesService.sendStudentQuery(userId, body.text);
+      // Student/parent → a specific assigned tutor (tutorId), or auto-routed if omitted
+      return this.messagesService.sendStudentQuery(userId, body.text, body.tutorId);
     } else if (role === 'tutor' && body.studentId) {
       // If tutor, send to specific student
       return this.messagesService.sendTutorReply(userId, body.studentId, body.text);
     }
   }
 
+  // Tutors a student can message (trial tutor + active enrollments + booked tutors)
+  @Get('my-tutors')
+  async getMyTutors(@Req() req: any) {
+    return this.messagesService.getMyTutors(req.user.userId);
+  }
+
   @Get()
-  async getMessages(@Req() req: any, @Query('studentId') studentId?: string) {
-    return this.messagesService.getMessages(req.user.userId, studentId);
+  async getMessages(
+    @Req() req: any,
+    @Query('studentId') studentId?: string,
+    @Query('tutorId') tutorId?: string,
+  ) {
+    // For a tutor the "other party" is a student; for a student it's a tutor.
+    return this.messagesService.getMessages(req.user.userId, studentId ?? tutorId);
   }
 
   @Get('conversations')
@@ -38,6 +49,14 @@ export class MessagesController {
   async getUnreadCount(@Req() req: any) {
     const count = await this.messagesService.getUnreadCount(req.user.userId);
     return { count };
+  }
+
+  // Student marks their thread with a specific tutor read (scoped by tutorId).
+  // Declared before the :otherId param route so /read/tutor matches here.
+  @Post('read/tutor')
+  async markTutorThreadRead(@Req() req: any, @Body() body: { tutorId?: string }) {
+    await this.messagesService.markAsRead(req.user.userId, body?.tutorId);
+    return { success: true };
   }
 
   @Post('read/:otherId')

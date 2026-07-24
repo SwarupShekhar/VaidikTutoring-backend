@@ -9,7 +9,7 @@ export class MessagesService {
     private emailService: EmailService,
   ) {}
 
-  async sendStudentQuery(studentUserId: string, text: string) {
+  async sendStudentQuery(studentUserId: string, text: string, requestedTutorId?: string) {
     // 1. Find student and their assigned tutor (try trial tutor first)
     const student = await this.prisma.students.findFirst({
       where: { user_id: studentUserId },
@@ -25,6 +25,20 @@ export class MessagesService {
 
     let tutorId = student.trial_tutor_id;
     let tutor = student.trial_tutor;
+
+    // If the student picked a specific tutor, validate it's actually assigned to
+    // them (auth boundary — never let a student message an arbitrary tutor).
+    if (requestedTutorId) {
+      const allowed = await this.getMyTutors(studentUserId);
+      if (!allowed.some((t) => t.id === requestedTutorId)) {
+        throw new ForbiddenException('That tutor is not assigned to you');
+      }
+      tutorId = requestedTutorId;
+      tutor = await this.prisma.tutors.findFirst({
+        where: { id: requestedTutorId },
+        include: { users: true },
+      });
+    }
 
     // Fallback 1: Try to resolve tutor from active enrollments
     if (!tutorId) {
@@ -165,6 +179,43 @@ export class MessagesService {
     return message;
   }
 
+  // Distinct tutors a student may message: trial tutor + active enrollments + booked tutors.
+  async getMyTutors(studentUserId: string): Promise<{ id: string; name: string }[]> {
+    const student = await this.prisma.students.findFirst({
+      where: { user_id: studentUserId },
+      select: { id: true, trial_tutor_id: true },
+    });
+    if (!student) throw new NotFoundException('Student profile not found');
+
+    const tutorIds = new Set<string>();
+    if (student.trial_tutor_id) tutorIds.add(student.trial_tutor_id);
+
+    const enrollments = await this.prisma.enrollments.findMany({
+      where: { student_id: student.id, status: 'active', NOT: { tutor_id: null } },
+      select: { tutor_id: true },
+    });
+    enrollments.forEach((e) => e.tutor_id && tutorIds.add(e.tutor_id));
+
+    const bookings = await this.prisma.bookings.findMany({
+      where: { student_id: student.id, NOT: { assigned_tutor_id: null } },
+      select: { assigned_tutor_id: true },
+      distinct: ['assigned_tutor_id'],
+    });
+    bookings.forEach((b) => b.assigned_tutor_id && tutorIds.add(b.assigned_tutor_id));
+
+    if (tutorIds.size === 0) return [];
+
+    const tutors = await this.prisma.tutors.findMany({
+      where: { id: { in: [...tutorIds] } },
+      include: { users: true },
+    });
+
+    return tutors.map((t) => ({
+      id: t.id,
+      name: [t.users?.first_name, t.users?.last_name].filter(Boolean).join(' ') || 'Your Tutor',
+    }));
+  }
+
   async getMessages(userId: string, otherPartyId?: string) {
     // Determine if user is student or tutor
     const [student, tutor] = await Promise.all([
@@ -173,8 +224,12 @@ export class MessagesService {
     ]);
 
     if (student) {
+      // otherPartyId (when present) is the selected tutor → scope to that thread
       return this.prisma.tutor_messages.findMany({
-        where: { student_id: student.id },
+        where: {
+          student_id: student.id,
+          ...(otherPartyId && { tutor_id: otherPartyId }),
+        },
         include: {
           tutor: { include: { users: true } }
         },
@@ -293,20 +348,31 @@ export class MessagesService {
     });
   }
 
-  async markAsRead(userId: string, otherPartyId: string) {
+  async markAsRead(userId: string, otherPartyId?: string) {
     const [student, tutor] = await Promise.all([
       this.prisma.students.findFirst({ where: { user_id: userId } }),
       this.prisma.tutors.findFirst({ where: { user_id: userId } })
     ]);
 
     if (student) {
+       // otherPartyId (when present) is the selected tutor → scope to that thread
        await this.prisma.tutor_messages.updateMany({
-         where: { student_id: student.id, is_read: false, NOT: { sender_id: userId } },
+         where: {
+           student_id: student.id,
+           is_read: false,
+           NOT: { sender_id: userId },
+           ...(otherPartyId && { tutor_id: otherPartyId }),
+         },
          data: { is_read: true }
        });
     } else if (tutor) {
        await this.prisma.tutor_messages.updateMany({
-         where: { tutor_id: tutor.id, student_id: otherPartyId, is_read: false, NOT: { sender_id: userId } },
+         where: {
+           tutor_id: tutor.id,
+           is_read: false,
+           NOT: { sender_id: userId },
+           ...(otherPartyId && { student_id: otherPartyId }),
+         },
          data: { is_read: true }
        });
     }

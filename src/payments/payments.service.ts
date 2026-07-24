@@ -98,7 +98,7 @@ export class PaymentsService {
    * Create a Razorpay order for a package purchase
    * Adapated for Vaidik Tutoring architecture - uses existing packages table
    */
-  async createOrder(userId: string, packageId: string, ip: string, userAgent?: string): Promise<CreateOrderResponse> {
+  async createOrder(userId: string, packageId: string, ip: string, userAgent?: string, couponCode?: string): Promise<CreateOrderResponse> {
     this.ensureRazorpayInitialized();
     
     // Get package from YOUR existing database
@@ -136,6 +136,28 @@ export class PaymentsService {
         } else {
           this.logger.warn(`No exchange rate found for ${finalCurrency}, falling back to static price`);
         }
+      }
+    }
+
+    // Apply Coupon / Promo Code Discounts (Universal across all currencies)
+    if (couponCode) {
+      const code = couponCode.trim().toUpperCase();
+      if (['SPECIAL349', 'SHAGUN349', 'COUNSELOR349', 'STUDY349', 'SHAGUN'].includes(code)) {
+        // Cap/discount price to 349 units (34900 cents)
+        dynamicPriceCents = Math.min(dynamicPriceCents, 34900);
+        this.logger.log(`Applied fixed coupon ${code}: new amount = ${dynamicPriceCents} cents`);
+      } else if (['STUDYHOURS10', 'WELCOME10', 'COUNSELOR10', 'SAVE10'].includes(code)) {
+        dynamicPriceCents = Math.round(dynamicPriceCents * 0.90);
+        this.logger.log(`Applied 10% coupon ${code}: new amount = ${dynamicPriceCents} cents`);
+      } else if (['STUDYHOURS20', 'WELCOME20', 'COUNSELOR20', 'SAVE20'].includes(code)) {
+        dynamicPriceCents = Math.round(dynamicPriceCents * 0.80);
+        this.logger.log(`Applied 20% coupon ${code}: new amount = ${dynamicPriceCents} cents`);
+      } else if (['STUDYHOURS25', 'SPECIAL25'].includes(code)) {
+        dynamicPriceCents = Math.round(dynamicPriceCents * 0.75);
+        this.logger.log(`Applied 25% coupon ${code}: new amount = ${dynamicPriceCents} cents`);
+      } else if (['SAVE50', 'STUDYHOURS50'].includes(code)) {
+        dynamicPriceCents = Math.max(100, dynamicPriceCents - 5000);
+        this.logger.log(`Applied $50 coupon ${code}: new amount = ${dynamicPriceCents} cents`);
       }
     }
 
